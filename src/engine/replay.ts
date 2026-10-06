@@ -89,28 +89,41 @@ export function messageToSse(m: BetaMessage): string {
     return out;
 }
 
-/** A fetch that answers each Messages request with the next recorded message, streamed. */
 /** One agent's recorded messages, or one list per aspect, keyed by its checklist's title. */
 export type Recording = BetaMessage[] | Record<string, BetaMessage[]>;
 
+/** The text of a request's first message, where the aspect's checklist starts with "# Aspect: <title>". */
+function firstText(body: unknown): string {
+    const content = (body as { messages?: { content?: unknown }[] } | null)?.messages?.[0]?.content;
+    if (typeof content === "string") return content;
+    return Array.isArray(content)
+        ? content.map(b => ((b as { type?: string }).type === "text" ? (b as { text: string }).text : "")).join("\n")
+        : "";
+}
+
 /**
  * Takes the next recorded message for a request. A keyed recording serves each aspect's agent from
- * its own list, read from the "# Aspect: <title>" line of the request's first message, so one
- * replayed run can start several agents.
+ * its own list, so one replayed run can start several agents.
  */
-export function recordedQueue(recording: Recording): (body: unknown) => BetaMessage | undefined {
+export function recordedQueue(recording: Recording): (body: unknown) => { message?: BetaMessage; missing?: string } {
     if (Array.isArray(recording)) {
         const queue = [...recording];
-        return () => queue.shift();
+        return () => {
+            const message = queue.shift();
+            return message ? { message } : { missing: "no recorded message left" };
+        };
     }
     const queues = new Map(Object.entries(recording).map(([title, messages]) => [title, [...messages]]));
     return body => {
-        const first = JSON.stringify((body as { messages?: unknown[] } | null)?.messages?.[0] ?? "");
-        const title = first.match(/# Aspect: ([^\\"]+)/)?.[1];
-        return title === undefined ? undefined : queues.get(title)?.shift();
+        const title = firstText(body).match(/^# Aspect: (.+)$/m)?.[1];
+        const queue = title === undefined ? undefined : queues.get(title);
+        if (!queue) return { missing: `no recording for the aspect "${title ?? "(none named)"}"` };
+        const message = queue.shift();
+        return message ? { message } : { missing: `no recorded message left for the aspect "${title}"` };
     };
 }
 
+/** A fetch that answers each Messages request with the next recorded message, streamed. */
 export function replayFetch(recording: Recording): { fetch: typeof fetch; requests: CapturedRequest[] } {
     const next = recordedQueue(recording);
     const requests: CapturedRequest[] = [];
@@ -119,8 +132,8 @@ export function replayFetch(recording: Recording): { fetch: typeof fetch; reques
         const headers = Object.fromEntries(new Headers(init?.headers).entries());
         const body = init?.body ? JSON.parse(String(init.body)) : {};
         requests.push({ url, headers, body });
-        const message = next(body);
-        if (!message) throw new Error(`replayFetch: no recorded message left for request ${requests.length}`);
+        const { message, missing } = next(body);
+        if (!message) throw new Error(`replayFetch: ${missing} for request ${requests.length}`);
         return new Response(messageToSse(message), {
             status: 200,
             headers: { "content-type": "text/event-stream", "request-id": `req_test_${requests.length}` }

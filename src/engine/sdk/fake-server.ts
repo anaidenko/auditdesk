@@ -61,12 +61,10 @@ export async function startFakeAnthropic(
             res.writeHead(own.status, { ...json, ...own.headers }).end(own.raw ?? JSON.stringify(own.body ?? {}));
             return;
         }
-        const next = nextRecorded(body);
+        const { message: next, missing } = nextRecorded(body);
         if (!next) {
             // 400, not 500: Claude Code retries a 5xx up to ten times.
-            res.writeHead(400, json).end(
-                error("invalid_request_error", `fake server: no recorded message left for request ${requests.length}`)
-            );
+            res.writeHead(400, json).end(error("invalid_request_error", `fake server: ${missing} for request ${requests.length}`));
             return;
         }
         const kept = o.keepModel?.(requests.length) || !body.model ? next : ({ ...next, model: body.model } as BetaMessage);
