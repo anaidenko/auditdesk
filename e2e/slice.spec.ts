@@ -20,6 +20,8 @@ test("a run from project to downloaded report", async ({ page }) => {
     await page.getByRole("button", { name: "Save" }).click();
     await page.getByRole("button", { name: "Start run" }).click();
     await expect(page.getByTestId("run-status")).toHaveText("done", { timeout: 60_000 });
+    // A Claude plan run's cap is in API-equivalent dollars (plan, Decision for Andrii 4).
+    await expect(page.getByText(/cap \$10\.00 API-equivalent/)).toBeVisible();
     // Rendered by the server once the run ends, without a reload.
     await expect(page.getByRole("button", { name: "Re-run this aspect" })).toBeVisible();
 
@@ -134,6 +136,27 @@ test("a Claude plan run above half of the 5-hour window starts only when allowed
         await page.getByLabel(/client agreed/).check();
         await page.getByRole("button", { name: "Save" }).click();
         await expect(page.getByTestId("plan-usage")).toContainText("62%");
+        await page.getByRole("button", { name: "Start run" }).click();
+        await expect(page.getByText(/above the 50% reserve/)).toBeVisible();
+        await page.getByLabel("Allow past the 50% reserve").check();
+        await page.getByRole("button", { name: "Start run" }).click();
+        await expect(page.getByTestId("run-status")).toHaveText("done", { timeout: 60_000 });
+    } finally {
+        rmSync(usage, { force: true });
+    }
+});
+
+// The review's Minor 4: a page rendered before the reading crossed 50% has no checkbox, yet the refusal names it.
+test("a run form rendered below the reserve offers the checkbox when the start is refused", async ({ page }) => {
+    const now = Math.floor(Date.now() / 1000);
+    const usage = join(E2E_HOME, "plan-usage.json");
+    try {
+        await newProject(page, "Stale reserve");
+        await page.getByLabel(/client agreed/).check();
+        await page.getByRole("button", { name: "Save" }).click();
+        await expect(page.getByTestId("plan-usage")).toContainText("not measured yet");
+        mkdirSync(E2E_HOME, { recursive: true });
+        writeFileSync(usage, JSON.stringify({ utilization: 0.58, resetsAt: now + 3600, seenAt: now }));
         await page.getByRole("button", { name: "Start run" }).click();
         await expect(page.getByText(/above the 50% reserve/)).toBeVisible();
         await page.getByLabel("Allow past the 50% reserve").check();

@@ -61,7 +61,8 @@ export default async function RunPage({
                     </Link>
                 }
             >
-                {run.model} · effort {run.effort} · cap ${Number(run.budgetUsd).toFixed(2)} · started{" "}
+                {run.model} · effort {run.effort} · cap ${Number(run.budgetUsd).toFixed(2)}
+                {run.modelAccess === "claude_plan" ? " API-equivalent" : ""} · started{" "}
                 {(run.startedAt ?? run.createdAt).toISOString().slice(0, 16).replace("T", " ")} UTC
             </PageHeader>
             {notice === "busy" && <Alert>Another run of this project is queued or running; re-run this aspect when it ends.</Alert>}

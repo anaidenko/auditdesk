@@ -12,7 +12,8 @@ import { parseModelAccess, parseProjectForm, parseRepositoryForm, parseRunForm }
 import { ActiveRunError, enqueueRun, requestStop } from "@/server/jobs";
 import { deleteProject as removeProject } from "@/server/projects";
 
-export type FormState = { error: string | null };
+/** `askReserve`: the start was refused above the plan's reserve, so the form shows its checkbox whatever it rendered with. */
+export type FormState = { error: string | null; askReserve?: boolean };
 
 export async function createProject(_prev: FormState, fd: FormData): Promise<FormState> {
     const parsed = parseProjectForm(fd);
@@ -55,7 +56,7 @@ export async function startRun(projectId: string, _prev: FormState, fd: FormData
         };
     const allowPastReserve = fd.get("allowPastReserve") === "on";
     const refusal = project.modelAccess === "claude_plan" ? reserveRefusal(await readPlanUsage(), allowPastReserve) : null;
-    if (refusal) return { error: `${refusal} Tick "Allow past the 50% reserve" to start anyway.` };
+    if (refusal) return { error: `${refusal} Tick "Allow past the 50% reserve" to start anyway.`, askReserve: true };
     if (!project.repositories.length) return { error: "Add a repository first." };
     const aspects = ["security"];
     const parsed = parseRunForm(fd, project.repositories.length * aspects.length);

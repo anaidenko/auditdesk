@@ -62,7 +62,7 @@ export function StartRunForm({
             {planUsage && (
                 <div className="space-y-2 text-xs text-zinc-600">
                     <p data-testid="plan-usage">{planUsage.line}</p>
-                    {planUsage.overReserve && (
+                    {(planUsage.overReserve || state.askReserve) && (
                         <label className="flex items-center gap-2 font-medium text-amber-800">
                             <input type="checkbox" name="allowPastReserve" className="size-4 rounded border-zinc-300 accent-amber-600" />
                             Allow past the 50% reserve
