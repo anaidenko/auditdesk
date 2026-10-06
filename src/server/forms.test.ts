@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { parseModelAccess, parseProjectForm, parseRepositoryForm, parseRunForm } from "./forms";
+import { parseBriefForm, parseModelAccess, parseProjectForm, parseRepositoryForm, parseRepositoryNotesForm, parseRunForm } from "./forms";
 
 const fd = (o: Record<string, string>) => {
     const f = new FormData();
@@ -72,5 +72,31 @@ describe("parseModelAccess", () => {
         expect(parseModelAccess(fd("claude_plan"))).toEqual({ ok: true, value: "claude_plan" });
         expect(parseModelAccess(fd("api_key"))).toEqual({ ok: true, value: "api_key" });
         expect(parseModelAccess(fd("both"))).toEqual({ ok: false, error: "Choose Claude plan or API key." });
+    });
+});
+
+describe("the brief and a repository's notes", () => {
+    it("reads the brief, trimmed, and the AI-built flag", () => {
+        const f = fd({ product: "  A shop.  ", concerns: "", outOfScope: "Billing" });
+        f.set("aiBuilt", "on");
+        expect(parseBriefForm(f)).toEqual({
+            ok: true,
+            value: { product: "A shop.", concerns: null, outOfScope: "Billing", aiBuilt: true }
+        });
+    });
+
+    it("refuses a field so long it would crowd the agents' prompt", () => {
+        expect(parseBriefForm(fd({ product: "x".repeat(4001) }))).toEqual({ ok: false, error: "Keep each field under 4,000 characters." });
+        expect(parseRepositoryNotesForm(fd({ stackText: "x".repeat(4001) }))).toEqual({
+            ok: false,
+            error: "Keep each field under 4,000 characters."
+        });
+    });
+
+    it("reads a repository's stack profile and instructions", () => {
+        expect(parseRepositoryNotesForm(fd({ stackText: " Next.js ", instructions: "" }))).toEqual({
+            ok: true,
+            value: { stackText: "Next.js", instructions: null }
+        });
     });
 });

@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it } from "vitest";
 
+import { EMPTY_STACK } from "@/engine/stack";
 import { prisma } from "@/server/db";
 import { createFinding } from "@/server/findings";
 import { reject } from "@/server/review";
@@ -43,5 +44,18 @@ describe("PrismaSink", () => {
         const index = await sink.findingIndex(repo.id);
         expect(index).toHaveLength(1);
         expect(index[0]).toMatch(/Not reachable \(rejected by the auditor: Admin-only route\.; do not report it again\)/);
+    });
+
+    it("records a detected stack on the repository and leaves a confirmed profile as Andrii wrote it", async () => {
+        const { project, repo } = await projectWithRepo();
+        await prisma.repository.update({ where: { id: repo.id }, data: { stackText: "Mine.", stackConfirmedAt: new Date() } });
+        const run = await prisma.run.create({
+            data: { projectId: project.id, model: "m", effort: "low", aspects: ["security"], budgetUsd: 1, budgetTokens: 20_000 }
+        });
+        const profile = { ...EMPTY_STACK, frameworks: ["Express 4"] };
+        await new PrismaSink(run.id, project.id).stackDetected(repo.id, profile);
+        const after = await prisma.repository.findUniqueOrThrow({ where: { id: repo.id } });
+        expect(after.stack).toEqual(profile);
+        expect(after.stackText).toBe("Mine.");
     });
 });

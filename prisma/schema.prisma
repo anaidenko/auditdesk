@@ -74,6 +74,12 @@ model Project {
   aiConsentAt       DateTime?
   modelAccess       ModelAccess  @default(claude_plan)
   nextFindingNumber Int          @default(1)
+  /// The brief (design § 6): what the product does, known concerns, what is out of scope.
+  briefProduct      String?
+  briefConcerns     String?
+  briefOutOfScope   String?
+  /// The AI-built mode (design § 7): switches on the checklists' "(AI-built)" items.
+  aiBuilt           Boolean      @default(false)
   createdAt         DateTime     @default(now())
   repositories      Repository[]
   runs              Run[]
@@ -81,16 +87,23 @@ model Project {
 }
 
 model Repository {
-  id        String     @id @default(uuid())
-  projectId String
-  project   Project    @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  source    String
-  branch    String
-  commitSha String?
-  clonePath String?
-  createdAt DateTime   @default(now())
-  findings  Finding[]
-  agents    AgentRun[]
+  id               String     @id @default(uuid())
+  projectId        String
+  project          Project    @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  source           String
+  branch           String
+  commitSha        String?
+  clonePath        String?
+  /// The last stack detection's StackProfile.
+  stack            Json?
+  /// The stack profile as Andrii confirmed or edited it; agents read this when set.
+  stackText        String?
+  stackConfirmedAt DateTime?
+  /// How to run it, its local URL, its database (design § 6).
+  instructions     String?
+  createdAt        DateTime   @default(now())
+  findings         Finding[]
+  agents           AgentRun[]
 }
 
 model Run {

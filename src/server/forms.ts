@@ -1,5 +1,6 @@
 import { type AspectKey, selectAspects } from "@/engine/aspects";
 import { validateBudget } from "@/engine/budget";
+import type { Brief } from "@/engine/prompts";
 import type { ModelAccess } from "@/engine/types";
 import { parseSource } from "@/engine/workspace";
 
@@ -36,4 +37,25 @@ export function parseRunForm(
 export function parseModelAccess(fd: FormData): Parsed<ModelAccess> {
     const v = String(fd.get("modelAccess") ?? "");
     return v === "claude_plan" || v === "api_key" ? { ok: true, value: v } : { ok: false, error: "Choose Claude plan or API key." };
+}
+
+const MAX_NOTE = 4000;
+const note = (fd: FormData, name: string) => String(fd.get(name) ?? "").trim() || null;
+const tooLong = (...v: (string | null)[]) => v.some(x => (x?.length ?? 0) > MAX_NOTE);
+const TOO_LONG = "Keep each field under 4,000 characters.";
+
+/** The brief goes into every agent's prompt, so each field is capped. */
+export function parseBriefForm(fd: FormData): Parsed<Brief> {
+    const value = {
+        product: note(fd, "product"),
+        concerns: note(fd, "concerns"),
+        outOfScope: note(fd, "outOfScope"),
+        aiBuilt: fd.get("aiBuilt") === "on"
+    };
+    return tooLong(value.product, value.concerns, value.outOfScope) ? { ok: false, error: TOO_LONG } : { ok: true, value };
+}
+
+export function parseRepositoryNotesForm(fd: FormData): Parsed<{ stackText: string | null; instructions: string | null }> {
+    const value = { stackText: note(fd, "stackText"), instructions: note(fd, "instructions") };
+    return tooLong(value.stackText, value.instructions) ? { ok: false, error: TOO_LONG } : { ok: true, value };
 }

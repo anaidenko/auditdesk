@@ -8,9 +8,16 @@ import { workspaceDir } from "@/engine/config";
 import { credentialStatus } from "@/engine/credentials";
 import { readPlanUsage, reserveRefusal } from "@/engine/plan-usage";
 import { prisma } from "@/server/db";
-import { parseModelAccess, parseProjectForm, parseRepositoryForm, parseRunForm } from "@/server/forms";
+import {
+    parseBriefForm,
+    parseModelAccess,
+    parseProjectForm,
+    parseRepositoryForm,
+    parseRepositoryNotesForm,
+    parseRunForm
+} from "@/server/forms";
 import { ActiveRunError, enqueueRun, requestStop } from "@/server/jobs";
-import { deleteProject as removeProject } from "@/server/projects";
+import { detectRepositoryStack, deleteProject as removeProject, saveRepositoryNotes } from "@/server/projects";
 
 /**
  * `askReserve`: the start was refused above the plan's reserve, so the form shows its checkbox whatever it rendered with.
@@ -33,6 +40,38 @@ export async function addRepository(projectId: string, _prev: FormState, fd: For
     const parsed = parseRepositoryForm(fd);
     if (!parsed.ok) return { error: parsed.error };
     await prisma.repository.create({ data: { projectId, ...parsed.value } });
+    revalidatePath(`/projects/${projectId}`);
+    return { error: null };
+}
+
+export async function saveBrief(projectId: string, _prev: FormState, fd: FormData): Promise<FormState> {
+    const parsed = parseBriefForm(fd);
+    if (!parsed.ok) return { error: parsed.error };
+    const { product, concerns, outOfScope, aiBuilt } = parsed.value;
+    await prisma.project.update({
+        where: { id: projectId },
+        data: { briefProduct: product, briefConcerns: concerns, briefOutOfScope: outOfScope, aiBuilt }
+    });
+    revalidatePath(`/projects/${projectId}`);
+    return { error: null };
+}
+
+export async function detectStack(projectId: string, repositoryId: string, _prev: FormState): Promise<FormState> {
+    try {
+        await detectRepositoryStack(projectId, repositoryId, workspaceDir());
+    } catch (e) {
+        if (e instanceof ActiveRunError) return { error: "A run of this project is queued or running; detect the stack when it ends." };
+        return { error: `Could not detect the stack: ${(e as Error).message}` };
+    }
+    revalidatePath(`/projects/${projectId}`);
+    return { error: null };
+}
+
+export async function saveNotes(projectId: string, repositoryId: string, _prev: FormState, fd: FormData): Promise<FormState> {
+    const parsed = parseRepositoryNotesForm(fd);
+    if (!parsed.ok) return { error: parsed.error };
+    await prisma.repository.findFirstOrThrow({ where: { id: repositoryId, projectId } });
+    await saveRepositoryNotes(repositoryId, parsed.value);
     revalidatePath(`/projects/${projectId}`);
     return { error: null };
 }
