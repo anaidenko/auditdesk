@@ -151,6 +151,15 @@ describe("references in the report", () => {
         expect(finding.refs?.top10?.label).toBe("A01:2025 Broken Access Control");
         expect(finding.refs?.cheatsheets.map(c => c.label)).toContain("Authorization Cheat Sheet");
         expect(finding.fixBeforeSignoff).toBeNull();
+        const q = await createFinding(
+            project.id,
+            null,
+            sampleFinding(repo.id, { kind: "question", severity: null, checklistItem: "SEC-10" })
+        );
+        await prisma.finding.update({ where: { id: q.id }, data: { status: "accepted" } });
+        const [question] = (await loadReportData(project.id)).questions;
+        expect(question.refs?.top10).toBeNull();
+        expect(question.refs?.cheatsheets.map(c => c.label)).toEqual(["Secrets Management Cheat Sheet"]);
     });
 });
 
