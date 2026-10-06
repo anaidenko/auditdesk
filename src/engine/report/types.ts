@@ -24,7 +24,8 @@ export interface ReportData {
     projectName: string;
     generatedAt: string;
     auditor: string;
-    repositories: { name: string; branch: string; sha: string }[];
+    /** Names are unique within a report; `notCovered` lists languages the audit could not analyse. */
+    repositories: { name: string; branch: string; sha: string; notCovered: string[] }[];
     aspects: { title: string; status: string; note: string | null; coverage: { item: string; title: string; status: string }[] }[];
     servedModels: string[];
     /** The accesses of the runs whose calls are in the report: which terms the client's code went under. */
@@ -33,4 +34,6 @@ export interface ReportData {
     findings: ReportFinding[];
     questions: ReportFinding[];
     costUsd: number | null;
+    /** The project's AI-built mode: the report gathers ai-built findings only when it is on (design § 10). */
+    aiBuilt: boolean;
 }

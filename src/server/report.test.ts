@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it } from "vitest";
 
 import type { ReportData } from "@/engine/report/types";
+import { EMPTY_STACK } from "@/engine/stack";
 import { prisma } from "@/server/db";
 import { createFinding } from "@/server/findings";
 import { loadReportData, reportFileName } from "@/server/report";
@@ -110,6 +111,29 @@ describe("aspects and repositories that changed", () => {
         });
         await prisma.repository.update({ where: { id: repo.id }, data: { commitSha: "a".repeat(40) } });
         expect((await loadReportData(project.id)).repositories.map(r => r.name)).toEqual(["web", "api"]);
+    });
+});
+
+describe("repositories in the report", () => {
+    it("tells apart two repositories of one name by their branch, and carries what each did not cover", async () => {
+        const { project, repo } = await projectWithRepo("git@github.com:acme/app.git");
+        await prisma.repository.update({
+            where: { id: repo.id },
+            data: { stack: { ...EMPTY_STACK, notCovered: ["Python (3 files; requirements.txt)"] } }
+        });
+        await prisma.repository.create({
+            data: {
+                projectId: project.id,
+                source: "git@github.com:acme/app.git",
+                branch: "develop",
+                createdAt: new Date(Date.now() + 1000)
+            }
+        });
+        await prisma.project.update({ where: { id: project.id }, data: { aiBuilt: true } });
+        const d = await loadReportData(project.id);
+        expect(d.repositories.map(r => r.name)).toEqual(["acme/app (main)", "acme/app (develop)"]);
+        expect(d.repositories.map(r => r.notCovered)).toEqual([["Python (3 files; requirements.txt)"], []]);
+        expect(d.aiBuilt).toBe(true);
     });
 });
 

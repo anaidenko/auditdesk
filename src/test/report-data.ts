@@ -24,7 +24,7 @@ export const reportData = (over: Partial<ReportData> = {}): ReportData => ({
     projectName: "Acme",
     generatedAt: "2026-10-20",
     auditor: "Andrii Naidenko",
-    repositories: [{ name: "app", branch: "main", sha: "0123456789abcdef" }],
+    repositories: [{ name: "app", branch: "main", sha: "0123456789abcdef", notCovered: [] }],
     aspects: [{ title: "Security", status: "done", note: null, coverage: [{ item: "SEC-04", title: "Injection", status: "examined" }] }],
     servedModels: ["claude-opus-5-5", "claude-opus-4-8"],
     modelAccess: ["api_key"],
@@ -32,5 +32,6 @@ export const reportData = (over: Partial<ReportData> = {}): ReportData => ({
     findings: [reportFinding({ label: "F-002", severity: "low" }), reportFinding({ label: "F-001", severity: "critical" })],
     questions: [],
     costUsd: null,
+    aiBuilt: false,
     ...over
 });

@@ -154,11 +154,12 @@ export function renderReport(d: ReportData): string {
     const ids = new Map<string, string>();
     for (const n of names) {
         const base = `repo-${n.replace(/[^A-Za-z0-9._-]+/g, "-")}`;
-        ids.set(n, [...ids.values()].includes(base) ? `${base}-${ids.size + 1}` : base);
+        let id = base;
+        for (let i = 2; [...ids.values()].includes(id); i++) id = `${base}-${i}`;
+        ids.set(n, id);
     }
-    const groups = manyRepos
-        ? names.map(n => ({ name: n, list: findings.filter(f => f.repository === n) })).filter(g => g.list.length)
-        : [];
+    // A repository with nothing accepted keeps its heading, or a reader might take it for unaudited.
+    const groups = manyRepos ? names.map(n => ({ name: n, list: findings.filter(f => f.repository === n) })) : [];
     const repoHead = (n: string) => `<h3 class="repo" id="${e(ids.get(n)!)}">${e(n)}</h3>`;
 
     const tiles = SEVERITIES.map(s => `<div class="tile ${s}${count(s) ? "" : " zero"}"><b>${count(s)}</b><span>${s}</span></div>`).join(
@@ -198,7 +199,7 @@ ${
                 `<tr><td class="nowrap"><a href="#${e(f.label)}">${e(f.label)}</a></td><td>${badge(f)}</td><td>${e(f.title)}</td><td>${e(f.aspect)}</td>${manyRepos ? `<td>${e(f.repository)}</td>` : ""}<td class="nowrap">${e(f.effort ?? "")}</td></tr>`
         )
         .join("");
-    const aiBuilt = findings.filter(f => f.tags?.includes("ai-built"));
+    const aiBuilt = d.aiBuilt ? [...findings, ...d.questions].filter(f => f.tags?.includes("ai-built")) : [];
     const aiSection = aiBuilt.length
         ? `<section id="ai-built"><h2>Signs of AI-generated code</h2>
 <p class="muted">Findings typical of code written largely by AI tools: uneven checks, packages to verify, copies that drifted apart. Each is described in full under Findings.</p>
@@ -260,12 +261,28 @@ ${aspects}
 <li>Model access: ${d.modelAccess.map(a => ACCESS_TEXT[a]).join("; ") || "none"}.</li>
 ${tools}
 <li>Budgets are checked between model calls; a call in progress may exceed its share by its own cost.</li>
+${d.repositories
+    .filter(r => r.notCovered.length)
+    .map(
+        r =>
+            `<li>Not covered in ${e(r.name)}: ${e(r.notCovered.join("; "))}. The audit covers JavaScript and TypeScript; these were not analysed.</li>`
+    )
+    .join("\n")}
 </ul>
 </section>
 
 <section id="findings"><h2>Findings</h2>
 ${findings.length ? `<table><thead><tr><th>ID</th><th>Severity</th><th>Title</th><th>Aspect</th>${manyRepos ? "<th>Repository</th>" : ""}<th>Effort</th></tr></thead><tbody>${rows}</tbody></table>` : `<p class="muted">No findings were accepted for this report.</p>`}
-${manyRepos ? groups.map(g => `${repoHead(g.name)}\n${g.list.map(finding).join("\n")}`).join("\n") : findings.map(finding).join("\n")}
+${
+    manyRepos
+        ? groups
+              .map(
+                  g =>
+                      `${repoHead(g.name)}\n${g.list.length ? g.list.map(finding).join("\n") : `<p class="muted">No findings were accepted for this repository.</p>`}`
+              )
+              .join("\n")
+        : findings.map(finding).join("\n")
+}
 </section>
 ${aiSection}
 ${questions}

@@ -8,6 +8,7 @@ import { workspaceDir } from "@/engine/config";
 import { findingLabel } from "@/engine/findings";
 import type { ReportData, ReportFinding } from "@/engine/report/types";
 import type { ToolVersions } from "@/engine/scanners/types";
+import type { StackProfile } from "@/engine/stack";
 import type { Evidence, References, SeverityName } from "@/engine/types";
 import { parseSource } from "@/engine/workspace";
 import { Prisma } from "@/generated/prisma/client";
@@ -31,7 +32,15 @@ export async function loadReportData(projectId: string): Promise<ReportData> {
         where: { id: projectId },
         include: { repositories: { orderBy: { createdAt: "asc" } } }
     });
-    const names = new Map(project.repositories.map(r => [r.id, repoName(r.source)]));
+    // Names are unique in a report: two repositories of one name are told apart by branch, then by number.
+    const names = new Map<string, string>();
+    for (const r of project.repositories) {
+        const base = repoName(r.source);
+        const clash = project.repositories.filter(x => repoName(x.source) === base).length > 1;
+        let name = clash ? `${base} (${r.branch})` : base;
+        for (let i = 2; [...names.values()].includes(name); i++) name = `${base} (${r.branch}, ${i})`;
+        names.set(r.id, name);
+    }
     const rows = await prisma.finding.findMany({ where: { projectId, status: { in: [...REPORTABLE] } }, orderBy: { number: "asc" } });
     const toReport = (r: (typeof rows)[number]): ReportFinding => ({
         label: findingLabel(r.number),
@@ -101,7 +110,13 @@ export async function loadReportData(projectId: string): Promise<ReportData> {
         projectName: project.name,
         generatedAt: new Date().toISOString().slice(0, 10),
         auditor: process.env.AUDITOR_NAME || "Andrii Naidenko",
-        repositories: project.repositories.map(r => ({ name: names.get(r.id)!, branch: r.branch, sha: r.commitSha ?? "not cloned" })),
+        repositories: project.repositories.map(r => ({
+            name: names.get(r.id)!,
+            branch: r.branch,
+            sha: r.commitSha ?? "not cloned",
+            notCovered: (r.stack as StackProfile | null)?.notCovered ?? []
+        })),
+        aiBuilt: project.aiBuilt,
         aspects,
         servedModels: served.map(s => s.servedModel),
         modelAccess: accesses.map(a => a.modelAccess),
