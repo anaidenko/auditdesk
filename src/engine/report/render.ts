@@ -65,7 +65,7 @@ pre{margin:0;padding:.6rem 0;background:#fcfcfd;overflow-x:auto;white-space:pre-
 pre code{display:block}.ln{display:inline-block;width:3.4em;padding-right:.9em;text-align:right;color:var(--faint);user-select:none}
 .callout{background:#eef2ff;border:1px solid #e0e7ff;border-radius:8px;padding:.15rem .95rem .6rem;margin:1rem 0 .4rem}.callout h4{color:var(--accent)}
 .refs{font-size:.82rem;color:var(--muted)}
-[hidden]{display:none!important}
+@media screen{.off{display:none!important}}
 .filters{display:flex;flex-wrap:wrap;gap:.6rem 1rem;align-items:end;margin:1rem 0;padding:.8rem 1rem;border:1px solid var(--line);border-radius:10px;font-size:.82rem;color:var(--muted)}
 .filters label{display:flex;flex-direction:column;gap:.25rem}
 .filters select,.filters input{font:inherit;color:var(--ink);padding:.3rem .5rem;border:1px solid var(--line);border-radius:6px;background:#fff}
@@ -122,21 +122,30 @@ function evidence(ev: ReportFinding["evidence"][number]): string {
 }
 
 // The report's one script: it filters and searches the findings in the browser, reaching nothing outside the file.
+// The report's one script: it filters and searches the findings and questions in the browser,
+// reaching nothing outside the file. It hides with a class that only the screen honours, so a
+// printout is always complete.
 const FILTER_SCRIPT = `(()=>{const f=document.querySelector(".filters");if(!f)return;
 const rank={critical:0,high:1,medium:2,low:3,info:4,question:5};
 const cards=[...document.querySelectorAll("section#findings .finding")];
+const questions=[...document.querySelectorAll("section#questions .finding")];
 const rows=[...document.querySelectorAll("section#findings tbody tr")];
+const groups=[...document.querySelectorAll("section#findings .repo-group")];
 const val=n=>{const el=f.querySelector("[name="+n+"]");return el?el.value:""};
-const apply=()=>{const min=val("sev"),asp=val("aspect"),repo=val("repo"),q=val("q").trim().toLowerCase();const shown=new Set();
-for(const c of cards){const ok=(!min||rank[c.dataset.sev]<=rank[min])&&(!asp||c.dataset.aspect===asp)&&(!repo||c.dataset.repo===repo)&&(!q||c.textContent.toLowerCase().includes(q));c.hidden=!ok;if(ok)shown.add(c.id)}
-for(const r of rows)r.hidden=!shown.has(r.dataset.id);
-f.querySelector("output").textContent=shown.size+" of "+cards.length+" findings shown";};
-f.addEventListener("input",apply);apply();})();`;
+const apply=()=>{const min=val("sev"),asp=val("aspect"),repo=val("repo"),q=val("q").trim().toLowerCase();const active=!!(min||asp||repo||q);const shown=new Set();let asked=0;
+const ok=c=>(!min||rank[c.dataset.sev]<=rank[min])&&(!asp||c.dataset.aspect===asp)&&(!repo||c.dataset.repo===repo)&&(!q||c.textContent.toLowerCase().includes(q));
+for(const c of cards){const v=ok(c);c.classList.toggle("off",!v);if(v)shown.add(c.id)}
+for(const c of questions){const v=ok(c);c.classList.toggle("off",!v);if(v)asked++}
+for(const r of rows)r.classList.toggle("off",!shown.has(r.dataset.id));
+for(const g of groups)g.classList.toggle("off",active&&![...g.querySelectorAll(".finding")].some(c=>shown.has(c.id)));
+f.querySelector("output").textContent=shown.size+" of "+cards.length+" findings"+(questions.length?" and "+asked+" of "+questions.length+(questions.length===1?" question":" questions"):"")+" shown";};
+const reveal=()=>{const t=location.hash&&document.getElementById(decodeURIComponent(location.hash.slice(1)));if(t&&t.closest(".off")){f.reset();apply();t.scrollIntoView()}};
+f.addEventListener("input",apply);window.addEventListener("hashchange",reveal);apply();reveal();})();`;
 
 const SIZES = [
-    ["S", "small (under 2 h)"],
-    ["M", "medium (under 2 days)"],
-    ["L", "large (more)"]
+    ["S", "small", "under 2 hours"],
+    ["M", "medium", "under 2 days"],
+    ["L", "large", "over 2 days"]
 ] as const;
 
 /** The hours Andrii set, added up, and the other findings counted by size. */
@@ -144,25 +153,42 @@ function effortSummary(findings: ReportFinding[]): string | null {
     if (!findings.length) return null;
     const estimated = findings.filter(f => f.effortHours != null);
     const rest = findings.filter(f => f.effortHours == null);
+    const noun = (n: number) => (n === 1 ? "finding" : "findings");
     const parts = [
-        ...SIZES.map(([s, name]) => [rest.filter(f => f.effort === s).length, name] as const),
-        [rest.filter(f => !f.effort).length, "not sized"] as const
+        ...SIZES.map(
+            ([s, size, span]) => [rest.filter(f => f.effort === s).length, (n: number) => `${size} ${noun(n)} (${span})`] as const
+        ),
+        [rest.filter(f => !f.effort).length, (n: number) => `${noun(n)} not sized`] as const
     ]
         .filter(([n]) => n > 0)
-        .map(([n, name]) => `${n} ${name}`);
+        .map(([n, words]) => `${n} ${words(n)}`);
+    if (!estimated.length && parts.length === 1 && rest.every(f => !f.effort)) return "Effort: not estimated.";
     const list = (xs: string[]) => (xs.length > 1 ? `${xs.slice(0, -1).join(", ")} and ${xs.at(-1)}` : (xs[0] ?? ""));
     const hours = estimated.reduce((sum, f) => sum + (f.effortHours ?? 0), 0);
     const head = estimated.length
-        ? `${hours} h for the ${estimated.length === 1 ? "finding" : `${estimated.length} findings`} the auditor estimated`
+        ? `${hours} h for the ${estimated.length === 1 ? "finding" : `${estimated.length} findings`} with hours set`
         : "";
     return `Estimated effort: ${head && parts.length ? `${head}, plus ${list(parts)}` : head || list(parts)}.`;
 }
 
 function finding(f: ReportFinding): string {
-    const meta = [f.repository, f.aspect, f.checklistItem, f.effort && `effort ${f.effort}${f.effortHours ? ` (${f.effortHours} h)` : ""}`]
+    const byDefault = f.severity === "critical" || f.severity === "high";
+    const call =
+        f.severity !== null && f.fixBeforeSignoff != null && f.fixBeforeSignoff !== byDefault
+            ? f.fixBeforeSignoff
+                ? "agreed to fix before sign-off"
+                : "agreed to fix after sign-off"
+            : null;
+    const meta = [
+        f.repository,
+        f.aspect,
+        f.checklistItem,
+        f.effort && `effort ${f.effort}${f.effortHours != null ? ` (${f.effortHours} h)` : ""}`,
+        call
+    ]
         .filter(Boolean)
         .join(" · ");
-    const link = (r: Ref) => `<a href="${e(r.url)}">${e(r.label)}</a>`;
+    const link = (r: Ref) => (r.url ? `<a href="${e(r.url)}">${e(r.label)}</a>` : e(r.label));
     const R = f.refs;
     const refs = R
         ? [
@@ -328,7 +354,9 @@ ${d.questions.length ? `<li><a href="#questions">Open questions</a>${tocItems(d.
 <h3>Fix before sign-off</h3>
 ${riskList(fixFirst, "Nothing needs fixing before sign-off.")}
 <h3>Can wait</h3>
+${canWait.length ? `<p class="muted">Still to fix, after sign-off.</p>` : ""}
 ${riskList(canWait, "Nothing else was found.")}
+${d.questions.length ? `<p>${d.questions.length === 1 ? "1 open question needs the team's answer." : `${d.questions.length} open questions need the team's answers.`}</p>` : ""}
 ${effortLine ? `<p>${e(effortLine)}</p>` : ""}
 </section>
 
@@ -359,7 +387,7 @@ ${
         ? groups
               .map(
                   g =>
-                      `${repoHead(g.name)}\n${g.list.length ? g.list.map(finding).join("\n") : `<p class="muted">No findings were accepted for this repository.</p>`}`
+                      `<div class="repo-group">${repoHead(g.name)}\n${g.list.length ? g.list.map(finding).join("\n") : `<p class="muted">No findings were accepted for this repository.</p>`}</div>`
               )
               .join("\n")
         : findings.map(finding).join("\n")

@@ -228,7 +228,7 @@ describe("renderReport", () => {
                 })
             );
             expect(summary(html)).toContain(
-                "Estimated effort: 13 h for the 2 findings the auditor estimated, plus 1 medium (under 2 days), 1 large (more) and 1 not sized."
+                "Estimated effort: 13 h for the 2 findings with hours set, plus 1 medium finding (under 2 days), 1 large finding (over 2 days) and 1 finding not sized."
             );
         });
     });
@@ -254,6 +254,69 @@ describe("renderReport", () => {
         expect(between(html, "@media print{", "</style>")).toMatch(/\.filters\{display:none/);
     });
 
+    describe("the summary's edge cases", () => {
+        const summary = (html: string) => between(html, '<section id="summary">', "</section>");
+        it("says the effort is not estimated when nothing is sized", () => {
+            expect(summary(renderReport(data({ findings: [finding({ effort: null })] })))).toContain("Effort: not estimated.");
+        });
+        it("counts hours set to zero as hours, as the card does", () => {
+            const html = renderReport(data({ findings: [finding({ effort: "S", effortHours: 0 })] }));
+            expect(summary(html)).toContain("Estimated effort: 0 h for the finding with hours set.");
+            expect(between(html, 'id="F-001"', "</details>")).toContain("effort S (0 h)");
+        });
+        it("says the findings that can wait still need fixing, and shows Andrii's call on the card", () => {
+            const html = renderReport(data({ findings: [finding({ label: "F-001", severity: "critical", fixBeforeSignoff: false })] }));
+            expect(summary(html)).toContain("Still to fix, after sign-off.");
+            expect(between(html, 'open id="F-001"', "</details>")).toContain("agreed to fix after sign-off");
+        });
+        it("counts the open questions the team must answer", () => {
+            expect(summary(renderReport(data({ questions: [finding({ label: "F-009", severity: null })] })))).toContain(
+                "1 open question needs the team's answer."
+            );
+        });
+    });
+
+    it("shows a reference it cannot link as plain text", () => {
+        const html = renderReport(
+            data({
+                findings: [
+                    finding({
+                        refs: {
+                            top10: null,
+                            cwe: { label: "SQL injection", url: null },
+                            asvs: [],
+                            cheatsheets: [],
+                            advisories: [],
+                            nist: null
+                        }
+                    })
+                ]
+            })
+        );
+        expect(html).toContain("Weakness: SQL injection.");
+    });
+
+    it("hides filtered findings on screen only, so a printout is always complete", () => {
+        const html = renderReport(data());
+        expect(html).toMatch(/@media screen\{\.off\{display:none!important\}\}/);
+        expect(html).not.toMatch(/\[hidden\]\{display:none/);
+        expect(html).toMatch(/classList\.toggle\("off"/);
+    });
+
+    it("groups each repository's findings so a filter can hide an emptied heading", () => {
+        const html = renderReport(
+            data({
+                repositories: [
+                    { name: "web", branch: "main", sha: "0123456789abcdef", notCovered: [] },
+                    { name: "api", branch: "main", sha: "fedcba9876543210", notCovered: [] }
+                ],
+                findings: [finding({ label: "F-001", repository: "web" })]
+            })
+        );
+        expect(html).toMatch(/<div class="repo-group"><h3 class="repo" id="repo-web">web<\/h3>/);
+        expect(html).toMatch(/hashchange/);
+    });
+
     it("gathers the findings tagged ai-built under Signs of AI-generated code", () => {
         const html = renderReport(
             data({
@@ -274,6 +337,11 @@ describe("renderReport", () => {
     it("gathers tagged questions under Signs of AI-generated code too", () => {
         const html = renderReport(data({ aiBuilt: true, questions: [finding({ label: "F-009", severity: null, tags: ["ai-built"] })] }));
         expect(between(html, '<section id="ai-built">', "</section>")).toContain('href="#F-009"');
+    });
+
+    it("filters and searches the open questions too", () => {
+        const html = renderReport(data({ questions: [finding({ label: "F-009", severity: null })] }));
+        expect(html).toMatch(/section#questions \.finding/);
     });
 
     it("leaves the AI-generated code section out when the mode is off", () => {

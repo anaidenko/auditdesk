@@ -69,6 +69,7 @@ export default async function FindingPage({ params }: { params: Promise<{ projec
                             <select
                                 name="signoff"
                                 defaultValue={f.fixBeforeSignoff === null ? "" : f.fixBeforeSignoff ? "before" : "later"}
+                                disabled={question}
                                 className={field}
                             >
                                 <option value="">By severity</option>
