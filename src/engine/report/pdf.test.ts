@@ -8,12 +8,12 @@ import { renderReport } from "./render";
 const pages = (pdf: Buffer) => (pdf.toString("latin1").match(/\/Type\s*\/Page\b(?!s)/g) ?? []).length;
 
 describe("renderPdf", { timeout: 60_000 }, () => {
-    it("prints the report as a PDF with a page at least for each section", async () => {
+    it("prints the report as a PDF: the cover alone, then new pages for the findings and the open questions", async () => {
         const html = renderReport(reportData({ questions: [reportFinding({ label: "F-003", severity: null })] }));
         const pdf = await renderPdf(html, { footer: "Code audit: Acme" });
         expect(pdf.subarray(0, 5).toString()).toBe("%PDF-");
-        // Cover, contents, summary, scope, findings, open questions (the disclaimer shares a page).
-        expect(pages(pdf)).toBeGreaterThanOrEqual(6);
+        // The cover; the contents, summary and scope; the findings; the open questions with the disclaimer.
+        expect(pages(pdf)).toBeGreaterThanOrEqual(4);
     });
 
     it("refuses every request the page makes: the report is one self-contained file", async () => {

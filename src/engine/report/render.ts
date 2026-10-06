@@ -32,13 +32,13 @@ section{margin-top:3rem}
 .tile b{display:block;font-size:1.75rem;line-height:1.1;font-variant-numeric:tabular-nums}
 .tile span{font-size:.75rem;font-weight:600;letter-spacing:.05em;text-transform:uppercase}
 .tile.zero{opacity:.45}
-.toc ol{margin:0;padding-left:1.2rem}.toc>ol>li{margin:.35rem 0;font-weight:600}
-.toc ol ol{list-style:none;padding-left:.2rem;margin:.35rem 0 .6rem;columns:2;column-gap:2rem;font-weight:400;font-size:.9rem}
-.toc ol ol li{break-inside:avoid;margin:.15rem 0;overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
-.badge{display:inline-block;font-size:.68rem;font-weight:700;letter-spacing:.06em;text-transform:uppercase;padding:.12rem .5rem;border-radius:999px;white-space:nowrap;vertical-align:.1em}
+.toc ol{margin:0;padding-left:1.2rem}.toc>ol>li{margin:.45rem 0;font-weight:600}
+.toc ul{list-style:none;padding:0;margin:.4rem 0 .7rem;font-weight:400;font-size:.9rem}
+.toc ul li{display:flex;gap:.6rem;align-items:baseline;margin:.25rem 0;break-inside:avoid}
+.badge{flex-shrink:0;display:inline-block;font-size:.68rem;font-weight:700;letter-spacing:.06em;text-transform:uppercase;padding:.12rem .5rem;border-radius:999px;white-space:nowrap;vertical-align:.1em}
 ${["critical", "high", "medium", "low", "info", "question"].map(s => `.${s}{color:var(--${s});background:var(--${s}-bg)}.tile.${s}{border-color:var(--${s}-bg)}`).join("")}
 .risks{list-style:none;padding:0;margin:.5rem 0}.risks li{display:flex;gap:.7rem;align-items:baseline;padding:.5rem 0;border-bottom:1px solid var(--line)}
-.risks .fid,.fid{font:600 12.5px ui-monospace,SFMono-Regular,Menlo,monospace;color:var(--muted)}
+.fid{flex-shrink:0;white-space:nowrap;font:600 12.5px ui-monospace,SFMono-Regular,Menlo,monospace;color:var(--muted)}
 table{border-collapse:collapse;width:100%;font-size:.88rem}
 th{text-align:left;font-size:.7rem;font-weight:600;letter-spacing:.07em;text-transform:uppercase;color:var(--muted);padding:.5rem .6rem;border-bottom:1px solid var(--line)}
 td{padding:.5rem .6rem;border-bottom:1px solid var(--line);vertical-align:top}td.nowrap{white-space:nowrap}
@@ -69,11 +69,10 @@ pre code{display:block}.ln{display:inline-block;width:3.4em;padding-right:.9em;t
 body{background:#fff;font-size:10.5pt}
 .doc{max-width:none;margin:0;border:0;border-radius:0;box-shadow:none;padding:0}
 .cover{min-height:245mm;display:flex;flex-direction:column;justify-content:center;break-after:page}
-.toc{break-after:page}
-section{margin-top:0;break-before:page}
-section#disclaimer{break-before:auto;margin-top:2.5rem}
+section{margin-top:2.2rem}
+section#findings,section#questions{margin-top:0;break-before:page}
 h2,h3,h4,summary,figcaption{break-after:avoid}
-.finding{break-inside:auto}.finding summary,.pair,.callout,figure{break-inside:avoid}
+.finding{break-inside:auto;-webkit-box-decoration-break:clone;box-decoration-break:clone}.finding summary,.pair,.callout,figure{break-inside:avoid}
 tr,.risks li{break-inside:avoid}
 a{color:inherit}
 }
@@ -142,7 +141,11 @@ export function renderReport(d: ReportData): string {
     const count = (s: string) => findings.filter(f => f.severity === s).length;
     const top = findings.filter(f => f.severity === "critical" || f.severity === "high");
     const tocItems = (list: ReportFinding[]) =>
-        list.length ? `<ol>${list.map(f => `<li><a href="#${e(f.label)}">${e(f.label)}</a> ${e(f.title)}</li>`).join("")}</ol>` : "";
+        list.length
+            ? `<ul>${list.map(f => `<li>${badge(f)}<a class="fid" href="#${e(f.label)}">${e(f.label)}</a><span>${e(f.title)}</span></li>`).join("")}</ul>`
+            : "";
+    // The cover names a single repository; a column repeating it only wraps.
+    const manyRepos = d.repositories.length > 1;
 
     const tiles = SEVERITIES.map(s => `<div class="tile ${s}${count(s) ? "" : " zero"}"><b>${count(s)}</b><span>${s}</span></div>`).join(
         ""
@@ -178,7 +181,7 @@ ${
     const rows = findings
         .map(
             f =>
-                `<tr><td class="nowrap"><a href="#${e(f.label)}">${e(f.label)}</a></td><td>${badge(f)}</td><td>${e(f.title)}</td><td>${e(f.aspect)}</td><td>${e(f.repository)}</td><td class="nowrap">${e(f.effort ?? "")}</td></tr>`
+                `<tr><td class="nowrap"><a href="#${e(f.label)}">${e(f.label)}</a></td><td>${badge(f)}</td><td>${e(f.title)}</td><td>${e(f.aspect)}</td>${manyRepos ? `<td>${e(f.repository)}</td>` : ""}<td class="nowrap">${e(f.effort ?? "")}</td></tr>`
         )
         .join("");
     const questions = d.questions.length
@@ -236,7 +239,7 @@ ${tools}
 </section>
 
 <section id="findings"><h2>Findings</h2>
-${findings.length ? `<table><thead><tr><th>ID</th><th>Severity</th><th>Title</th><th>Aspect</th><th>Repository</th><th>Effort</th></tr></thead><tbody>${rows}</tbody></table>` : `<p class="muted">No findings were accepted for this report.</p>`}
+${findings.length ? `<table><thead><tr><th>ID</th><th>Severity</th><th>Title</th><th>Aspect</th>${manyRepos ? "<th>Repository</th>" : ""}<th>Effort</th></tr></thead><tbody>${rows}</tbody></table>` : `<p class="muted">No findings were accepted for this report.</p>`}
 ${findings.map(finding).join("\n")}
 </section>
 ${questions}

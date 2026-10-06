@@ -93,4 +93,15 @@ describe("renderReport", () => {
         expect(html).toContain("<details");
         expect(html.match(/<details(?! open)/g)).toBeNull();
     });
+
+    // The cover names a single repository; a column repeating it wrapped in the PDF (R.3).
+    it("shows the repository column only when the audit spans more than one repository", () => {
+        const head = (html: string) => between(html, "<thead>", "</thead>");
+        const one = renderReport(data());
+        expect(head(one.slice(one.indexOf('id="findings"')))).not.toContain("Repository");
+        const two = renderReport(
+            data({ repositories: [...data().repositories, { name: "api", branch: "main", sha: "fedcba9876543210" }] })
+        );
+        expect(head(two.slice(two.indexOf('id="findings"')))).toContain("Repository");
+    });
 });
