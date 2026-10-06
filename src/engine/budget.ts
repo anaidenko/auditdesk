@@ -25,7 +25,10 @@ export function validateBudget(budget: { usd: number; tokens: number }, agents: 
 /**
  * The engine's fresh-token count runs ahead of the API's task-budget countdown (it includes the
  * prefix's cache write, and each turn's output is written again next turn), so tokens stop an
- * agent only at this multiple of its share. Dollars are the hard cap. Re-set from Task 1.18.
+ * agent only at this multiple of its share. Dollars are the hard cap. Measured on the SDK engine
+ * (Task E.9, 2026-10-06): 1.42 times the countdown. The multiple is at most 2 plus the prefix's
+ * share (a run that only writes), so 2 never stops an agent before its own countdown ends. The API
+ * engine's multiple is not measured yet.
  */
 export const TOKEN_BACKSTOP = 2;
 
