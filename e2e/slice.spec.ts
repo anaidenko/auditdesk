@@ -213,6 +213,17 @@ test("opened from disk with the network off, the report's severity filter hides 
     expect(requests).toEqual([]);
 });
 
+test("a run uses the model and effort chosen in the form", async ({ page }) => {
+    await newProject(page, "Opus run");
+    await page.getByLabel(/client agreed/).check();
+    await page.getByRole("button", { name: "Save", exact: true }).click();
+    await page.getByLabel("Model").selectOption("claude-opus-5-5");
+    await page.getByLabel("Effort").selectOption("high");
+    await page.getByRole("button", { name: "Start run" }).click();
+    await expect(page.getByTestId("run-status")).toHaveText("done", { timeout: 60_000 });
+    await expect(page.getByText(/claude-opus-5-5 · effort high/)).toBeVisible();
+});
+
 test("starting twice queues one run", async ({ page }) => {
     await newProject(page, "Double");
     await page.getByLabel(/client agreed/).check();

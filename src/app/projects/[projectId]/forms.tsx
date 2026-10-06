@@ -18,6 +18,7 @@ import { ACCESS_LABEL } from "@/app/model-access";
 import { Badge, FormError, Icon, button, input, label } from "@/app/ui";
 import { DEFAULT_EFFORT, DEFAULT_MODEL } from "@/engine/agent/request";
 import { ASPECTS } from "@/engine/aspects";
+import { EFFORTS, MODEL_CHOICES } from "@/engine/models";
 import type { ModelAccess } from "@/engine/types";
 
 export function AddRepositoryForm({ projectId }: { projectId: string }) {
@@ -91,6 +92,24 @@ export function StartRunForm({
             </fieldset>
             <div className="grid grid-cols-2 gap-3">
                 <label className={label}>
+                    Model
+                    <select name="model" defaultValue={state.values?.model || DEFAULT_MODEL} className={`${input} mt-1.5`}>
+                        {MODEL_CHOICES.map(m => (
+                            <option key={m.id} value={m.id}>
+                                {m.label}
+                            </option>
+                        ))}
+                    </select>
+                </label>
+                <label className={label}>
+                    Effort
+                    <select name="effort" defaultValue={state.values?.effort || DEFAULT_EFFORT} className={`${input} mt-1.5`}>
+                        {EFFORTS.map(e => (
+                            <option key={e}>{e}</option>
+                        ))}
+                    </select>
+                </label>
+                <label className={label}>
                     Cap, USD
                     <input
                         name="budgetUsd"
@@ -129,8 +148,9 @@ export function StartRunForm({
                 Start run
             </button>
             <p className="text-xs text-zinc-500">
-                Security is always on · {ACCESS_LABEL[access]} · {DEFAULT_MODEL} · effort {DEFAULT_EFFORT}. The cap is split equally between
-                the aspects and repositories, and checked between calls{access === "claude_plan" ? ", in API-equivalent dollars" : ""}.
+                Security is always on · {ACCESS_LABEL[access]} · Sonnet 5.5 at low effort is the cheapest; another model or effort costs
+                more. The cap is split equally between the aspects and repositories, and checked between calls
+                {access === "claude_plan" ? ", in API-equivalent dollars" : ""}.
             </p>
             {state.error && <FormError>{state.error}</FormError>}
         </form>

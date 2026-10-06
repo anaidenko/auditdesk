@@ -37,7 +37,7 @@ describe("forms", () => {
     it("reads the token cap in thousands, and runs security alone when nothing else is ticked", () => {
         expect(parseRunForm(fd({ budgetUsd: "10", budgetKTokens: "400" }), 1)).toEqual({
             ok: true,
-            value: { budgetUsd: 10, budgetTokens: 400_000, aspects: ["security"] }
+            value: { budgetUsd: 10, budgetTokens: 400_000, aspects: ["security"], model: "claude-sonnet-5-5", effort: "low" }
         });
     });
 
@@ -72,6 +72,33 @@ describe("parseModelAccess", () => {
         expect(parseModelAccess(fd("claude_plan"))).toEqual({ ok: true, value: "claude_plan" });
         expect(parseModelAccess(fd("api_key"))).toEqual({ ok: true, value: "api_key" });
         expect(parseModelAccess(fd("both"))).toEqual({ ok: false, error: "Choose Claude plan or API key." });
+    });
+});
+
+describe("the run's model and effort", () => {
+    it("runs the defaults when the form names none", () => {
+        expect(parseRunForm(fd({ budgetUsd: "10", budgetKTokens: "400" }), 1)).toMatchObject({
+            ok: true,
+            value: { model: "claude-sonnet-5-5", effort: "low" }
+        });
+    });
+
+    it("runs the model and effort Andrii chose", () => {
+        expect(parseRunForm(fd({ budgetUsd: "10", budgetKTokens: "400", model: "claude-opus-5-5", effort: "high" }), 1)).toMatchObject({
+            ok: true,
+            value: { model: "claude-opus-5-5", effort: "high" }
+        });
+    });
+
+    it("refuses a model or an effort the picker does not offer", () => {
+        expect(parseRunForm(fd({ budgetUsd: "10", budgetKTokens: "400", model: "claude-haiku-4-5" }), 1)).toEqual({
+            ok: false,
+            error: "Choose one of the offered models."
+        });
+        expect(parseRunForm(fd({ budgetUsd: "10", budgetKTokens: "400", effort: "turbo" }), 1)).toEqual({
+            ok: false,
+            error: "Choose one of the offered efforts."
+        });
     });
 });
 

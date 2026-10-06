@@ -11,7 +11,7 @@ export interface ModelPrice {
     cacheRead: number;
 }
 
-export const PRICES_AS_OF = "2026-10-06";
+export const PRICES_AS_OF = "2026-10-07";
 
 export const PRICES: Readonly<Record<string, ModelPrice>> = {
     "claude-sonnet-5-5": { input: 2, output: 10, cacheWrite5m: 2.5, cacheWrite1h: 4, cacheRead: 0.2 },

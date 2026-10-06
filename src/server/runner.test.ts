@@ -88,6 +88,21 @@ describe("runner", () => {
         expect(messages[0]).toMatch(/largely AI-built/);
     });
 
+    it("gives every agent of a run the model and effort chosen for it", async () => {
+        const { project } = await projectWithRepo(await makeSampleRepo());
+        await enqueueRun(project.id, { ...runOptions, model: "claude-opus-5-5", effort: "high", aspects: ["security", "quality"] });
+        const seen: string[] = [];
+        const base = await deps();
+        await processJob((await claimJob())!, sink => ({
+            ...base(sink),
+            runAspect: async o => {
+                seen.push(`${o.model}/${o.effort}`);
+                return { status: "done", note: null, summary: "ok", coverage: [] };
+            }
+        }));
+        expect(seen).toEqual(["claude-opus-5-5/high", "claude-opus-5-5/high"]);
+    });
+
     it("skips a job another claimer has locked, instead of waiting for it or taking it too", async () => {
         const { project } = await projectWithRepo();
         await enqueueRun(project.id, runOptions);
