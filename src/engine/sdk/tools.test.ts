@@ -70,4 +70,24 @@ describe("makeSdkServer", () => {
         expect((await finish([{ item: "SEC-01", status: "examined" }]))._meta).toEqual({ "claude/endTurn": true });
         expect(((await handler(tools, "repo_map")({})) as { _meta?: unknown })._meta).toBeUndefined();
     });
+
+    // The CLI starts a call while its response streams (Task E.1, Deviation 5): a call that writes waits for the engine's word.
+    it("asks the gate before a writing tool runs, with the CLI's tool-use id, and returns its refusal as an error", async () => {
+        const c = await ctx();
+        const asked: string[] = [];
+        const { tools } = makeSdkServer(c, {
+            gate: async (name, id) => (asked.push(`${name} ${id}`), "Not run.")
+        });
+        const call = (name: string, args: object, id: string) =>
+            tools.find(t => t.name === name)!.handler(args as never, { _meta: { "claudecode/toolUseId": id } } as never) as Promise<Result>;
+        expect(await call("finish_aspect", { summary: "s", coverage: [] }, "toolu_f")).toMatchObject({
+            isError: true,
+            content: [{ text: "Not run." }]
+        });
+        expect(c.state.finished).toBeNull();
+        await call("repo_map", {}, "toolu_m");
+        expect(await call("report_finding", {}, "toolu_r")).toMatchObject({ isError: true, content: [{ text: "Not run." }] });
+        expect(c.state.fatal).toBeNull();
+        expect(asked).toEqual(["finish_aspect toolu_f", "report_finding toolu_r"]);
+    });
 });

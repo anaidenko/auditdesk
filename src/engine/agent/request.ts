@@ -9,6 +9,16 @@ export const DEFAULT_MODEL = "claude-sonnet-5-5";
 // The cheapest level; a costlier model or effort runs only with the auditor's explicit OK.
 export const DEFAULT_EFFORT: Effort = "low";
 
+/**
+ * The only models a declined call may be served by, per requested model: the targets of the API's
+ * `fallbacks: "default"` that design § 8 lists and Andrii approved on 2026-10-05. The SDK engine
+ * stops an agent whose call another model served.
+ */
+export const APPROVED_FALLBACKS: Readonly<Record<string, readonly string[]>> = {
+    "claude-sonnet-5-5": ["claude-sonnet-5"],
+    "claude-opus-5-5": ["claude-opus-5", "claude-opus-4-8"]
+};
+
 export const BETAS = ["server-side-fallback-2026-07-01", "task-budgets-2026-03-13", "thinking-display-updates-2026-08-18"];
 
 // Thinking counts toward max_tokens; 64K is the skill's figure for long agentic turns, and needs streaming.

@@ -14,14 +14,23 @@ const END_TURN = { "claude/endTurn": true };
  * (`tools: []`) to fetch a deferred one. There is no `strict` on this path; the MCP server parses
  * each input with the same Zod schema before the handler runs.
  */
-export function makeSdkServer(ctx: AgentContext, o: { onToolError?: (name: string) => void } = {}) {
+export function makeSdkServer(
+    ctx: AgentContext,
+    o: {
+        onToolError?: (name: string) => void;
+        /** Asked before a tool that writes runs: null runs it, a text is returned to the model instead. */
+        gate?: (name: string, toolUseId: string | undefined) => Promise<string | null>;
+    } = {}
+) {
     const specs = toolSpecs(ctx);
     const tools = specs.map(s =>
         tool(
             s.name,
             s.description,
             s.inputSchema.shape,
-            async args => {
+            async (args, extra) => {
+                const refused = s.readOnly ? null : await o.gate?.(s.name, toolUseId(extra));
+                if (refused) return { content: [{ type: "text" as const, text: refused }], isError: true };
                 try {
                     const text = await s.run(args as never);
                     return { content: [{ type: "text" as const, text }], ...(s.name === "finish_aspect" ? { _meta: END_TURN } : {}) };
@@ -37,4 +46,10 @@ export function makeSdkServer(ctx: AgentContext, o: { onToolError?: (name: strin
     );
     const server = createSdkMcpServer({ name: SERVER, version: "1.0.0", alwaysLoad: true, tools });
     return { server, tools, names: specs.map(s => sdkToolName(s.name)) };
+}
+
+/** The CLI sends each call's tool-use id in the MCP request's _meta (Task E.1). */
+function toolUseId(extra: unknown): string | undefined {
+    const id = (extra as { _meta?: Record<string, unknown> } | undefined)?._meta?.["claudecode/toolUseId"];
+    return typeof id === "string" ? id : undefined;
 }

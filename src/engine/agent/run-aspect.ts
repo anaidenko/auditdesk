@@ -14,10 +14,19 @@ export type AgentOutcome = {
     coverage: Coverage[];
 };
 
-const NUDGE = "You ended without calling finish_aspect. Call it now with your summary and the coverage of every checklist item.";
+export const NUDGE = "You ended without calling finish_aspect. Call it now with your summary and the coverage of every checklist item.";
+export const REOPEN = "Not finished: another call in this turn failed. Fix it, then call finish_aspect again.";
 
-export async function runAspect(o: {
-    client: Anthropic;
+export function outcomeOf(ctx: AgentContext, status: AgentOutcome["status"], note: string | null): AgentOutcome {
+    return {
+        status,
+        note,
+        summary: ctx.state.finished?.summary ?? null,
+        coverage: ctx.state.finished?.coverage ?? ctx.checklist.items.map(i => ({ item: i.id, status: "not_reported" as const }))
+    };
+}
+
+export interface AspectInput {
     model: string;
     effort: Effort;
     share: { usd: number; tokens: number };
@@ -25,16 +34,19 @@ export async function runAspect(o: {
     system: BetaTextBlockParam[];
     firstMessage: string;
     maxIterations?: number;
-}): Promise<AgentOutcome> {
+}
+
+/** One aspect agent, on whichever engine the run's model access chose. */
+export type AspectRunner = (o: AspectInput) => Promise<AgentOutcome>;
+
+export function apiAspectRunner(client: Anthropic): AspectRunner {
+    return o => runAspect({ client, ...o });
+}
+
+export async function runAspect(o: AspectInput & { client: Anthropic }): Promise<AgentOutcome> {
     const { ctx } = o;
     const tools = makeTools(ctx);
-    const notCovered = (): Coverage[] => ctx.checklist.items.map(i => ({ item: i.id, status: "not_reported" }));
-    const end = (status: AgentOutcome["status"], note: string | null): AgentOutcome => ({
-        status,
-        note,
-        summary: ctx.state.finished?.summary ?? null,
-        coverage: ctx.state.finished?.coverage ?? notCovered()
-    });
+    const end = (status: AgentOutcome["status"], note: string | null) => outcomeOf(ctx, status, note);
 
     // The history is append-only: a nudge is a new user turn after everything sent so far (design § 8).
     let messages: { role: "user" | "assistant"; content: unknown }[] = [{ role: "user", content: o.firstMessage }];
@@ -132,7 +144,7 @@ function reopenAfterFailedSibling(msg: BetaMessage, results: { content: unknown 
     if (!blocks.some(r => r.is_error && !finishIds.has(r.tool_use_id))) return false;
     for (const r of blocks)
         if (finishIds.has(r.tool_use_id)) {
-            r.content = "Not finished: another call in this turn failed. Fix it, then call finish_aspect again.";
+            r.content = REOPEN;
             r.is_error = true;
         }
     return true;
