@@ -10,7 +10,7 @@ import { aspectMessage, prefixBlocks } from "./prompts";
 import { buildRepoMap } from "./repomap";
 import { normaliseGitleaks } from "./scanners/gitleaks";
 import { leakInTree, leakMasks, runScanners } from "./scanners/index";
-import { normaliseOsv } from "./scanners/osv";
+import { normaliseOsv, osvEvidence } from "./scanners/osv";
 import { normaliseSemgrep } from "./scanners/semgrep";
 import type { Ruleset, ScannerRunner, ToolVersions } from "./scanners/types";
 import type { AuditSink } from "./types";
@@ -82,13 +82,14 @@ export async function runAudit(input: AuditInput, deps: AuditDeps): Promise<{ st
         const inTree = new Set<string>();
         for (const leak of scan.leaks) if (await leakInTree(clonePath, leak)) inTree.add(`${leak.File}:${leak.StartLine}:${leak.Commit}`);
         const known = await sink.knownFingerprints(repo.id);
+        const lockEntries = await osvEvidence(clonePath, scan.osv, l => masker.mask(l));
         const scannerFindings = [
             ...normaliseGitleaks(scan.leaks, {
                 repositoryId: repo.id,
                 masker,
                 inTree: l => inTree.has(`${l.File}:${l.StartLine}:${l.Commit}`)
             }),
-            ...normaliseOsv(scan.osv, { repositoryId: repo.id }),
+            ...normaliseOsv(scan.osv, { repositoryId: repo.id, locate: p => lockEntries.get(p) ?? null }),
             // Semgrep's own `extra.lines` reads "requires login" without a Semgrep account: the code comes from the clone.
             ...normaliseSemgrep(
                 await Promise.all(

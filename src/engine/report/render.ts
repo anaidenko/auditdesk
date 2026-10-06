@@ -54,7 +54,7 @@ ${["critical", "high", "medium", "low", "info", "question"].map(s => `.finding.s
 .finding .body{padding:0 1.1rem 1rem;border-top:1px solid var(--line)}
 .meta{font-size:.82rem;color:var(--muted);margin-top:.8rem}
 .lead{font-size:1.02rem}
-.pair{display:grid;grid-template-columns:1fr 1fr;gap:1.2rem}
+.pair{display:grid;grid-template-columns:1fr 1fr;gap:1.2rem}.pair.one{grid-template-columns:1fr}
 .prose{white-space:pre-wrap}
 figure{margin:.6rem 0;border:1px solid var(--line);border-radius:8px;overflow:hidden}
 figcaption{font:12px ui-monospace,SFMono-Regular,Menlo,monospace;color:var(--muted);background:var(--wash);padding:.4rem .7rem;border-bottom:1px solid var(--line)}
@@ -108,7 +108,8 @@ const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one :
 function evidence(ev: ReportFinding["evidence"][number]): string {
     const lines = (ev.snippet ?? "").split("\n");
     const code = lines.map((line, i) => `<span class="ln">${ev.startLine + i}</span>${e(line)}`).join("\n");
-    return `<figure><figcaption>${e(ev.file)} · lines ${ev.startLine}–${ev.endLine}</figcaption>${ev.snippet ? `<pre><code>${code}</code></pre>` : ""}</figure>`;
+    const where = ev.startLine === ev.endLine ? `line ${ev.startLine}` : `lines ${ev.startLine}–${ev.endLine}`;
+    return `<figure><figcaption>${e(ev.file)} · ${where}</figcaption>${ev.snippet ? `<pre><code>${code}</code></pre>` : ""}</figure>`;
 }
 
 function finding(f: ReportFinding): string {
@@ -118,7 +119,7 @@ function finding(f: ReportFinding): string {
     const refs = [f.references.cwe, ...(f.references.advisories ?? [])].filter(Boolean).join(", ");
     const pair =
         f.likelihood || f.impact
-            ? `<div class="pair">${f.likelihood ? `<div><h4>Likelihood</h4><p>${e(f.likelihood)}</p></div>` : ""}${f.impact ? `<div><h4>Impact</h4><p>${e(f.impact)}</p></div>` : ""}</div>`
+            ? `<div class="pair${f.likelihood && f.impact ? "" : " one"}">${f.likelihood ? `<div><h4>Likelihood</h4><p>${e(f.likelihood)}</p></div>` : ""}${f.impact ? `<div><h4>Impact</h4><p>${e(f.impact)}</p></div>` : ""}</div>`
             : "";
     return `<details open id="${e(f.label)}" class="finding sev-${e(severityOf(f))}">
 <summary>${badge(f)}<span class="fid">${e(f.label)}</span><span>${e(f.title)}</span></summary>

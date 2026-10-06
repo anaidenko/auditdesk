@@ -72,6 +72,15 @@ describe("runAudit", () => {
         for (const f of semgrep) expect(f.evidence[0].snippet).toContain("eval");
     });
 
+    it("points a dependency finding at its package's entry in the lock file", async () => {
+        const sink = new TestSink();
+        await audit(sink, await makeSampleRepo(), await mkdtemp(join(tmpdir(), "ws-")));
+        const lodash = sink.findings.find(f => f.title.startsWith("lodash "))!;
+        expect(lodash.evidence[0].file).toBe("package-lock.json");
+        expect(lodash.evidence[0].startLine).toBeGreaterThan(1);
+        expect(lodash.evidence[0].snippet).toContain('"node_modules/lodash"');
+    });
+
     it("does not file a scanner finding twice when a run is repeated", async () => {
         const sink = new TestSink();
         const source = await makeSampleRepo();
