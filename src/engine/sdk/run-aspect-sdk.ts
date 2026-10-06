@@ -14,6 +14,7 @@ import type { CallRecord, ModelAccess } from "../types";
 
 import { InputQueue } from "./input";
 import { sdkEnv, sdkOptions } from "./options";
+import { Responses } from "./responses";
 import { SERVER, makeSdkServer } from "./tools";
 
 export interface SdkRunnerConfig {
@@ -52,48 +53,6 @@ export function sdkAspectRunner(cfg: SdkRunnerConfig): AspectRunner {
 }
 
 type Stop = { status: AgentOutcome["status"]; note: string };
-
-function deferred<T>() {
-    let resolve!: (v: T) => void;
-    const promise = new Promise<T>(r => (resolve = r));
-    return { promise, resolve };
-}
-
-/**
- * The stop reason of the main-thread response that made each tool call. The CLI starts a call
- * while its response still streams (Task E.1, Deviation 5), and runs tools and hooks in its own
- * order while the stream reaches us in another, so a writing tool and the PostToolBatch hook wait
- * here for the response's end. null: the response never ended (an API error, or the session closed).
- */
-class Responses {
-    private streaming: string[] = [];
-    private waits = new Map<string, ReturnType<typeof deferred<string | null>>>();
-
-    toolUse(id: string): void {
-        this.streaming.push(id);
-    }
-
-    end(stopReason: string | null): void {
-        for (const id of this.streaming) this.slot(id).resolve(stopReason);
-        this.streaming = [];
-    }
-
-    /** Releases every call still waiting: no response will end for it. */
-    abort(): void {
-        this.streaming = [];
-        for (const d of this.waits.values()) d.resolve(null);
-    }
-
-    stopReasonOf(id: string): Promise<string | null> {
-        return this.slot(id).promise;
-    }
-
-    private slot(id: string) {
-        let d = this.waits.get(id);
-        if (!d) this.waits.set(id, (d = deferred<string | null>()));
-        return d;
-    }
-}
 
 export async function runAspectSdk(cfg: SdkRunnerConfig, o: AspectInput): Promise<AgentOutcome> {
     const { ctx } = o;
@@ -164,6 +123,18 @@ export async function runAspectSdk(cfg: SdkRunnerConfig, o: AspectInput): Promis
         return stop ? { continue: false, stopReason: stop.note } : {};
     };
 
+    // Every response the engine saw end: streamed, or answered whole by Claude Code's non-streaming fallback.
+    const seen = new Set<string>();
+    const ended = (msg: BetaMessage) => {
+        const call = callRecord(ctx, o.model, msg, fellBack);
+        write(() => ctx.sink.recordCall(call));
+        fellBack = false;
+        // Decision for Andrii 5: one call on a model he did not approve, then the agent stops.
+        if (!approved.includes(call.servedModel) && !stop)
+            stop = { status: "partial", note: `Stopped: a call was served by ${call.servedModel}, which this run did not approve.` };
+        responses.end(msg.stop_reason);
+    };
+
     const { server, names } = makeSdkServer(ctx, {
         onToolError: name => void (name !== "finish_aspect" && failedInBatch++),
         gate: async (name, id) => {
@@ -226,21 +197,14 @@ export async function runAspectSdk(cfg: SdkRunnerConfig, o: AspectInput): Promis
                     break;
                 case "stream_event":
                     if (m.parent_tool_use_id) break;
-                    if (m.event.type === "message_start") start = { model: m.event.message.model, usage: m.event.message.usage };
-                    else if (m.event.type === "content_block_start" && m.event.content_block.type === "tool_use")
+                    if (m.event.type === "message_start") {
+                        start = { model: m.event.message.model, usage: m.event.message.usage };
+                        seen.add(m.event.message.id);
+                    } else if (m.event.type === "content_block_start" && m.event.content_block.type === "tool_use")
                         responses.toolUse(m.event.content_block.id);
                     else if (m.event.type === "message_delta" && start) {
-                        const call = callRecord(ctx, o.model, start, m.event, fellBack);
-                        write(() => ctx.sink.recordCall(call));
-                        fellBack = false;
+                        ended(fromStream(start, m.event));
                         start = null;
-                        // Decision for Andrii 5: one call on a model he did not approve, then the agent stops.
-                        if (!approved.includes(call.servedModel) && !stop)
-                            stop = {
-                                status: "partial",
-                                note: `Stopped: a call was served by ${call.servedModel}, which this run did not approve.`
-                            };
-                        responses.end(m.event.delta.stop_reason);
                     }
                     break;
                 case "assistant":
@@ -248,6 +212,11 @@ export async function runAspectSdk(cfg: SdkRunnerConfig, o: AspectInput): Promis
                     if (m.error) {
                         apiError = m.error;
                         responses.abort();
+                    } else if (m.message.stop_reason && !seen.has(m.message.id)) {
+                        // An answer without stream events: Claude Code's non-streaming fallback (the review's Critical 1).
+                        seen.add(m.message.id);
+                        for (const b of m.message.content) if (b.type === "tool_use") responses.toolUse(b.id);
+                        ended(m.message as BetaMessage);
                     }
                     for (const b of m.message.content)
                         if (b.type === "tool_use") {
@@ -329,21 +298,18 @@ export async function runAspectSdk(cfg: SdkRunnerConfig, o: AspectInput): Promis
 }
 
 /** Per-call usage from the stream: message_start carries input and cache counts, message_delta the final ones. */
-function callRecord(
-    ctx: AgentContext,
-    requested: string,
-    start: { model: string; usage: BetaUsage },
-    delta: BetaRawMessageDeltaEvent,
-    fellBack: boolean
-): CallRecord {
+function fromStream(start: { model: string; usage: BetaUsage }, delta: BetaRawMessageDeltaEvent): BetaMessage {
     const final = Object.fromEntries(Object.entries(delta.usage).filter(([, v]) => v !== null && v !== undefined));
-    const msg = {
+    return {
         model: start.model,
         usage: { ...start.usage, ...final },
         content: [],
         stop_reason: delta.delta.stop_reason,
         stop_details: delta.delta.stop_details ?? null
     } as unknown as BetaMessage;
+}
+
+function callRecord(ctx: AgentContext, requested: string, msg: BetaMessage, fellBack: boolean): CallRecord {
     const priced = priceMessage(requested, msg);
     return {
         agentRunId: ctx.agentRunId,
@@ -352,7 +318,7 @@ function callRecord(
         fallback: priced.fallback || fellBack,
         usage: priced.usage,
         costUsd: priced.costUsd,
-        stopReason: delta.delta.stop_reason,
-        refusalCategory: delta.delta.stop_details?.category ?? null
+        stopReason: msg.stop_reason,
+        refusalCategory: msg.stop_details?.category ?? null
     };
 }

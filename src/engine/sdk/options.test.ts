@@ -31,6 +31,7 @@ describe("sdkEnv", () => {
                 "CLAUDE_CODE_DISABLE_FEEDBACK_SURVEY",
                 "CLAUDE_CODE_MAX_RETRIES",
                 "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC",
+                "CLAUDE_CODE_DISABLE_NONSTREAMING_FALLBACK",
                 "CLAUDE_CODE_DISABLE_TERMINAL_TITLE",
                 "CLAUDE_CODE_OAUTH_TOKEN",
                 "CLAUDE_CONFIG_DIR",
@@ -50,6 +51,8 @@ describe("sdkEnv", () => {
         expect(e.ENABLE_TOOL_SEARCH).toBe("false");
         expect(e.ENABLE_CLAUDEAI_MCP_SERVERS).toBe("false");
         expect(e.CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC).toBe("1");
+        // A non-streamed answer has no stream events, which the engine's checks wait on (the review's Critical 1).
+        expect(e.CLAUDE_CODE_DISABLE_NONSTREAMING_FALLBACK).toBe("1");
         expect(e.CLAUDE_CONFIG_DIR).toBe("/tmp/cfg");
         expect(e.CLAUDE_CODE_MAX_RETRIES).toBe("4");
     });

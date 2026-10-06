@@ -8,6 +8,8 @@ export interface FakeReply {
     status: number;
     headers?: Record<string, string>;
     body?: unknown;
+    /** Sent as is in place of the JSON body: an event stream without events, for one. */
+    raw?: string;
 }
 
 export interface FakeAnthropic {
@@ -52,11 +54,11 @@ export async function startFakeAnthropic(
         let raw = "";
         for await (const chunk of req) raw += chunk;
         const headers = Object.fromEntries(Object.entries(req.headers).map(([k, v]) => [k, String(v)]));
-        const body = raw ? (JSON.parse(raw) as { model?: string }) : {};
+        const body = raw ? (JSON.parse(raw) as { model?: string; stream?: boolean }) : {};
         requests.push({ url: req.url ?? "", headers, body });
         const own = o.reply?.(requests.length);
         if (own) {
-            res.writeHead(own.status, { ...json, ...own.headers }).end(JSON.stringify(own.body ?? {}));
+            res.writeHead(own.status, { ...json, ...own.headers }).end(own.raw ?? JSON.stringify(own.body ?? {}));
             return;
         }
         const next = queue.shift();
@@ -67,13 +69,16 @@ export async function startFakeAnthropic(
             );
             return;
         }
-        const served = o.keepModel?.(requests.length) || !body.model ? next : ({ ...next, model: body.model } as BetaMessage);
+        const kept = o.keepModel?.(requests.length) || !body.model ? next : ({ ...next, model: body.model } as BetaMessage);
+        const served = o.toolPrefix ? withPrefix(kept, o.toolPrefix) : kept;
+        // Claude Code falls back to a non-streaming request when a stream fails (Task E.8, the review's Critical 1).
+        const streamed = body.stream !== false;
         res.writeHead(200, {
             ...o.headers?.(requests.length),
-            "content-type": "text/event-stream",
+            "content-type": streamed ? "text/event-stream" : "application/json",
             "request-id": `req_fake_${requests.length}`
         });
-        res.end(messageToSse(o.toolPrefix ? withPrefix(served, o.toolPrefix) : served));
+        res.end(streamed ? messageToSse(served) : JSON.stringify(served));
     });
     await new Promise<void>(resolve => server.listen(0, "127.0.0.1", resolve));
     const { port } = server.address() as AddressInfo;

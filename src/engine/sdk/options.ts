@@ -26,6 +26,8 @@ export function sdkEnv(o: {
         // Its own config directory: no user settings, no Keychain entry, no transcript under ~/.claude.
         CLAUDE_CONFIG_DIR: o.configDir,
         CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: "1",
+        // A failed stream fails the call instead of being retried without streaming: the engine reads every call from the stream.
+        CLAUDE_CODE_DISABLE_NONSTREAMING_FALLBACK: "1",
         DISABLE_TELEMETRY: "1",
         DISABLE_ERROR_REPORTING: "1",
         CLAUDE_CODE_DISABLE_FEEDBACK_SURVEY: "1",

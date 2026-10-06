@@ -45,6 +45,7 @@ async function setup(
         headers?: (n: number) => Record<string, string>;
         access?: ModelAccess;
         allowPastReserve?: boolean;
+        extraEnv?: Record<string, string>;
     } = {}
 ) {
     const h = await sdkHarness(responses, { reply: o.reply, keepModel: o.keepModel, headers: o.headers });
@@ -66,7 +67,12 @@ async function setup(
     };
     const run = () =>
         runAspectSdk(
-            { ...h.config(o.access), override: o.override, allowPastReserve: o.allowPastReserve },
+            {
+                ...h.config(o.access),
+                override: o.override,
+                allowPastReserve: o.allowPastReserve,
+                extraEnv: { ...h.config(o.access).extraEnv, ...o.extraEnv }
+            },
             {
                 model: "claude-sonnet-5-5",
                 effort: "low",
@@ -261,6 +267,26 @@ describe("runAspectSdk", { timeout: 60_000 }, () => {
         };
         const { run } = await setup([], { reply: () => throttled });
         expect(await run()).toMatchObject({ status: "partial", note: expect.stringContaining("rate-limiting") });
+    });
+
+    // The review's Critical 1: Claude Code's non-streaming fallback answers without stream events.
+    const emptyStream: FakeReply = { status: 200, headers: { "content-type": "text/event-stream" }, raw: "" };
+    const within = <T>(p: Promise<T>) => Promise.race([p, new Promise(r => setTimeout(() => r("still running after 20 s"), 20_000))]);
+
+    it("fails fast on a stream without events, since the non-streaming fallback is off", async () => {
+        const { h, run } = await setup([tool("report_finding", finding()), finish()], { reply: n => (n === 1 ? emptyStream : null) });
+        expect(await within(run())).toMatchObject({ status: "failed" });
+        expect(h.fake.requests).toHaveLength(1);
+    });
+
+    it("records and gates a response Claude Code fetched without streaming, if the fallback is ever on", async () => {
+        const { sink, run } = await setup([tool("report_finding", finding()), finish()], {
+            reply: n => (n === 1 ? emptyStream : null),
+            extraEnv: { CLAUDE_CODE_DISABLE_NONSTREAMING_FALLBACK: "" }
+        });
+        expect(await within(run())).toMatchObject({ status: "done" });
+        expect(sink.findings).toHaveLength(1);
+        expect(sink.calls.map(c => c.stopReason)).toEqual(["tool_use", "tool_use"]);
     });
 
     it("fails with the reason on an authentication error", async () => {

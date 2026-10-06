@@ -59,6 +59,26 @@ describe("startFakeAnthropic", () => {
         expect(res.headers.get("content-type")).toBe("text/event-stream");
     });
 
+    it("answers a request with stream: false with the message as JSON, as the API does", async () => {
+        const fake = await startFakeAnthropic([toolUse()], { toolPrefix: "mcp__auditdesk__" });
+        servers.push(fake);
+        const res = await fetch(`${fake.url}/v1/messages`, { method: "POST", body: JSON.stringify({ model: "m", stream: false }) });
+        expect(res.headers.get("content-type")).toBe("application/json");
+        const m = (await res.json()) as { model: string; content: { name: string }[] };
+        expect(m.model).toBe("m");
+        expect(m.content[0].name).toBe("mcp__auditdesk__read_file");
+    });
+
+    it("lets a test answer with a raw body, such as an event stream without events", async () => {
+        const fake = await startFakeAnthropic([], {
+            reply: () => ({ status: 200, headers: { "content-type": "text/event-stream" }, raw: "" })
+        });
+        servers.push(fake);
+        const res = await fetch(`${fake.url}/v1/messages`, { method: "POST", body: "{}" });
+        expect(res.headers.get("content-type")).toBe("text/event-stream");
+        expect(await res.text()).toBe("");
+    });
+
     it("lets a test answer one request with its own status", async () => {
         const fake = await startFakeAnthropic([], {
             reply: n => (n === 1 ? { status: 429, headers: { "x-should-retry": "false" } } : null)
