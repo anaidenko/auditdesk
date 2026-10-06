@@ -1,6 +1,6 @@
 import "server-only";
 
-import { type StackProfile, detectStack } from "@/engine/stack";
+import { type StackProfile, detectStack, stackProfileText } from "@/engine/stack";
 import { deleteProjectClones, withScratchClone } from "@/engine/workspace";
 import type { Prisma } from "@/generated/prisma/client";
 import { prisma } from "@/server/db";
@@ -25,18 +25,37 @@ export async function detectRepositoryStack(projectId: string, repositoryId: str
     if (await hasActiveRun(projectId)) throw new ActiveRunError();
     const repo = await prisma.repository.findFirstOrThrow({ where: { id: repositoryId, projectId } });
     const profile = await withScratchClone({ source: repo.source, branch: repo.branch, workspaceDir, projectId }, detectStack);
-    await prisma.repository.update({ where: { id: repositoryId }, data: { stack: profile as unknown as Prisma.InputJsonObject } });
+    await prisma.repository.update({
+        where: { id: repositoryId },
+        data: { stack: profile as unknown as Prisma.InputJsonObject, stackDetectedAt: new Date() }
+    });
     return profile;
 }
 
-/** A written stack profile is the confirmed one; an empty one sends the next run back to detection. */
+/**
+ * Saves the instructions, and with `confirm` the stack profile as written: the confirmed one, or,
+ * when emptied, a return to detection at the next run.
+ */
 export async function saveRepositoryNotes(
     repositoryId: string,
-    v: { stackText: string | null; instructions: string | null }
+    v: { stackText: string | null; instructions: string | null; confirm: boolean }
 ): Promise<void> {
     const stackText = v.stackText?.trim() || null;
     await prisma.repository.update({
         where: { id: repositoryId },
-        data: { stackText, stackConfirmedAt: stackText ? new Date() : null, instructions: v.instructions?.trim() || null }
+        data: {
+            instructions: v.instructions?.trim() || null,
+            ...(v.confirm && { stackText, stackConfirmedAt: stackText ? new Date() : null })
+        }
+    });
+}
+
+/** Takes the latest detection as the confirmed profile, in place of an older confirmed text. */
+export async function confirmDetectedStack(repositoryId: string): Promise<void> {
+    const repo = await prisma.repository.findUniqueOrThrow({ where: { id: repositoryId } });
+    if (!repo.stack) throw new Error("Detect the stack first.");
+    await prisma.repository.update({
+        where: { id: repositoryId },
+        data: { stackText: stackProfileText(repo.stack as unknown as StackProfile), stackConfirmedAt: new Date() }
     });
 }

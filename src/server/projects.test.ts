@@ -6,7 +6,7 @@ import { beforeEach, describe, expect, it } from "vitest";
 
 import { prisma } from "@/server/db";
 import { ActiveRunError, enqueueRun } from "@/server/jobs";
-import { deleteProject, detectRepositoryStack, saveRepositoryNotes } from "@/server/projects";
+import { confirmDetectedStack, deleteProject, detectRepositoryStack, saveRepositoryNotes } from "@/server/projects";
 import { resetDb } from "@/test/db";
 import { projectWithRepo } from "@/test/factories";
 import { makeSampleRepo } from "@/test/sample-repo";
@@ -51,6 +51,7 @@ describe("a repository's stack and instructions", () => {
         expect(profile.frameworks.join()).toMatch(/Express/);
         const after = await prisma.repository.findUniqueOrThrow({ where: { id: repo.id } });
         expect(after.stack).toEqual(profile);
+        expect(after.stackDetectedAt).toBeInstanceOf(Date);
         expect(after.commitSha).toBeNull();
         expect(await readdir(join(ws, project.id))).toEqual([]);
     });
@@ -63,12 +64,29 @@ describe("a repository's stack and instructions", () => {
 
     it("confirms a written stack profile, and an emptied one goes back to detection", async () => {
         const { repo } = await projectWithRepo();
-        await saveRepositoryNotes(repo.id, { stackText: "Next.js 16 and Prisma.", instructions: "pnpm dev" });
+        await saveRepositoryNotes(repo.id, { stackText: "Next.js 16 and Prisma.", instructions: "pnpm dev", confirm: true });
         let r = await prisma.repository.findUniqueOrThrow({ where: { id: repo.id } });
         expect(r).toMatchObject({ stackText: "Next.js 16 and Prisma.", instructions: "pnpm dev" });
         expect(r.stackConfirmedAt).toBeInstanceOf(Date);
-        await saveRepositoryNotes(repo.id, { stackText: "", instructions: "" });
+        await saveRepositoryNotes(repo.id, { stackText: "", instructions: "", confirm: true });
         r = await prisma.repository.findUniqueOrThrow({ where: { id: repo.id } });
         expect(r).toMatchObject({ stackText: null, stackConfirmedAt: null, instructions: null });
+    });
+
+    it("saves the instructions alone without confirming a profile Andrii has not read", async () => {
+        const { repo } = await projectWithRepo();
+        await saveRepositoryNotes(repo.id, { stackText: "Detected text he never read.", instructions: "pnpm dev", confirm: false });
+        const r = await prisma.repository.findUniqueOrThrow({ where: { id: repo.id } });
+        expect(r).toMatchObject({ instructions: "pnpm dev", stackText: null, stackConfirmedAt: null });
+    });
+
+    it("confirms the latest detection as the profile, in one step", async () => {
+        const { project, repo } = await projectWithRepo(await makeSampleRepo());
+        await saveRepositoryNotes(repo.id, { stackText: "Old and stale.", instructions: null, confirm: true });
+        await detectRepositoryStack(project.id, repo.id, await mkdtemp(join(tmpdir(), "ws-")));
+        await confirmDetectedStack(repo.id);
+        const r = await prisma.repository.findUniqueOrThrow({ where: { id: repo.id } });
+        expect(r.stackText).toMatch(/^Languages: .*\nFrameworks: Express/);
+        expect(r.stackConfirmedAt).toBeInstanceOf(Date);
     });
 });

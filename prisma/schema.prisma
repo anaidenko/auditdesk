@@ -80,6 +80,7 @@ model Project {
   briefOutOfScope   String?
   /// The AI-built mode (design § 7): switches on the checklists' "(AI-built)" items.
   aiBuilt           Boolean      @default(false)
+  briefSavedAt      DateTime?
   createdAt         DateTime     @default(now())
   repositories      Repository[]
   runs              Run[]
@@ -96,6 +97,7 @@ model Repository {
   clonePath        String?
   /// The last stack detection's StackProfile.
   stack            Json?
+  stackDetectedAt  DateTime?
   /// The stack profile as Andrii confirmed or edited it; agents read this when set.
   stackText        String?
   stackConfirmedAt DateTime?

@@ -17,17 +17,18 @@ import {
     parseRunForm
 } from "@/server/forms";
 import { ActiveRunError, enqueueRun, requestStop } from "@/server/jobs";
-import { detectRepositoryStack, deleteProject as removeProject, saveRepositoryNotes } from "@/server/projects";
+import { confirmDetectedStack, detectRepositoryStack, deleteProject as removeProject, saveRepositoryNotes } from "@/server/projects";
 
 /**
  * `askReserve`: the start was refused above the plan's reserve, so the form shows its checkbox whatever it rendered with.
- * `values`: what a refused run form held, so it comes back as Andrii left it (React resets a form after its action).
+ * `values`: what a refused form held, so it comes back as Andrii left it (React resets a form after its action).
  */
-export type FormState = {
-    error: string | null;
-    askReserve?: boolean;
-    values?: { aspects: string[]; budgetUsd: string; budgetKTokens: string };
-};
+export type FormState<V = never> = { error: string | null; askReserve?: boolean; values?: V };
+export type RunValues = { aspects: string[]; budgetUsd: string; budgetKTokens: string };
+export type BriefValues = { product: string; concerns: string; outOfScope: string; aiBuilt: boolean };
+export type NotesValues = { stackText: string; instructions: string };
+
+const text = (fd: FormData, name: string) => String(fd.get(name) ?? "");
 
 export async function createProject(_prev: FormState, fd: FormData): Promise<FormState> {
     const parsed = parseProjectForm(fd);
@@ -44,13 +45,22 @@ export async function addRepository(projectId: string, _prev: FormState, fd: For
     return { error: null };
 }
 
-export async function saveBrief(projectId: string, _prev: FormState, fd: FormData): Promise<FormState> {
+export async function saveBrief(projectId: string, _prev: FormState<BriefValues>, fd: FormData): Promise<FormState<BriefValues>> {
     const parsed = parseBriefForm(fd);
-    if (!parsed.ok) return { error: parsed.error };
+    if (!parsed.ok)
+        return {
+            error: parsed.error,
+            values: {
+                product: text(fd, "product"),
+                concerns: text(fd, "concerns"),
+                outOfScope: text(fd, "outOfScope"),
+                aiBuilt: fd.get("aiBuilt") === "on"
+            }
+        };
     const { product, concerns, outOfScope, aiBuilt } = parsed.value;
     await prisma.project.update({
         where: { id: projectId },
-        data: { briefProduct: product, briefConcerns: concerns, briefOutOfScope: outOfScope, aiBuilt }
+        data: { briefProduct: product, briefConcerns: concerns, briefOutOfScope: outOfScope, aiBuilt, briefSavedAt: new Date() }
     });
     revalidatePath(`/projects/${projectId}`);
     return { error: null };
@@ -67,9 +77,14 @@ export async function detectStack(projectId: string, repositoryId: string, _prev
     return { error: null };
 }
 
-export async function saveNotes(projectId: string, repositoryId: string, _prev: FormState, fd: FormData): Promise<FormState> {
+export async function saveNotes(
+    projectId: string,
+    repositoryId: string,
+    _prev: FormState<NotesValues>,
+    fd: FormData
+): Promise<FormState<NotesValues>> {
     const parsed = parseRepositoryNotesForm(fd);
-    if (!parsed.ok) return { error: parsed.error };
+    if (!parsed.ok) return { error: parsed.error, values: { stackText: text(fd, "stackText"), instructions: text(fd, "instructions") } };
     await prisma.repository.findFirstOrThrow({ where: { id: repositoryId, projectId } });
     await saveRepositoryNotes(repositoryId, parsed.value);
     revalidatePath(`/projects/${projectId}`);
@@ -88,16 +103,18 @@ export async function setModelAccess(projectId: string, fd: FormData): Promise<v
     revalidatePath(`/projects/${projectId}`);
 }
 
-export async function startRun(projectId: string, _prev: FormState, fd: FormData): Promise<FormState> {
+export async function startRun(projectId: string, _prev: FormState<RunValues>, fd: FormData): Promise<FormState<RunValues>> {
     const refused = await tryStartRun(projectId, fd);
     return {
         ...refused,
-        values: {
-            aspects: fd.getAll("aspects").map(String),
-            budgetUsd: String(fd.get("budgetUsd") ?? ""),
-            budgetKTokens: String(fd.get("budgetKTokens") ?? "")
-        }
+        values: { aspects: fd.getAll("aspects").map(String), budgetUsd: text(fd, "budgetUsd"), budgetKTokens: text(fd, "budgetKTokens") }
     };
+}
+
+export async function adoptDetection(projectId: string, repositoryId: string): Promise<void> {
+    await prisma.repository.findFirstOrThrow({ where: { id: repositoryId, projectId } });
+    await confirmDetectedStack(repositoryId);
+    revalidatePath(`/projects/${projectId}`);
 }
 
 /** Redirects to the new run, or says why it did not start. */

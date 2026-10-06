@@ -56,6 +56,7 @@ describe("PrismaSink", () => {
         await new PrismaSink(run.id, project.id).stackDetected(repo.id, profile);
         const after = await prisma.repository.findUniqueOrThrow({ where: { id: repo.id } });
         expect(after.stack).toEqual(profile);
+        expect(after.stackDetectedAt).toBeInstanceOf(Date);
         expect(after.stackText).toBe("Mine.");
     });
 });

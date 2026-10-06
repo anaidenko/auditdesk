@@ -55,7 +55,10 @@ export function parseBriefForm(fd: FormData): Parsed<Brief> {
     return tooLong(value.product, value.concerns, value.outOfScope) ? { ok: false, error: TOO_LONG } : { ok: true, value };
 }
 
-export function parseRepositoryNotesForm(fd: FormData): Parsed<{ stackText: string | null; instructions: string | null }> {
-    const value = { stackText: note(fd, "stackText"), instructions: note(fd, "instructions") };
+/** `confirm`: the "Save and confirm" button; the other saves the instructions alone. */
+export function parseRepositoryNotesForm(
+    fd: FormData
+): Parsed<{ stackText: string | null; instructions: string | null; confirm: boolean }> {
+    const value = { stackText: note(fd, "stackText"), instructions: note(fd, "instructions"), confirm: fd.get("intent") === "confirm" };
     return tooLong(value.stackText, value.instructions) ? { ok: false, error: TOO_LONG } : { ok: true, value };
 }

@@ -2,7 +2,18 @@
 
 import { useActionState } from "react";
 
-import { type FormState, addRepository, detectStack, saveBrief, saveNotes, startRun } from "@/app/actions";
+import {
+    type BriefValues,
+    type FormState,
+    type NotesValues,
+    type RunValues,
+    addRepository,
+    adoptDetection,
+    detectStack,
+    saveBrief,
+    saveNotes,
+    startRun
+} from "@/app/actions";
 import { ACCESS_LABEL } from "@/app/model-access";
 import { Badge, FormError, Icon, button, input, label } from "@/app/ui";
 import { DEFAULT_EFFORT, DEFAULT_MODEL } from "@/engine/agent/request";
@@ -46,7 +57,7 @@ export function StartRunForm({
     /** Claude plan only: the last 5-hour reading, and whether it is past the reserve. */
     planUsage: { line: string; overReserve: boolean } | null;
 }) {
-    const [state, action, pending] = useActionState<FormState, FormData>(startRun.bind(null, projectId), { error: null });
+    const [state, action, pending] = useActionState<FormState<RunValues>, FormData>(startRun.bind(null, projectId), { error: null });
     return (
         // Remounted with what a refused start held, since React resets a form after its action.
         <form key={JSON.stringify(state.values ?? null)} action={action} className="space-y-4">
@@ -59,7 +70,9 @@ export function StartRunForm({
                                 type="checkbox"
                                 name="aspects"
                                 value={a.key}
-                                defaultChecked={a.key === "security" || (state.values?.aspects ?? [...chosen, ...suggested]).includes(a.key)}
+                                defaultChecked={
+                                    a.key === "security" || (state.values?.aspects ?? [...chosen, ...suggested]).includes(a.key)
+                                }
                                 disabled={a.key === "security"}
                                 className="mt-0.5 size-4 rounded border-zinc-300 accent-indigo-600"
                             />
@@ -125,6 +138,8 @@ export function StartRunForm({
 }
 
 const textarea = `${input} mt-1.5 min-h-20 font-sans`;
+// The server refuses more (src/server/forms.ts); the browser stops typing there first.
+const MAX_NOTE = 4000;
 
 export function BriefForm({
     projectId,
@@ -133,29 +148,36 @@ export function BriefForm({
 }: {
     projectId: string;
     brief: { product: string | null; concerns: string | null; outOfScope: string | null; aiBuilt: boolean };
-    /** Files and packages stack detection took for signs of AI-built code. */
+    /** Signs of AI-built code that stack detection found since the brief was last saved. */
     aiBuiltSigns: string[];
 }) {
-    const [state, action, pending] = useActionState<FormState, FormData>(saveBrief.bind(null, projectId), { error: null });
+    const [state, action, pending] = useActionState<FormState<BriefValues>, FormData>(saveBrief.bind(null, projectId), { error: null });
+    const v = state.values;
     return (
-        <form action={action} className="space-y-3">
+        // Remounted with what a refused save held, since React resets a form after its action.
+        <form key={JSON.stringify(v ?? null)} action={action} className="space-y-3">
             <label className={label}>
                 What the product does
-                <textarea name="product" defaultValue={brief.product ?? ""} className={textarea} />
+                <textarea name="product" maxLength={MAX_NOTE} defaultValue={v?.product ?? brief.product ?? ""} className={textarea} />
             </label>
             <label className={label}>
                 Known concerns
-                <textarea name="concerns" defaultValue={brief.concerns ?? ""} className={textarea} />
+                <textarea name="concerns" maxLength={MAX_NOTE} defaultValue={v?.concerns ?? brief.concerns ?? ""} className={textarea} />
             </label>
             <label className={label}>
                 Out of scope
-                <textarea name="outOfScope" defaultValue={brief.outOfScope ?? ""} className={textarea} />
+                <textarea
+                    name="outOfScope"
+                    maxLength={MAX_NOTE}
+                    defaultValue={v?.outOfScope ?? brief.outOfScope ?? ""}
+                    className={textarea}
+                />
             </label>
             <label className="flex items-start gap-2.5 text-sm text-zinc-700">
                 <input
                     type="checkbox"
                     name="aiBuilt"
-                    defaultChecked={brief.aiBuilt}
+                    defaultChecked={v?.aiBuilt ?? brief.aiBuilt}
                     className="mt-0.5 size-4 rounded border-zinc-300 accent-indigo-600"
                 />
                 <span>
@@ -180,6 +202,7 @@ export function RepositoryNotes({
     projectId,
     repositoryId,
     detected,
+    detectedAt,
     stackText,
     confirmedAt,
     instructions
@@ -188,6 +211,7 @@ export function RepositoryNotes({
     repositoryId: string;
     /** The last detection, as text. */
     detected: string | null;
+    detectedAt: string | null;
     stackText: string | null;
     confirmedAt: string | null;
     instructions: string | null;
@@ -195,7 +219,11 @@ export function RepositoryNotes({
     const [detectState, detect, detecting] = useActionState<FormState, FormData>(detectStack.bind(null, projectId, repositoryId), {
         error: null
     });
-    const [state, save, saving] = useActionState<FormState, FormData>(saveNotes.bind(null, projectId, repositoryId), { error: null });
+    const [state, save, saving] = useActionState<FormState<NotesValues>, FormData>(saveNotes.bind(null, projectId, repositoryId), {
+        error: null
+    });
+    const changed = !!confirmedAt && !!detected && detected !== stackText;
+    const v = state.values;
     return (
         <details className="group w-full">
             <summary className="flex cursor-pointer list-none items-center gap-2 text-xs font-medium text-indigo-700 [&::-webkit-details-marker]:hidden">
@@ -207,36 +235,60 @@ export function RepositoryNotes({
                 ) : (
                     <Badge tone="slate">not detected yet</Badge>
                 )}
+                {changed && <Badge tone="amber">detection changed</Badge>}
             </summary>
             <div className="mt-3 space-y-3">
                 <form action={detect} className="flex flex-wrap items-center gap-3">
                     <button disabled={detecting} className={`${button.secondary} ${button.small}`}>
-                        Detect stack
+                        {detecting ? "Detecting…" : "Detect stack"}
                     </button>
-                    <span className="text-xs text-zinc-500">Clones the branch and reads its manifests; nothing is installed or run.</span>
+                    <span className="text-xs text-zinc-500">
+                        A shallow clone of the branch; its manifests are read, nothing is installed or run.
+                    </span>
                     {detectState.error && <FormError>{detectState.error}</FormError>}
                 </form>
-                {/* Remounted on a new detection, so the field shows it rather than what the browser kept. */}
-                <form key={detected ?? ""} action={save} className="space-y-3">
+                {changed && (
+                    <div className="space-y-2 rounded-lg bg-amber-50 px-3.5 py-3 ring-1 ring-amber-600/15 ring-inset">
+                        <p className="text-xs text-amber-900">
+                            The detection of {detectedAt} differs from the confirmed profile. Agents read the confirmed one until you change
+                            it.
+                        </p>
+                        <pre className="max-h-48 overflow-auto font-mono text-xs whitespace-pre-wrap text-zinc-800">{detected}</pre>
+                        <form action={adoptDetection.bind(null, projectId, repositoryId)}>
+                            <button className={`${button.secondary} ${button.small}`}>Use this detection</button>
+                        </form>
+                    </div>
+                )}
+                <form action={save} className="space-y-3">
                     <label className={label}>
                         Stack profile
+                        {/* Remounted on a new detection or a refused save; the instructions keep what was typed. */}
                         <textarea
+                            key={`${detected}|${v?.stackText ?? ""}`}
                             name="stackText"
-                            defaultValue={stackText ?? detected ?? ""}
+                            maxLength={MAX_NOTE}
+                            defaultValue={v?.stackText ?? stackText ?? detected ?? ""}
                             className={`${textarea} min-h-40 font-mono text-xs`}
                         />
                     </label>
                     <label className={label}>
                         How to run it, its local URL, its database
-                        <textarea name="instructions" defaultValue={instructions ?? ""} className={textarea} />
+                        <textarea
+                            key={v?.instructions ?? ""}
+                            name="instructions"
+                            maxLength={MAX_NOTE}
+                            defaultValue={v?.instructions ?? instructions ?? ""}
+                            className={textarea}
+                        />
                     </label>
-                    <div className="flex items-center gap-3">
-                        <button disabled={saving} className={`${button.secondary} ${button.small}`}>
-                            Save and confirm
+                    <div className="flex flex-wrap items-center gap-3">
+                        <button name="intent" value="confirm" disabled={saving} className={`${button.secondary} ${button.small}`}>
+                            Save and confirm the profile
                         </button>
-                        <span className="text-xs text-zinc-500">
-                            Agents read the profile as written; empty it to detect again at the next run.
-                        </span>
+                        <button name="intent" value="instructions" disabled={saving} className={`${button.secondary} ${button.small}`}>
+                            Save the instructions only
+                        </button>
+                        <span className="text-xs text-zinc-500">Agents read a confirmed profile as written; empty it to detect again.</span>
                     </div>
                     {state.error && <FormError>{state.error}</FormError>}
                 </form>

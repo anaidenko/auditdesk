@@ -24,7 +24,14 @@ export default async function ProjectPage({ params }: { params: Promise<{ projec
     const usage = project.modelAccess === "claude_plan" ? await readPlanUsage() : null;
     const planUsage = project.modelAccess === "claude_plan" ? { line: planUsageLine(usage), overReserve: overReserve(usage) } : null;
     const stackOf = (r: { stack: unknown }) => (r.stack ? (r.stack as StackProfile) : null);
-    const suggestions = suggestionsFor(project.repositories.map(stackOf));
+    // A suggestion ticks an aspect only when its detection is newer than the last run, so an aspect
+    // Andrii left out of that run is not ticked again by the run's own detection.
+    const lastRun = project.runs[0];
+    const since = lastRun ? (lastRun.finishedAt ?? lastRun.createdAt) : null;
+    const fresh = (at: Date | null, after: Date | null) => !!at && (!after || at > after);
+    const suggestions = suggestionsFor(project.repositories.map(r => (fresh(r.stackDetectedAt, since) ? stackOf(r) : null)));
+    // The AI-built hint shows only signs found since the brief was last saved.
+    const aiHint = suggestionsFor(project.repositories.map(r => (fresh(r.stackDetectedAt, project.briefSavedAt) ? stackOf(r) : null)));
     return (
         <div className="space-y-8">
             <PageHeader
@@ -70,6 +77,7 @@ export default async function ProjectPage({ params }: { params: Promise<{ projec
                                             projectId={project.id}
                                             repositoryId={r.id}
                                             detected={stackOf(r) && stackProfileText(stackOf(r)!)}
+                                            detectedAt={r.stackDetectedAt?.toISOString().slice(0, 10) ?? null}
                                             stackText={r.stackText}
                                             confirmedAt={r.stackConfirmedAt?.toISOString().slice(0, 10) ?? null}
                                             instructions={r.instructions}
@@ -94,7 +102,7 @@ export default async function ProjectPage({ params }: { params: Promise<{ projec
                                 outOfScope: project.briefOutOfScope,
                                 aiBuilt: project.aiBuilt
                             }}
-                            aiBuiltSigns={suggestions.aiBuiltSigns}
+                            aiBuiltSigns={aiHint.aiBuiltSigns}
                         />
                     </Card>
 

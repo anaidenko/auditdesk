@@ -119,7 +119,10 @@ export class PrismaSink implements PipelineSink {
     }
 
     async stackDetected(repositoryId: string, profile: StackProfile) {
-        await prisma.repository.update({ where: { id: repositoryId }, data: { stack: profile as unknown as Prisma.InputJsonObject } });
+        await prisma.repository.update({
+            where: { id: repositoryId },
+            data: { stack: profile as unknown as Prisma.InputJsonObject, stackDetectedAt: new Date() }
+        });
     }
 
     async repositoryCloned(repositoryId: string, sha: string, clonePath: string) {

@@ -93,10 +93,22 @@ test("the stack is detected and confirmed, and the brief is saved", async ({ pag
     await notes.getByRole("button", { name: "Detect stack" }).click();
     await expect(notes.getByLabel("Stack profile")).toHaveValue(/Frameworks: Express/);
     await expect(notes).toContainText("detected, not confirmed");
-    await notes.getByLabel("Stack profile").fill("Express 4 on Node.js; PostgreSQL through pg.");
     await notes.getByLabel("How to run it").fill("npm start, port 3000");
-    await notes.getByRole("button", { name: "Save and confirm" }).click();
-    await expect(notes).toContainText("confirmed");
+    await notes.getByRole("button", { name: "Save the instructions only" }).click();
+    await expect(notes).toContainText("detected, not confirmed");
+    await notes.getByLabel("Stack profile").fill("Express 4 on Node.js; PostgreSQL through pg.");
+    await notes.getByRole("button", { name: "Save and confirm the profile" }).click();
+    await expect(notes.locator("summary")).toContainText(/confirmed \d{4}-\d{2}-\d{2}/);
+    await expect(notes.getByLabel("How to run it")).toHaveValue("npm start, port 3000");
+
+    // A detection that differs from the confirmed profile is shown beside it, one click from use.
+    await notes.getByRole("button", { name: "Detect stack" }).click();
+    await expect(notes.locator("summary")).toContainText("detection changed");
+    await notes.getByRole("button", { name: "Use this detection" }).click();
+    await expect(notes.getByLabel("Stack profile")).toHaveValue(/Frameworks: Express/);
+    await expect(notes.locator("summary")).not.toContainText("detection changed");
+    await notes.getByLabel("Stack profile").fill("Express 4 on Node.js; PostgreSQL through pg.");
+    await notes.getByRole("button", { name: "Save and confirm the profile" }).click();
 
     const brief = page.locator("section", { hasText: "Brief" }).filter({ has: page.getByLabel("What the product does") });
     await brief.getByLabel("What the product does").fill("A calculator API for schools.");

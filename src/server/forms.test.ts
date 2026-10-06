@@ -94,9 +94,13 @@ describe("the brief and a repository's notes", () => {
     });
 
     it("reads a repository's stack profile and instructions", () => {
-        expect(parseRepositoryNotesForm(fd({ stackText: " Next.js ", instructions: "" }))).toEqual({
+        expect(parseRepositoryNotesForm(fd({ stackText: " Next.js ", instructions: "", intent: "confirm" }))).toEqual({
             ok: true,
-            value: { stackText: "Next.js", instructions: null }
+            value: { stackText: "Next.js", instructions: null, confirm: true }
+        });
+        expect(parseRepositoryNotesForm(fd({ stackText: "Next.js", instructions: "pnpm dev", intent: "instructions" }))).toMatchObject({
+            ok: true,
+            value: { confirm: false }
         });
     });
 });
