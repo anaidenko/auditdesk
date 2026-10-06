@@ -20,16 +20,25 @@ export async function GET(request: Request, { params }: { params: Promise<{ runI
                 closed = true;
                 clearInterval(timer);
                 await stopListening();
-                controller.close();
+                try {
+                    controller.close();
+                } catch {
+                    // Already cancelled by the runtime.
+                }
             };
             const push = () =>
-                (chain = chain.then(async () => {
-                    if (closed) return;
-                    const snap = await runSnapshot(runId, after);
-                    if (snap.events.length) after = BigInt(snap.events.at(-1)!.id);
-                    controller.enqueue(encoder.encode(`data: ${JSON.stringify(snap)}\n\n`));
-                    if (snap.terminal) await close();
-                }));
+                (chain = chain
+                    .then(async () => {
+                        if (closed) return;
+                        const snap = await runSnapshot(runId, after);
+                        // The client may have gone while the run was being read.
+                        if (closed) return;
+                        if (snap.events.length) after = BigInt(snap.events.at(-1)!.id);
+                        controller.enqueue(encoder.encode(`data: ${JSON.stringify(snap)}\n\n`));
+                        if (snap.terminal) await close();
+                    })
+                    // A failed read ends this stream; the page reconnects and re-reads the run.
+                    .catch(() => close()));
             stopListening = await listen(id => id === runId && void push());
             timer = setInterval(push, 5000);
             request.signal.addEventListener("abort", () => void close());
