@@ -75,3 +75,6 @@ export interface AuditSink {
     knownFingerprints(repositoryId: string): Promise<Set<string>>;
     stopRequested(): Promise<boolean>;
 }
+
+/** How a run reaches Claude: the Agent SDK on the auditor's plan, or the Messages API on a key. */
+export type ModelAccess = "claude_plan" | "api_key";

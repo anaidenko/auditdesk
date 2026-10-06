@@ -17,7 +17,7 @@ export function defaultDeps(sink: PrismaSink): AuditDeps {
     const replay = process.env.AUDITDESK_SCANNER_REPLAY;
     return {
         sink,
-        client: createClient(),
+        client: createClient(process.env.ANTHROPIC_API_KEY?.trim() || null),
         scanners: replay ? replayRunner(replay) : dockerRunner(),
         fetchRulesets: replay ? async () => REPLAY_RULESETS : dir => fetchRulesets(RULESETS, dir),
         workspaceDir: workspaceDir(),

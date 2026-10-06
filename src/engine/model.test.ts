@@ -5,9 +5,13 @@ import { createClient } from "./model";
 afterEach(() => vi.unstubAllEnvs());
 
 describe("createClient", () => {
-    it("refuses to build a live client without ANTHROPIC_API_KEY", () => {
+    it("refuses to build a live client without a key", () => {
         vi.stubEnv("AUDITDESK_REPLAY_MODEL", "");
-        vi.stubEnv("ANTHROPIC_API_KEY", "");
-        expect(() => createClient()).toThrow(/ANTHROPIC_API_KEY/);
+        expect(() => createClient(null)).toThrow(/No API key/);
+    });
+
+    it("builds the live client from the key it is given, never from a profile", () => {
+        vi.stubEnv("AUDITDESK_REPLAY_MODEL", "");
+        expect(createClient("sk-test").apiKey).toBe("sk-test");
     });
 });
