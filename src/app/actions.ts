@@ -12,8 +12,15 @@ import { parseModelAccess, parseProjectForm, parseRepositoryForm, parseRunForm }
 import { ActiveRunError, enqueueRun, requestStop } from "@/server/jobs";
 import { deleteProject as removeProject } from "@/server/projects";
 
-/** `askReserve`: the start was refused above the plan's reserve, so the form shows its checkbox whatever it rendered with. */
-export type FormState = { error: string | null; askReserve?: boolean };
+/**
+ * `askReserve`: the start was refused above the plan's reserve, so the form shows its checkbox whatever it rendered with.
+ * `values`: what a refused run form held, so it comes back as Andrii left it (React resets a form after its action).
+ */
+export type FormState = {
+    error: string | null;
+    askReserve?: boolean;
+    values?: { aspects: string[]; budgetUsd: string; budgetKTokens: string };
+};
 
 export async function createProject(_prev: FormState, fd: FormData): Promise<FormState> {
     const parsed = parseProjectForm(fd);
@@ -43,6 +50,19 @@ export async function setModelAccess(projectId: string, fd: FormData): Promise<v
 }
 
 export async function startRun(projectId: string, _prev: FormState, fd: FormData): Promise<FormState> {
+    const refused = await tryStartRun(projectId, fd);
+    return {
+        ...refused,
+        values: {
+            aspects: fd.getAll("aspects").map(String),
+            budgetUsd: String(fd.get("budgetUsd") ?? ""),
+            budgetKTokens: String(fd.get("budgetKTokens") ?? "")
+        }
+    };
+}
+
+/** Redirects to the new run, or says why it did not start. */
+async function tryStartRun(projectId: string, fd: FormData): Promise<FormState> {
     const project = await prisma.project.findUniqueOrThrow({ where: { id: projectId }, include: { repositories: true } });
     if (!project.aiConsentAt) return { error: "Record the client's AI consent first." };
     const credential = await credentialStatus(project.modelAccess);

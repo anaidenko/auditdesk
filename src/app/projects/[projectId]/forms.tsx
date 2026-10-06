@@ -45,7 +45,8 @@ export function StartRunForm({
 }) {
     const [state, action, pending] = useActionState<FormState, FormData>(startRun.bind(null, projectId), { error: null });
     return (
-        <form action={action} className="space-y-4">
+        // Remounted with what a refused start held, since React resets a form after its action.
+        <form key={JSON.stringify(state.values ?? null)} action={action} className="space-y-4">
             <fieldset>
                 <legend className={label}>Aspects</legend>
                 <div className="mt-1.5 grid gap-x-4 gap-y-2 sm:grid-cols-2">
@@ -55,7 +56,7 @@ export function StartRunForm({
                                 type="checkbox"
                                 name="aspects"
                                 value={a.key}
-                                defaultChecked={a.key === "security" || chosen.includes(a.key)}
+                                defaultChecked={a.key === "security" || (state.values?.aspects ?? chosen).includes(a.key)}
                                 disabled={a.key === "security"}
                                 className="mt-0.5 size-4 rounded border-zinc-300 accent-indigo-600"
                             />
@@ -70,7 +71,14 @@ export function StartRunForm({
             <div className="grid grid-cols-2 gap-3">
                 <label className={label}>
                     Cap, USD
-                    <input name="budgetUsd" type="number" step="0.5" min="0.5" defaultValue={defaults.usd} className={`${input} mt-1.5`} />
+                    <input
+                        name="budgetUsd"
+                        type="number"
+                        step="0.5"
+                        min="0.5"
+                        defaultValue={state.values?.budgetUsd ?? defaults.usd}
+                        className={`${input} mt-1.5`}
+                    />
                 </label>
                 <label className={label}>
                     Cap, thousand tokens
@@ -79,7 +87,7 @@ export function StartRunForm({
                         type="number"
                         step="10"
                         min="20"
-                        defaultValue={defaults.tokens / 1000}
+                        defaultValue={state.values?.budgetKTokens ?? defaults.tokens / 1000}
                         className={`${input} mt-1.5`}
                     />
                 </label>

@@ -71,6 +71,20 @@ test("a run over two aspects files findings under both, and the report covers bo
     await expect(page.getByRole("checkbox", { name: "Architecture and structure" })).not.toBeChecked();
 });
 
+test("a refused start keeps the aspects and caps Andrii chose", async ({ page }) => {
+    await newProject(page, "Refused start");
+    await page.getByLabel(/client agreed/).check();
+    await page.getByRole("button", { name: "Save", exact: true }).click();
+    await page.getByRole("checkbox", { name: "Data model and database" }).check();
+    await page.getByLabel("Cap, USD").fill("3");
+    await page.getByLabel("Cap, thousand tokens").fill("30");
+    await page.getByRole("button", { name: "Start run" }).click();
+    await expect(page.getByText(/20 thousand/)).toBeVisible();
+    await expect(page.getByRole("checkbox", { name: "Data model and database" })).toBeChecked();
+    await expect(page.getByLabel("Cap, USD")).toHaveValue("3");
+    await expect(page.getByLabel("Cap, thousand tokens")).toHaveValue("30");
+});
+
 test("an API key saved in Settings runs an audit, and no page shows the key", async ({ page }) => {
     const key = "sk-ant-e2e-0000000000000000wxyz";
     await page.goto("/settings");
