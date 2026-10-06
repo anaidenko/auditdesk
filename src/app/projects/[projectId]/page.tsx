@@ -6,6 +6,7 @@ import { Badge, Card, Icon, PageHeader, RunStatus, button } from "@/app/ui";
 import { credentialStatus } from "@/engine/credentials";
 import { overReserve, planUsageLine, readPlanUsage } from "@/engine/plan-usage";
 import { type StackProfile, stackProfileText, suggestionsFor } from "@/engine/stack";
+import { agentCostStats } from "@/server/estimate";
 import { getProject } from "@/server/queries";
 
 import { ModelAccessCard } from "./ModelAccess";
@@ -150,6 +151,8 @@ export default async function ProjectPage({ params }: { params: Promise<{ projec
                             chosen={project.runs[0]?.aspects ?? []}
                             suggested={suggestions.aspects}
                             planUsage={planUsage}
+                            repositories={project.repositories.length}
+                            costStats={await agentCostStats()}
                         />
                         {project.runs.length > 0 && (
                             <ul className="mt-5 space-y-1 border-t border-zinc-100 pt-4">

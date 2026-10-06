@@ -224,6 +224,13 @@ test("a run uses the model and effort chosen in the form", async ({ page }) => {
     await expect(page.getByText(/claude-opus-5-5 · effort high/)).toBeVisible();
 });
 
+test("the run form estimates the cost for the agents it would start", async ({ page }) => {
+    await newProject(page, "Estimate");
+    await expect(page.getByTestId("estimate")).toContainText("for 1 agent,");
+    await page.getByRole("checkbox", { name: "Data model and database" }).check();
+    await expect(page.getByTestId("estimate")).toContainText("for 2 agents,");
+});
+
 test("starting twice queues one run", async ({ page }) => {
     await newProject(page, "Double");
     await page.getByLabel(/client agreed/).check();
