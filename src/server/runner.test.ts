@@ -14,9 +14,9 @@ import { prisma } from "@/server/db";
 import { ActiveRunError, claimJob, enqueueRerun, enqueueRun, markInterrupted } from "@/server/jobs";
 import { listen } from "@/server/pg";
 import { type Engine, engineFor, processJob, runLoop } from "@/server/runner";
-import type { PrismaSink } from "@/server/sink";
+import { PrismaSink } from "@/server/sink";
 import { resetDb } from "@/test/db";
-import { projectWithRepo } from "@/test/factories";
+import { projectWithRepo, sampleFinding } from "@/test/factories";
 import { makeSampleRepo } from "@/test/sample-repo";
 
 beforeEach(resetDb);
@@ -297,7 +297,7 @@ it("fails a Claude plan run that has no token before cloning, and calls nothing"
     expect((await prisma.repository.findUniqueOrThrow({ where: { id: repo.id } })).commitSha).toBeNull();
 });
 
-it("leaves a Claude plan agent unstarted above the 50% reserve, and runs it when the start was allowed", async () => {
+it("does not start a Claude plan run above the 50% reserve, and runs it when the start was allowed", async () => {
     await home();
     const replay = join(await mkdtemp(join(tmpdir(), "replay-")), "model.json");
     await writeFile(replay, JSON.stringify([finish()]));
@@ -309,8 +309,8 @@ it("leaves a Claude plan agent unstarted above the 50% reserve, and runs it when
     const held = await enqueueRun(project.id, { ...runOptions, modelAccess: "claude_plan" });
     await processJob((await claimJob())!);
     const first = await prisma.run.findUniqueOrThrow({ where: { id: held }, include: { agents: true, calls: true } });
-    expect(first.agents.map(a => a.status)).toEqual(["partial"]);
-    expect(first.agents[0].note).toMatch(/^Not started\. .*at 60%/);
+    expect(first).toMatchObject({ status: "failed", error: expect.stringMatching(/^Not started\. .*at 60%/) });
+    expect(first.agents).toHaveLength(0);
     expect(first.calls).toHaveLength(0);
 
     const allowed = await enqueueRun(project.id, { ...runOptions, modelAccess: "claude_plan", allowPastReserve: true });
@@ -319,3 +319,21 @@ it("leaves a Claude plan agent unstarted above the 50% reserve, and runs it when
     expect(second.agents.map(a => a.status)).toEqual(["done"]);
     expect(second.calls).toHaveLength(1);
 }, 60_000);
+
+// The review's Minor 3: the engine's own refusal comes after the pipeline cloned and superseded the aspect's findings.
+it("refuses a Claude plan re-run above the 50% reserve before cloning, so the aspect's findings stay", async () => {
+    await home();
+    const { project, repo } = await projectWithRepo(await makeSampleRepo());
+    const runId = await enqueueRun(project.id, { ...runOptions, modelAccess: "claude_plan" });
+    await prisma.job.updateMany({ where: { runId }, data: { status: "done" } });
+    await prisma.run.update({ where: { id: runId }, data: { status: "done" } });
+    await new PrismaSink(runId, project.id).createFinding(sampleFinding(repo.id));
+    await recordPlanUsage({ utilization: 0.6, resetsAt: Math.floor(Date.now() / 1000) + 3600 });
+    await enqueueRerun(runId, repo.id, "security");
+    await processJob((await claimJob())!);
+    const run = await prisma.run.findUniqueOrThrow({ where: { id: runId } });
+    expect(run.status).toBe("failed");
+    expect(run.error).toMatch(/^Not started\. .*at 60%/);
+    expect((await prisma.finding.findFirstOrThrow({ where: { projectId: project.id, source: "agent" } })).status).toBe("unreviewed");
+    expect((await prisma.repository.findUniqueOrThrow({ where: { id: repo.id } })).commitSha).toBeNull();
+});

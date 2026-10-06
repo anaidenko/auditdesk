@@ -8,6 +8,7 @@ import { workspaceDir } from "@/engine/config";
 import { resolveCredential } from "@/engine/credentials";
 import { createClient } from "@/engine/model";
 import { type AuditDeps, runAudit } from "@/engine/pipeline";
+import { readPlanUsage, reserveRefusal } from "@/engine/plan-usage";
 import { dockerRunner } from "@/engine/scanners/docker";
 import { REPLAY_RULESETS, replayRunner } from "@/engine/scanners/replay";
 import { RULESETS, fetchRulesets } from "@/engine/scanners/rulesets";
@@ -80,6 +81,9 @@ export async function processJob(job: Job, deps?: (sink: PrismaSink) => AuditDep
         );
     };
     if (!run.project.aiConsentAt) return finish("failed", "The client's AI consent is not recorded for this project.");
+    // Before the clone: a re-run would otherwise supersede the aspect's findings and then not start (Task E.7a).
+    const refusal = run.modelAccess === "claude_plan" ? reserveRefusal(await readPlanUsage(), job.allowPastReserve) : null;
+    if (refusal) return finish("failed", `Not started. ${refusal} Start it again then, or allow it past the reserve.`);
     // No credential, no clone: the run fails before it touches the client's code.
     const engine = deps
         ? null
