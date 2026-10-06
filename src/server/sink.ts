@@ -1,0 +1,152 @@
+import "server-only";
+
+import type { AgentOutcome } from "@/engine/agent/run-aspect";
+import { freshTokens } from "@/engine/budget";
+import { findingLabel, indexLine } from "@/engine/findings";
+import type { PipelineSink } from "@/engine/pipeline";
+import type { ToolVersions } from "@/engine/scanners/types";
+import type { CallRecord, NewFinding, SeverityName, Spend } from "@/engine/types";
+import { prisma } from "@/server/db";
+import { createFinding } from "@/server/findings";
+import { RUN_CHANNEL } from "@/server/pg";
+
+// Rejected findings stay in the agent's index, marked, so a re-run does not file them again (design § 9).
+const INDEXED = ["unreviewed", "accepted", "edited", "excluded", "rejected"] as const;
+
+/** Writes the run's state and wakes the SSE listeners in the same transaction (design § 5). */
+export class PrismaSink implements PipelineSink {
+    constructor(
+        readonly runId: string,
+        readonly projectId: string
+    ) {}
+
+    private notify() {
+        return prisma.$executeRaw`SELECT pg_notify(${RUN_CHANNEL}, ${this.runId})`;
+    }
+
+    async progress(message: string, level: "info" | "warn" | "error" = "info") {
+        await prisma.$transaction([prisma.runEvent.create({ data: { runId: this.runId, message, level } }), this.notify()]);
+    }
+
+    async recordCall(c: CallRecord) {
+        await prisma.$transaction([
+            prisma.apiCall.create({
+                data: {
+                    runId: this.runId,
+                    agentRunId: c.agentRunId,
+                    requestedModel: c.requestedModel,
+                    servedModel: c.servedModel,
+                    fallback: c.fallback,
+                    inputTokens: c.usage.input,
+                    cacheWrite5mTokens: c.usage.cacheWrite5m,
+                    cacheWrite1hTokens: c.usage.cacheWrite1h,
+                    cacheReadTokens: c.usage.cacheRead,
+                    outputTokens: c.usage.output,
+                    costUsd: c.costUsd,
+                    stopReason: c.stopReason,
+                    refusalCategory: c.refusalCategory
+                }
+            }),
+            this.notify()
+        ]);
+    }
+
+    private async spendWhere(where: { runId: string; agentRunId?: string }): Promise<Spend> {
+        const calls = await prisma.apiCall.findMany({ where });
+        return {
+            usd: calls.reduce((s, c) => s + Number(c.costUsd ?? 0), 0),
+            freshTokens: calls.reduce(
+                (s, c) =>
+                    s +
+                    freshTokens({
+                        input: c.inputTokens,
+                        cacheWrite5m: c.cacheWrite5mTokens,
+                        cacheWrite1h: c.cacheWrite1hTokens,
+                        cacheRead: c.cacheReadTokens,
+                        output: c.outputTokens
+                    }),
+                0
+            ),
+            unpriced: calls.some(c => c.costUsd === null)
+        };
+    }
+
+    agentSpend(agentRunId: string) {
+        return this.spendWhere({ runId: this.runId, agentRunId });
+    }
+
+    runSpend() {
+        return this.spendWhere({ runId: this.runId });
+    }
+
+    async createFinding(f: NewFinding) {
+        const { label } = await createFinding(this.projectId, this.runId, f);
+        await this.notify();
+        return label;
+    }
+
+    async findingIndex(repositoryId: string, filter: { aspect?: string; source?: "scanner" | "agent" } = {}) {
+        const rows = await prisma.finding.findMany({
+            where: {
+                repositoryId,
+                status: { in: [...INDEXED] },
+                ...(filter.aspect && { aspect: filter.aspect }),
+                ...(filter.source && { source: filter.source })
+            },
+            orderBy: { number: "asc" }
+        });
+        return rows.map(r => {
+            const line = indexLine({
+                label: findingLabel(r.number),
+                severity: r.severity as SeverityName | null,
+                checklistItem: r.checklistItem,
+                evidence: r.evidence as never,
+                title: r.title
+            });
+            return r.status === "rejected" ? `${line} (rejected by the auditor: ${r.statusReason}; do not report it again)` : line;
+        });
+    }
+
+    async knownFingerprints(repositoryId: string) {
+        const rows = await prisma.finding.findMany({ where: { repositoryId }, select: { fingerprint: true } });
+        return new Set(rows.map(r => r.fingerprint));
+    }
+
+    async stopRequested() {
+        return (await prisma.run.findUniqueOrThrow({ where: { id: this.runId }, select: { stopRequested: true } })).stopRequested;
+    }
+
+    async repositoryCloned(repositoryId: string, sha: string, clonePath: string) {
+        await prisma.repository.update({ where: { id: repositoryId }, data: { commitSha: sha, clonePath } });
+    }
+
+    async toolVersions(v: ToolVersions) {
+        await prisma.run.update({ where: { id: this.runId }, data: { toolVersions: v as object } });
+    }
+
+    async startAgent(repositoryId: string, aspect: string, share: { usd: number; tokens: number }) {
+        const a = await prisma.agentRun.create({
+            data: { runId: this.runId, repositoryId, aspect, status: "running", tokenShare: share.tokens, usdShare: share.usd }
+        });
+        await this.notify();
+        return a.id;
+    }
+
+    async finishAgent(agentRunId: string, o: AgentOutcome) {
+        const status = o.status === "failed" ? "failed" : o.status;
+        await prisma.$transaction([
+            prisma.agentRun.update({
+                where: { id: agentRunId },
+                data: { status, summary: o.summary, coverage: o.coverage, note: o.note, finishedAt: new Date() }
+            }),
+            this.notify()
+        ]);
+    }
+
+    async supersedeUnreviewed(repositoryId: string, aspect: string) {
+        await prisma.finding.updateMany({
+            where: { repositoryId, aspect, source: "agent", status: "unreviewed" },
+            data: { status: "superseded" }
+        });
+    }
+}
