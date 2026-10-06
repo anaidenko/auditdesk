@@ -37,6 +37,13 @@ const data = (over: Partial<ReportData> = {}): ReportData => ({
 });
 
 describe("renderReport", () => {
+    it("orders findings of one severity by their number", () => {
+        const html = renderReport(
+            data({ findings: [finding({ label: "F-007", title: "Seventh" }), finding({ label: "F-003", title: "Third" })] })
+        );
+        expect(html.indexOf('id="F-003"')).toBeLessThan(html.indexOf('id="F-007"'));
+    });
+
     it("anchors every finding by its ID, most severe first", () => {
         const html = renderReport(data());
         expect(html.indexOf('id="F-001"')).toBeGreaterThan(0);

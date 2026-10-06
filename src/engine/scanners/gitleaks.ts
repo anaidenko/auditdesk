@@ -6,10 +6,26 @@ import type { NewFinding } from "../types";
 
 import type { GitleaksLeak } from "./types";
 
+/**
+ * The app's own config. Without --config, gitleaks reads the scanned repository's .gitleaks.toml,
+ * and its .gitleaksignore and gitleaks:allow comments apply too: a client's allowlist would turn
+ * masking off for exactly the secrets it lists, and no finding would say so.
+ */
+export const GITLEAKS_CONFIG = `# Written by Auditdesk for each run: gitleaks' default rules, nothing allowlisted.
+[extend]
+useDefault = true
+`;
+
 export function gitleaksArgs(): string[] {
     return [
         "git",
         "/repo",
+        "--config",
+        "/cfg/gitleaks.toml",
+        // A folder with no .gitleaksignore in it: the client's ignore file is not read.
+        "--gitleaks-ignore-path",
+        "/cfg",
+        "--ignore-gitleaks-allow",
         "--log-opts=--all",
         "--report-format",
         "json",

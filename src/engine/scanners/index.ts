@@ -1,11 +1,11 @@
-import { readFile } from "node:fs/promises";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 
 import { git } from "../git";
 
 import { IMAGES } from "./docker";
-import { gitleaksArgs, parseGitleaks } from "./gitleaks";
-import { osvArgs, parseOsv } from "./osv";
+import { GITLEAKS_CONFIG, gitleaksArgs, parseGitleaks } from "./gitleaks";
+import { OSV_CONFIG, osvArgs, parseOsv } from "./osv";
 import { parseSemgrep, semgrepArgs } from "./semgrep";
 import type { GitleaksLeak, OsvPackage, Ruleset, ScannerOutput, ScannerRunner, ScannerTool, SemgrepResult, ToolVersions } from "./types";
 
@@ -32,12 +32,29 @@ export async function runScanners(o: {
     runner: ScannerRunner;
     rulesets: Ruleset[];
     rulesDir: string;
+    /** Holds the app's gitleaks config, mounted at /cfg. */
+    configDir: string;
 }): Promise<ScanResults> {
+    await mkdir(o.configDir, { recursive: true });
+    await writeFile(join(o.configDir, "gitleaks.toml"), GITLEAKS_CONFIG);
+    await writeFile(join(o.configDir, "osv-scanner.toml"), OSV_CONFIG);
     const leaks = parseGitleaks(
-        checked("gitleaks", await o.runner.run("gitleaks", gitleaksArgs(), [{ host: o.clonePath, container: "/repo" }])).stdout
+        checked(
+            "gitleaks",
+            await o.runner.run("gitleaks", gitleaksArgs(), [
+                { host: o.clonePath, container: "/repo" },
+                { host: o.configDir, container: "/cfg" }
+            ])
+        ).stdout
     );
     const osvQueriedAt = new Date().toISOString();
-    const osvRun = checked("osv", await o.runner.run("osv", osvArgs(), [{ host: o.clonePath, container: "/src" }]));
+    const osvRun = checked(
+        "osv",
+        await o.runner.run("osv", osvArgs(), [
+            { host: o.clonePath, container: "/src" },
+            { host: o.configDir, container: "/cfg" }
+        ])
+    );
     const osv = osvRun.exitCode === OSV_NO_SOURCES ? [] : parseOsv(osvRun.stdout);
     const semgrep = parseSemgrep(
         checked(

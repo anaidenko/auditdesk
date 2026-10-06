@@ -6,7 +6,20 @@ import type { Ruleset, SemgrepResult } from "./types";
 
 export function semgrepArgs(rulesets: Ruleset[]): string[] {
     const configs = rulesets.flatMap(r => ["--config", `/rules/${r.name}.yml`]);
-    return ["semgrep", "scan", ...configs, "--json", "--metrics", "off", "--disable-version-check", "--quiet", "/src"];
+    // The client's nosem comments and .semgrepignore would hide results from their own auditor.
+    return [
+        "semgrep",
+        "scan",
+        ...configs,
+        "--disable-nosem",
+        "--x-ignore-semgrepignore-files",
+        "--json",
+        "--metrics",
+        "off",
+        "--disable-version-check",
+        "--quiet",
+        "/src"
+    ];
 }
 
 export function parseSemgrep(stdout: string): SemgrepResult[] {

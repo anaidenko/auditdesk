@@ -72,6 +72,16 @@ describe("cloneRepository", () => {
         expect(await git(["branch", "-r"], clonePath)).toContain("origin/old");
     });
 
+    it("refreshes the refs of a clone at the same commit, so a branch pushed since is scanned too", async () => {
+        const src = await makeRepo({ "a.txt": "a" });
+        const dir = await ws();
+        const o = { source: src, branch: "main", workspaceDir: dir, projectId: "p", repositoryId: "r" };
+        await cloneRepository(o);
+        await git(["branch", "pushed-later"], src);
+        const { clonePath } = await cloneRepository(o);
+        expect(await git(["branch", "-r"], clonePath)).toContain("origin/pushed-later");
+    });
+
     it("checks out a recorded commit even after the branch has moved", async () => {
         const src = await makeRepo({ "a.txt": "first" });
         const first = await git(["rev-parse", "HEAD"], src);

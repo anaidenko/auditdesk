@@ -63,6 +63,14 @@ describe("runAudit", () => {
         expect(sink.agents).toEqual([{ id: "agent-1", aspect: "security", status: "done" }]);
     });
 
+    it("shows Semgrep findings with the code itself, not Semgrep's placeholder", async () => {
+        const sink = new TestSink();
+        await audit(sink, await makeSampleRepo(), await mkdtemp(join(tmpdir(), "ws-")));
+        const semgrep = sink.findings.filter(f => f.explanation.startsWith("Semgrep rule"));
+        expect(semgrep.length).toBeGreaterThan(0);
+        for (const f of semgrep) expect(f.evidence[0].snippet).toContain("eval");
+    });
+
     it("does not file a scanner finding twice when a run is repeated", async () => {
         const sink = new TestSink();
         const source = await makeSampleRepo();
@@ -80,6 +88,14 @@ describe("runAudit", () => {
         };
         await expect(audit(sink, await makeSampleRepo(), await mkdtemp(join(tmpdir(), "ws-")))).rejects.toThrow(/database gone/);
         expect(sink.agents).toEqual([{ id: "agent-1", aspect: "security", status: "failed" }]);
+    });
+
+    it("starts no agent while the run holds a call it could not price", async () => {
+        const sink = new TestSink();
+        sink.runSpend = async () => ({ usd: 0.4, freshTokens: 1000, unpriced: true });
+        await audit(sink, await makeSampleRepo(), await mkdtemp(join(tmpdir(), "ws-")));
+        expect(sink.agents).toEqual([]);
+        expect(sink.events.some(e => /budget unknown/.test(e))).toBe(true);
     });
 
     it("starts no agent once Stop has been pressed", async () => {

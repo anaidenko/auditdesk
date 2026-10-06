@@ -28,7 +28,7 @@ export async function runAspect(o: {
 }): Promise<AgentOutcome> {
     const { ctx } = o;
     const tools = makeTools(ctx);
-    const notCovered = (): Coverage[] => ctx.checklist.items.map(i => ({ item: i.id, status: "not_examined" }));
+    const notCovered = (): Coverage[] => ctx.checklist.items.map(i => ({ item: i.id, status: "not_reported" }));
     const end = (status: AgentOutcome["status"], note: string | null): AgentOutcome => ({
         status,
         note,

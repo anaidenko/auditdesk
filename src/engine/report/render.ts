@@ -14,7 +14,12 @@ details{border:1px solid #e4e4e7;border-radius:6px;margin:.75rem 0;padding:.5rem
 .muted{color:#71717a}@media print{details{break-inside:avoid}summary{list-style:none}}
 `;
 
-const COVERAGE: Record<string, string> = { examined: "examined", partly: "partly examined", not_examined: "not examined" };
+const COVERAGE: Record<string, string> = {
+    examined: "examined",
+    partly: "partly examined",
+    not_examined: "not examined",
+    not_reported: "not reported (the agent stopped first)"
+};
 
 /**
  * Every value from the database or the client's code goes through here. A template, not
@@ -50,7 +55,8 @@ ${refs ? `<p class="muted">References: ${e(refs)}</p>` : ""}
 }
 
 export function renderReport(d: ReportData): string {
-    const findings = [...d.findings].sort((a, b) => compareFindings({ ...a, number: 0 }, { ...b, number: 0 }));
+    const number = (f: ReportFinding) => Number(f.label.replace(/\D/g, ""));
+    const findings = [...d.findings].sort((a, b) => compareFindings({ ...a, number: number(a) }, { ...b, number: number(b) }));
     const count = (s: string) => findings.filter(f => f.severity === s).length;
     const top = findings.filter(f => f.severity === "critical" || f.severity === "high");
     const aspects = d.aspects

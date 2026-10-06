@@ -53,8 +53,10 @@ export async function cloneRepository(o: {
     }
     const sha = await git(["rev-parse", "HEAD"], tmp);
     const clonePath = join(projectDir, `${o.repositoryId}@${sha}`);
-    if (existsSync(clonePath)) await rm(tmp, { recursive: true, force: true });
-    else await rename(tmp, clonePath);
+    // A clone at the same commit is replaced, not reused: its refs would miss branches pushed since,
+    // and gitleaks scans every ref.
+    await rm(clonePath, { recursive: true, force: true });
+    await rename(tmp, clonePath);
     return { sha, clonePath };
 }
 

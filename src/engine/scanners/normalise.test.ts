@@ -1,4 +1,7 @@
 import { readFileSync } from "node:fs";
+import { mkdtemp, readFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 
 import { SAMPLE_KEY } from "@/test/sample-repo";
@@ -58,6 +61,53 @@ describe("Semgrep", () => {
     });
 });
 
+describe("gitleaks configuration", () => {
+    it("runs on the app's own rules, so the client's .gitleaks.toml, .gitleaksignore and gitleaks:allow cannot hide a secret", async () => {
+        const calls: { tool: ScannerTool; args: string[]; mounts: { host: string; container: string }[] }[] = [];
+        const runner: ScannerRunner = {
+            async run(tool, args, mounts) {
+                calls.push({ tool, args, mounts });
+                return { stdout: recorded(tool), stderr: "", exitCode: 0 };
+            },
+            async digest() {
+                return "d";
+            }
+        };
+        const configDir = await mkdtemp(join(tmpdir(), "gitleaks-cfg-"));
+        await runScanners({ clonePath: "/c", runner, rulesets: [], rulesDir: "/r", configDir });
+        const gitleaks = calls.find(c => c.tool === "gitleaks")!;
+        expect(gitleaks.args.join(" ")).toContain("--config /cfg/gitleaks.toml");
+        expect(gitleaks.args.join(" ")).toContain("--gitleaks-ignore-path /cfg");
+        expect(gitleaks.args).toContain("--ignore-gitleaks-allow");
+        expect(gitleaks.mounts).toContainEqual({ host: configDir, container: "/cfg" });
+        const config = await readFile(join(configDir, "gitleaks.toml"), "utf8");
+        expect(config).toMatch(/useDefault = true/);
+        expect(config).not.toMatch(/^\s*\[+allowlists?\]+/m);
+    });
+
+    it("ignores the client's nosem comments, .semgrepignore and osv-scanner.toml ignore lists", async () => {
+        const calls: { tool: ScannerTool; args: string[]; mounts: { host: string; container: string }[] }[] = [];
+        const runner: ScannerRunner = {
+            async run(tool, args, mounts) {
+                calls.push({ tool, args, mounts });
+                return { stdout: recorded(tool), stderr: "", exitCode: 0 };
+            },
+            async digest() {
+                return "d";
+            }
+        };
+        const configDir = await mkdtemp(join(tmpdir(), "scanner-cfg-"));
+        await runScanners({ clonePath: "/c", runner, rulesets: [], rulesDir: "/r", configDir });
+        const semgrep = calls.find(c => c.tool === "semgrep")!.args;
+        expect(semgrep).toContain("--disable-nosem");
+        expect(semgrep).toContain("--x-ignore-semgrepignore-files");
+        const osv = calls.find(c => c.tool === "osv")!;
+        expect(osv.args.join(" ")).toContain("--config /cfg/osv-scanner.toml");
+        expect(osv.mounts).toContainEqual({ host: configDir, container: "/cfg" });
+        expect(await readFile(join(configDir, "osv-scanner.toml"), "utf8")).not.toMatch(/IgnoredVulns/);
+    });
+});
+
 describe("runScanners exit codes", () => {
     const runner = (codes: Partial<Record<ScannerTool, number>>): ScannerRunner => ({
         async run(tool) {
@@ -70,7 +120,13 @@ describe("runScanners exit codes", () => {
         }
     });
     const scan = (codes: Partial<Record<ScannerTool, number>>) =>
-        runScanners({ clonePath: "/c", runner: runner(codes), rulesets: [], rulesDir: "/r" });
+        runScanners({
+            clonePath: "/c",
+            runner: runner(codes),
+            rulesets: [],
+            rulesDir: "/r",
+            configDir: join(tmpdir(), "gitleaks-cfg-codes")
+        });
 
     it("treats osv-scanner's no-lock-file exit as no packages", async () => {
         expect((await scan({ osv: OSV_NO_SOURCES })).osv).toEqual([]);

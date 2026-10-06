@@ -3,8 +3,11 @@ import type { NewFinding, SeverityName } from "../types";
 
 import type { OsvPackage } from "./types";
 
+/** Overrides the client's osv-scanner.toml, whose ignore lists would hide known vulnerabilities. */
+export const OSV_CONFIG = "# Written by Auditdesk for each run: no vulnerability is ignored.\n";
+
 export function osvArgs(): string[] {
-    return ["scan", "source", "--recursive", "--format", "json", "/src"];
+    return ["scan", "source", "--recursive", "--config", "/cfg/osv-scanner.toml", "--format", "json", "/src"];
 }
 
 interface OsvJson {

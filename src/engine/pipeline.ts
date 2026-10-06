@@ -6,6 +6,7 @@ import type { AgentOutcome } from "./agent/run-aspect";
 import { runAspect } from "./agent/run-aspect";
 import { shareFor } from "./budget";
 import { loadChecklist } from "./checklists";
+import { readSnippet } from "./files";
 import { Masker } from "./masker";
 import { aspectMessage, prefixBlocks } from "./prompts";
 import { buildRepoMap } from "./repomap";
@@ -70,7 +71,13 @@ export async function runAudit(input: AuditInput, deps: AuditDeps): Promise<{ st
         await sink.progress("Running gitleaks, osv-scanner and Semgrep…");
         const runDir = join(deps.workspaceDir, input.projectId, "runs", input.runId);
         const rulesDir = join(runDir, "rules");
-        const scan = await runScanners({ clonePath, runner: deps.scanners, rulesets: await deps.fetchRulesets(rulesDir), rulesDir });
+        const scan = await runScanners({
+            clonePath,
+            runner: deps.scanners,
+            rulesets: await deps.fetchRulesets(rulesDir),
+            rulesDir,
+            configDir: join(runDir, "gitleaks")
+        });
         await sink.toolVersions(scan.versions);
         const masker = new Masker(await leakMasks(clonePath, scan.leaks));
         const inTree = new Set<string>();
@@ -83,7 +90,19 @@ export async function runAudit(input: AuditInput, deps: AuditDeps): Promise<{ st
                 inTree: l => inTree.has(`${l.File}:${l.StartLine}:${l.Commit}`)
             }),
             ...normaliseOsv(scan.osv, { repositoryId: repo.id }),
-            ...normaliseSemgrep(scan.semgrep, { repositoryId: repo.id, masker })
+            // Semgrep's own `extra.lines` reads "requires login" without a Semgrep account: the code comes from the clone.
+            ...normaliseSemgrep(
+                await Promise.all(
+                    scan.semgrep.map(async r => ({
+                        ...r,
+                        extra: {
+                            ...r.extra,
+                            lines: (await readSnippet(clonePath, r.path, r.start.line, r.end.line, l => masker.mask(l))) ?? ""
+                        }
+                    }))
+                ),
+                { repositoryId: repo.id, masker }
+            )
         ];
         let filed = 0;
         for (const f of scannerFindings) {
@@ -105,7 +124,16 @@ export async function runAudit(input: AuditInput, deps: AuditDeps): Promise<{ st
         for (const aspect of input.aspects) {
             if (input.only && input.only.aspect !== aspect) continue;
             if (await sink.stopRequested()) return { stopped: true };
-            const remaining = input.budget.usd - (await sink.runSpend()).usd;
+            const spent = await sink.runSpend();
+            if (spent.unpriced) {
+                // The dollars already spent are unknown, so no share of what is left can be computed.
+                await sink.progress(
+                    `Skipped ${aspect}: budget unknown, because a call of this run was served by a model with no price row.`,
+                    "warn"
+                );
+                continue;
+            }
+            const remaining = input.budget.usd - spent.usd;
             const share = { usd: Math.min(fullShare.usd, Math.max(remaining, 0)), tokens: fullShare.tokens };
             if (share.usd <= 0) {
                 await sink.progress(`Skipped ${aspect}: the run's budget is spent.`, "warn");

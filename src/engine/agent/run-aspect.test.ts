@@ -112,6 +112,15 @@ describe("runAspect", () => {
         expect(sink.findings).toHaveLength(1);
     });
 
+    it("caps each line of a finding's snippet, as read_file does", async () => {
+        const { sink, run } = await setup(
+            [tool("report_finding", finding({ evidence: [{ file: "dist/app.min.js", start_line: 1, end_line: 1 }] })), finish()],
+            { files: { "dist/app.min.js": `${"z".repeat(50_000)}\n` } }
+        );
+        await run();
+        expect(sink.findings[0].evidence[0].snippet!.length).toBeLessThan(2100);
+    });
+
     it("files a question without a severity, whatever the model sent", async () => {
         const { sink, run } = await setup([
             tool("report_finding", finding({ kind: "question", severity: "high", evidence: [] })),
@@ -224,6 +233,11 @@ describe("runAspect", () => {
         expect(outcome).toMatchObject({ status: "partial", note: expect.stringMatching(/budget share/) });
         expect(sink.findings).toHaveLength(1);
         expect(requests).toHaveLength(1);
+    });
+
+    it("says coverage was not reported when the agent stopped before finish_aspect", async () => {
+        const { run } = await setup([tool("report_finding", finding()), finish()], { share: { usd: 10, tokens: 500 } });
+        expect((await run()).coverage.map(c => c.status)).toEqual(["not_reported", "not_reported"]);
     });
 
     it("stops when Andrii presses Stop", async () => {

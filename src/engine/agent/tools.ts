@@ -4,13 +4,14 @@ import { readFile } from "node:fs/promises";
 import { z } from "zod";
 
 import type { Checklist } from "../checklists";
-import { grepFiles, listFiles, readFileRange } from "../files";
+import { grepFiles, listFiles, readFileRange, snippetOf } from "../files";
 import { fingerprint } from "../findings";
 import type { Masker } from "../masker";
 import { ToolError, resolveInClone } from "../paths";
 import type { AuditSink, NewFinding } from "../types";
 
-export type Coverage = { item: string; status: "examined" | "partly" | "not_examined" };
+/** "not_reported" is the engine's: the agent stopped before finish_aspect, so what it read is unknown. */
+export type Coverage = { item: string; status: "examined" | "partly" | "not_examined" | "not_reported" };
 
 export interface AgentContext {
     clonePath: string;
@@ -23,8 +24,6 @@ export interface AgentContext {
     sink: AuditSink;
     state: { finished: { summary: string; coverage: Coverage[] } | null; reported: string[]; fatal: Error | null };
 }
-
-const SNIPPET_LINES = 30;
 
 /** A ToolError goes back to the model as its tool result; any other error is a bug and ends the run. */
 function guard<A>(ctx: AgentContext, fn: (args: A) => Promise<string>): (args: A) => Promise<string> {
@@ -178,8 +177,8 @@ async function reportFinding(ctx: AgentContext, input: z.infer<typeof findingInp
         const lines = text.split(/\r?\n/);
         if (e.start_line < 1 || e.end_line < e.start_line || e.end_line > lines.length)
             throw new ToolError(`${rel} has ${lines.length} lines; ${e.start_line}-${e.end_line} is not a valid range.`);
-        const snippet = lines.slice(e.start_line - 1, Math.min(e.end_line, e.start_line + SNIPPET_LINES - 1)).join("\n");
-        evidence.push({ file: rel, startLine: e.start_line, endLine: e.end_line, snippet: ctx.masker.mask(snippet) });
+        const snippet = snippetOf(lines, e.start_line, e.end_line, line => ctx.masker.mask(line));
+        evidence.push({ file: rel, startLine: e.start_line, endLine: e.end_line, snippet });
     }
     const base = { repositoryId: ctx.repositoryId, aspect: ctx.aspect, checklistItem: input.checklist_item, evidence };
     const finding: NewFinding = ctx.masker.maskDeep({

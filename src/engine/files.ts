@@ -60,12 +60,32 @@ export async function readFileRange(root: string, path: string, startLine: numbe
     const all = buf.toString("utf8").split(/\r?\n/);
     const start = Math.max(1, Math.min(startLine, all.length));
     const end = Math.min(all.length, Math.max(start, endLine), start + LIMITS.readLines - 1);
-    const body = all.slice(start - 1, end).map((raw, i) => {
-        const line = mask ? mask(raw) : raw;
-        const shown = line.length > LIMITS.lineChars ? `${line.slice(0, LIMITS.lineChars)} … [line cut: ${line.length} characters]` : line;
-        return `${start + i}| ${shown}`;
-    });
+    const body = all.slice(start - 1, end).map((raw, i) => `${start + i}| ${cap(mask ? mask(raw) : raw)}`);
     return [`${rel}, lines ${start}-${end} of ${all.length}`, ...body].join("\n");
+}
+
+function cap(line: string): string {
+    return line.length > LIMITS.lineChars ? `${line.slice(0, LIMITS.lineChars)} … [line cut: ${line.length} characters]` : line;
+}
+
+export const SNIPPET_LINES = 30;
+
+/** The evidence a finding carries: at most 30 lines, each masked whole and then capped like read_file's. */
+export function snippetOf(lines: string[], startLine: number, endLine: number, mask?: LineMask): string {
+    return lines
+        .slice(startLine - 1, Math.min(endLine, startLine + SNIPPET_LINES - 1))
+        .map(raw => cap(mask ? mask(raw) : raw))
+        .join("\n");
+}
+
+/** A snippet read from the clone, or null when the file cannot be read there. */
+export async function readSnippet(root: string, path: string, startLine: number, endLine: number, mask?: LineMask): Promise<string | null> {
+    try {
+        const { abs } = await resolveInClone(root, path);
+        return snippetOf((await readFile(abs, "utf8")).split(/\r?\n/), startLine, endLine, mask);
+    } catch {
+        return null;
+    }
 }
 
 export async function grepFiles(
