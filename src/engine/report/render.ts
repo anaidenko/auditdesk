@@ -72,7 +72,7 @@ body{background:#fff;font-size:10.5pt}
 section{margin-top:2.2rem}
 section#findings,section#questions{margin-top:0;break-before:page}
 h2,h3,h4,summary,figcaption{break-after:avoid}
-.finding{break-inside:auto;-webkit-box-decoration-break:clone;box-decoration-break:clone}.finding summary,.pair,.callout,figure{break-inside:avoid}
+.finding{break-inside:avoid;-webkit-box-decoration-break:clone;box-decoration-break:clone}.finding summary,.pair,.callout,figure{break-inside:avoid}
 tr,.risks li{break-inside:avoid}
 a{color:inherit}
 }

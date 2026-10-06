@@ -94,6 +94,13 @@ describe("renderReport", () => {
         expect(html.match(/<details(?! open)/g)).toBeNull();
     });
 
+    // Chromium ignores break-after:avoid between a <summary> and the rest of its <details>: on the
+    // naidenko.dev report (E.9) a card's title sat alone at the foot of a page.
+    it("starts a finding on a new page rather than leave its title alone at the foot of one", () => {
+        const print = between(renderReport(data()), "@media print{", "</style>");
+        expect(print).toMatch(/\.finding\{[^}]*break-inside:avoid/);
+    });
+
     // The cover names a single repository; a column repeating it wrapped in the PDF (R.3).
     it("shows the repository column only when the audit spans more than one repository", () => {
         const head = (html: string) => between(html, "<thead>", "</thead>");
