@@ -63,6 +63,25 @@ describe("review", () => {
         expect((target.evidence as { file: string }[]).map(e => e.file)).toEqual(["b.ts", "a.ts"]);
     });
 
+    it("refuses an edit that empties a required field", async () => {
+        const { a } = await twoFindings();
+        await expect(edit(a.id, { title: "  " })).rejects.toThrow(/title/);
+        await expect(edit(a.id, { recommendation: "" })).rejects.toThrow(/recommendation/);
+        expect((await prisma.finding.findUniqueOrThrow({ where: { id: a.id } })).title).toBe("Raw SQL in login");
+    });
+
+    it("refuses to merge into a finding that left the report", async () => {
+        const { a, b } = await twoFindings();
+        await reject(b.id, "Not reachable.");
+        await expect(merge(a.id, b.label)).rejects.toThrow(/rejected/);
+        expect((await prisma.finding.findUniqueOrThrow({ where: { id: a.id } })).status).toBe("unreviewed");
+    });
+
+    it("ignores an unknown status filter instead of failing the page", async () => {
+        const { project } = await twoFindings();
+        expect(await listFindings(project.id, { status: "bogus" })).toHaveLength(2);
+    });
+
     it("refuses to merge a finding into itself", async () => {
         const { a } = await twoFindings();
         await expect(merge(a.id, "F-001")).rejects.toThrow(/itself/);

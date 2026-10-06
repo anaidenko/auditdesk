@@ -1,5 +1,6 @@
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
+import { Script, createContext } from "node:vm";
 
 import { ToolError, globToRegExp, resolveInClone, walk } from "./paths";
 
@@ -9,8 +10,14 @@ export const LIMITS = {
     lineChars: 2000,
     grepMatches: 200,
     grepLineChars: 300,
-    grepFileBytes: 1_000_000
+    grepFileBytes: 1_000_000,
+    grepFileMs: 2000
 };
+
+// The pattern comes from the model, and the app is one process: a regex that backtracks without
+// end would block every page and the runner. A vm timeout interrupts it; no time limit exists
+// on RegExp itself.
+const MATCH_LINES = new Script("hits = []; for (let i = 0; i < lines.length; i++) if (re.test(lines[i])) hits.push(i);");
 
 function isBinary(buf: Buffer): boolean {
     return buf.subarray(0, 8000).includes(0);
@@ -51,7 +58,7 @@ export async function readFileRange(root: string, path: string, startLine: numbe
     return [`${rel}, lines ${start}-${end} of ${all.length}`, ...body].join("\n");
 }
 
-export async function grepFiles(root: string, pattern: string, o: { glob?: string } = {}): Promise<string> {
+export async function grepFiles(root: string, pattern: string, o: { glob?: string; timeoutMs?: number } = {}): Promise<string> {
     let re: RegExp;
     try {
         re = new RegExp(pattern);
@@ -59,6 +66,7 @@ export async function grepFiles(root: string, pattern: string, o: { glob?: strin
         throw new ToolError(`Invalid regular expression: ${(e as Error).message}`);
     }
     const match = o.glob ? globToRegExp(o.glob) : null;
+    const sandbox = createContext({ re, lines: [] as string[], hits: [] as number[] });
     const hits: string[] = [];
     let tooBig = 0;
     let more = 0;
@@ -71,8 +79,14 @@ export async function grepFiles(root: string, pattern: string, o: { glob?: strin
         const buf = await readFile(join(root, entry.rel));
         if (isBinary(buf)) continue;
         const lines = buf.toString("utf8").split(/\r?\n/);
-        for (let i = 0; i < lines.length; i++) {
-            if (!re.test(lines[i])) continue;
+        sandbox.lines = lines;
+        try {
+            MATCH_LINES.runInContext(sandbox, { timeout: o.timeoutMs ?? LIMITS.grepFileMs });
+        } catch (e) {
+            if ((e as NodeJS.ErrnoException).code !== "ERR_SCRIPT_EXECUTION_TIMEOUT") throw e;
+            throw new ToolError(`The pattern took too long on ${entry.rel}; simplify it (nested quantifiers such as (a+)+ backtrack).`);
+        }
+        for (const i of sandbox.hits as number[]) {
             if (hits.length >= LIMITS.grepMatches) more++;
             else hits.push(`${entry.rel}:${i + 1}: ${lines[i].trim().slice(0, LIMITS.grepLineChars)}`);
         }

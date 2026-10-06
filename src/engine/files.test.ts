@@ -60,6 +60,14 @@ describe("readFileRange", () => {
 });
 
 describe("grepFiles", () => {
+    it("refuses a pattern that backtracks catastrophically, instead of blocking the app", async () => {
+        const dir = await mkdtemp(join(tmpdir(), "redos-"));
+        await writeFile(join(dir, "a.txt"), `${"a".repeat(25)}b\n`);
+        const started = Date.now();
+        await expect(grepFiles(dir, "^(a+)+$", { timeoutMs: 100 })).rejects.toThrow(/took too long/);
+        expect(Date.now() - started).toBeLessThan(600);
+    });
+
     it("finds matches with file and line", async () => {
         expect(await grepFiles(root, "SELECT \\*")).toContain("src/app.ts:1:");
     });

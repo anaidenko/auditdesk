@@ -68,9 +68,13 @@ export default async function ProjectPage({ params }: { params: Promise<{ projec
                 </ul>
             </section>
 
-            <form action={deleteProject.bind(null, project.id)}>
-                <button className="text-sm text-red-700 underline">Delete project and its clones</button>
-            </form>
+            {project.runs.some(r => r.status === "queued" || r.status === "running") ? (
+                <p className="text-sm text-zinc-500">Stop the run before deleting the project.</p>
+            ) : (
+                <form action={deleteProject.bind(null, project.id)}>
+                    <button className="text-sm text-red-700 underline">Delete project and its clones</button>
+                </form>
+            )}
         </div>
     );
 }

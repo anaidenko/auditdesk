@@ -2,6 +2,7 @@ import "server-only";
 
 import { compareFindings, findingLabel } from "@/engine/findings";
 import type { Evidence, SeverityName } from "@/engine/types";
+import { FindingStatus } from "@/generated/prisma/enums";
 import { prisma } from "@/server/db";
 
 export const REPORTABLE = ["accepted", "edited"] as const;
@@ -31,7 +32,10 @@ async function withReason(id: string, status: "rejected" | "excluded", reason: s
 export const reject = (id: string, reason: string) => withReason(id, "rejected", reason);
 export const exclude = (id: string, reason: string) => withReason(id, "excluded", reason);
 
+const REQUIRED = ["title", "summary", "explanation", "recommendation"] as const;
+
 export async function edit(id: string, fields: EditableFields) {
+    for (const k of REQUIRED) if (k in fields && !fields[k]?.trim()) throw new Error(`The ${k} cannot be empty.`);
     const f = await prisma.finding.findUniqueOrThrow({ where: { id } });
     if (f.kind === "question" && fields.severity) throw new Error("A question carries no severity.");
     await prisma.finding.update({ where: { id }, data: { ...fields, status: "edited" } });
@@ -44,6 +48,8 @@ export async function merge(sourceId: string, targetLabel: string) {
     if (!target) throw new Error(`No finding ${targetLabel} in this project.`);
     if (target.id === source.id) throw new Error("A finding cannot be merged into itself.");
     if (target.status === "merged") throw new Error(`${targetLabel} was itself merged; merge into the finding it went to.`);
+    if (target.status === "rejected" || target.status === "excluded" || target.status === "superseded")
+        throw new Error(`${targetLabel} is ${target.status}; merge into a finding that stays in the review.`);
     await prisma.$transaction([
         prisma.finding.update({
             where: { id: target.id },
@@ -64,8 +70,12 @@ export async function listFindings(projectId: string, o: { status?: string; q?: 
         where: {
             projectId,
             ...(ids && { id: { in: ids } }),
-            status: o.status ? (o.status as never) : { notIn: ["merged", "superseded"] }
+            status: isStatus(o.status) ? o.status : { notIn: ["merged", "superseded"] }
         }
     });
     return rows.map(r => ({ ...r, label: findingLabel(r.number), severity: r.severity as SeverityName | null })).sort(compareFindings);
+}
+
+function isStatus(s: string | undefined): s is FindingStatus {
+    return !!s && Object.values<string>(FindingStatus).includes(s);
 }

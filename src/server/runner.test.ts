@@ -126,6 +126,13 @@ describe("runner", () => {
         });
     });
 
+    it("survives the database closing the LISTEN connection", async () => {
+        const stop = await listen(() => {});
+        await prisma.$queryRaw`SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE query = 'LISTEN run_events' AND pid <> pg_backend_pid()`;
+        await new Promise(r => setTimeout(r, 300));
+        await stop();
+    });
+
     it("wakes listeners on progress", async () => {
         const { project } = await projectWithRepo();
         const runId = await enqueueRun(project.id, runOptions);

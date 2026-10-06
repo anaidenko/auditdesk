@@ -5,10 +5,10 @@ import { redirect } from "next/navigation";
 
 import { DEFAULT_EFFORT, DEFAULT_MODEL } from "@/engine/agent/request";
 import { workspaceDir } from "@/engine/config";
-import { deleteProjectClones } from "@/engine/workspace";
 import { prisma } from "@/server/db";
 import { parseProjectForm, parseRepositoryForm, parseRunForm } from "@/server/forms";
 import { ActiveRunError, enqueueRun, requestStop } from "@/server/jobs";
+import { deleteProject as removeProject } from "@/server/projects";
 
 export type FormState = { error: string | null };
 
@@ -54,7 +54,6 @@ export async function stopRun(runId: string): Promise<void> {
 }
 
 export async function deleteProject(projectId: string): Promise<void> {
-    await deleteProjectClones(workspaceDir(), projectId);
-    await prisma.project.delete({ where: { id: projectId } });
+    await removeProject(projectId, workspaceDir());
     redirect("/");
 }
