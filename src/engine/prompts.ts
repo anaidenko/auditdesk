@@ -44,3 +44,22 @@ export function aspectMessage(o: { checklist: Checklist; findingIndex: string[];
         "Start from the repository map in the system prompt."
     ].join("\n\n");
 }
+
+export interface Brief {
+    product: string | null;
+    concerns: string | null;
+    outOfScope: string | null;
+    aiBuilt: boolean;
+}
+
+/** The auditor's brief and one repository's instructions, as one block of the cached prefix. */
+export function briefText(b: Brief | undefined, instructions?: string | null): string {
+    const parts = [
+        b?.product?.trim() && `What the product does: ${b.product.trim()}`,
+        b?.concerns?.trim() && `Known concerns: ${b.concerns.trim()}`,
+        b?.outOfScope?.trim() && `Out of scope: ${b.outOfScope.trim()}`,
+        b?.aiBuilt && 'The auditor marked the code as largely AI-built: the checklist items marked "(AI-built)" are on.',
+        instructions?.trim() && `How to run this repository: ${instructions.trim()}`
+    ].filter(Boolean);
+    return parts.length ? parts.join("\n\n") : "No brief was written for this audit.";
+}

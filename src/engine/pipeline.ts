@@ -7,18 +7,20 @@ import { shareFor } from "./budget";
 import { loadChecklist } from "./checklists";
 import { readSnippet } from "./files";
 import { Masker } from "./masker";
-import { aspectMessage, prefixBlocks } from "./prompts";
+import { type Brief, aspectMessage, briefText, prefixBlocks } from "./prompts";
 import { buildRepoMap } from "./repomap";
 import { normaliseGitleaks } from "./scanners/gitleaks";
 import { leakInTree, leakMasks, runScanners } from "./scanners/index";
 import { normaliseOsv, osvEvidence } from "./scanners/osv";
 import { normaliseSemgrep } from "./scanners/semgrep";
 import type { Ruleset, ScannerRunner, ToolVersions } from "./scanners/types";
+import { type StackProfile, detectStack, stackProfileText } from "./stack";
 import type { AuditSink } from "./types";
 import { cloneRepository } from "./workspace";
 
 export interface PipelineSink extends AuditSink {
     repositoryCloned(repositoryId: string, sha: string, clonePath: string): Promise<void>;
+    stackDetected(repositoryId: string, profile: StackProfile): Promise<void>;
     toolVersions(v: ToolVersions): Promise<void>;
     startAgent(repositoryId: string, aspect: string, share: { usd: number; tokens: number }): Promise<string>;
     finishAgent(agentRunId: string, outcome: AgentOutcome): Promise<void>;
@@ -32,7 +34,16 @@ export interface AuditInput {
     effort: Effort;
     budget: { usd: number; tokens: number };
     /** `sha` is set on a re-run: the commit the run already audited, whatever the branch says now. */
-    repositories: { id: string; source: string; branch: string; sha?: string | null }[];
+    repositories: {
+        id: string;
+        source: string;
+        branch: string;
+        sha?: string | null;
+        /** The stack profile as the auditor confirmed or edited it; detected afresh when absent (design § 6). */
+        stackText?: string | null;
+        instructions?: string | null;
+    }[];
+    brief?: Brief;
     aspects: string[];
     /** A re-run of one aspect in one repository (design § 9). */
     only?: { repositoryId: string; aspect: string };
@@ -116,10 +127,16 @@ export async function runAudit(input: AuditInput, deps: AuditDeps): Promise<{ st
 
         await sink.progress("Building the repository map…");
         const repoMap = await buildRepoMap(clonePath, masker);
+        let stackText = repo.stackText?.trim();
+        if (!stackText) {
+            const profile = await detectStack(clonePath);
+            await sink.stackDetected(repo.id, profile);
+            stackText = `${stackProfileText(profile)}\n\nDetected from the manifests; the auditor has not confirmed it yet.`;
+        }
         const system = prefixBlocks({
-            stackProfile: "Not detected in this version; read the repository map.",
+            stackProfile: masker.mask(stackText),
             repoMap,
-            brief: "No brief was written for this audit."
+            brief: masker.mask(briefText(input.brief, repo.instructions))
         });
 
         for (const aspect of input.aspects) {

@@ -5,16 +5,21 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 
 import { message, replayFetch } from "@/engine/replay";
-import { makeSampleRepo } from "@/test/sample-repo";
+import { SAMPLE_KEY, makeSampleRepo } from "@/test/sample-repo";
 
-import { apiAspectRunner } from "./agent/run-aspect";
+import { type AspectInput, type AspectRunner, apiAspectRunner } from "./agent/run-aspect";
 import { MemorySink } from "./memory-sink";
-import { type PipelineSink, runAudit } from "./pipeline";
+import { type AuditInput, type PipelineSink, runAudit } from "./pipeline";
 import { REPLAY_RULESETS, replayRunner } from "./scanners/replay";
+import type { StackProfile } from "./stack";
 
 class TestSink extends MemorySink implements PipelineSink {
     agents: { id: string; aspect: string; status?: string }[] = [];
+    stacks: { repositoryId: string; profile: StackProfile }[] = [];
     async repositoryCloned() {}
+    async stackDetected(repositoryId: string, profile: StackProfile) {
+        this.stacks.push({ repositoryId, profile });
+    }
     async toolVersions() {}
     async startAgent(_r: string, aspect: string) {
         const id = `agent-${this.agents.length + 1}`;
@@ -33,7 +38,7 @@ const finish = () =>
         stop_reason: "tool_use"
     } as never);
 
-async function audit(sink: TestSink, source: string, workspaceDir: string) {
+async function audit(sink: TestSink, source: string, workspaceDir: string, over: Partial<AuditInput> = {}, runAspect?: AspectRunner) {
     return runAudit(
         {
             runId: "run",
@@ -42,11 +47,12 @@ async function audit(sink: TestSink, source: string, workspaceDir: string) {
             effort: "medium",
             budget: { usd: 10, tokens: 400_000 },
             repositories: [{ id: "r", source, branch: "main" }],
-            aspects: ["security"]
+            aspects: ["security"],
+            ...over
         },
         {
             sink,
-            runAspect: apiAspectRunner(new Anthropic({ apiKey: "t", fetch: replayFetch([finish()]).fetch, maxRetries: 0 })),
+            runAspect: runAspect ?? apiAspectRunner(new Anthropic({ apiKey: "t", fetch: replayFetch([finish()]).fetch, maxRetries: 0 })),
             scanners: replayRunner("src/test/fixtures/scanners"),
             fetchRulesets: async () => REPLAY_RULESETS,
             workspaceDir,
@@ -113,5 +119,84 @@ describe("runAudit", () => {
         sink.stop = true;
         expect(await audit(sink, await makeSampleRepo(), await mkdtemp(join(tmpdir(), "ws-")))).toEqual({ stopped: true });
         expect(sink.agents).toEqual([]);
+    });
+});
+
+/** Records what each agent was given, and finishes it at once. */
+function capturing() {
+    const inputs: AspectInput[] = [];
+    const runAspect: AspectRunner = async o => {
+        inputs.push(o);
+        return { status: "done", note: null, summary: "ok", coverage: [] };
+    };
+    return { inputs, runAspect };
+}
+
+const prefixText = (o: AspectInput) => o.system.map(b => b.text).join("\n");
+
+describe("the cached prefix", () => {
+    it("detects the stack when none is confirmed, records it, and gives it to the agents", async () => {
+        const sink = new TestSink();
+        const { inputs, runAspect } = capturing();
+        await audit(sink, await makeSampleRepo(), await mkdtemp(join(tmpdir(), "ws-")), {}, runAspect);
+        expect(sink.stacks.map(s => s.repositoryId)).toEqual(["r"]);
+        expect(sink.stacks[0].profile.frameworks).toEqual(expect.arrayContaining([expect.stringMatching(/^Express/)]));
+        expect(prefixText(inputs[0])).toMatch(/Frameworks: .*Express/);
+        expect(prefixText(inputs[0])).toMatch(/not confirmed/);
+    });
+
+    it("uses the confirmed stack as the auditor wrote it, without detecting again", async () => {
+        const sink = new TestSink();
+        const { inputs, runAspect } = capturing();
+        const source = await makeSampleRepo();
+        await audit(
+            sink,
+            source,
+            await mkdtemp(join(tmpdir(), "ws-")),
+            { repositories: [{ id: "r", source, branch: "main", stackText: "Express 4 on Node.js 22; PostgreSQL through pg." }] },
+            runAspect
+        );
+        expect(sink.stacks).toEqual([]);
+        expect(prefixText(inputs[0])).toContain("Express 4 on Node.js 22; PostgreSQL through pg.");
+        expect(prefixText(inputs[0])).not.toMatch(/not confirmed/);
+    });
+
+    it("puts the brief and the repository's instructions in the prefix, masked", async () => {
+        const sink = new TestSink();
+        const { inputs, runAspect } = capturing();
+        const source = await makeSampleRepo();
+        await audit(
+            sink,
+            source,
+            await mkdtemp(join(tmpdir(), "ws-")),
+            {
+                brief: {
+                    product: "A calculator API for schools.",
+                    concerns: `The key ${SAMPLE_KEY} leaked once.`,
+                    outOfScope: null,
+                    aiBuilt: false
+                },
+                repositories: [{ id: "r", source, branch: "main", instructions: "npm start; listens on :3000." }]
+            },
+            runAspect
+        );
+        const text = prefixText(inputs[0]);
+        expect(text).toContain("A calculator API for schools.");
+        expect(text).toContain("npm start; listens on :3000.");
+        expect(text).not.toContain(SAMPLE_KEY);
+    });
+
+    it("keeps the prefix byte-identical across the aspects of one repository", async () => {
+        const sink = new TestSink();
+        const { inputs, runAspect } = capturing();
+        await audit(
+            sink,
+            await makeSampleRepo(),
+            await mkdtemp(join(tmpdir(), "ws-")),
+            { aspects: ["security", "quality"], brief: { product: "p", concerns: null, outOfScope: null, aiBuilt: false } },
+            runAspect
+        );
+        expect(inputs.map(i => i.ctx.aspect)).toEqual(["security", "quality"]);
+        expect(JSON.stringify(inputs[1].system)).toBe(JSON.stringify(inputs[0].system));
     });
 });
