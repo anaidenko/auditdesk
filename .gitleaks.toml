@@ -2,5 +2,5 @@
 useDefault = true
 
 [allowlist]
-description = "Recorded scanner output and its sample repository hold planted test secrets"
-paths = ['''src/test/fixtures/scanners/''']
+description = "Recorded scanner output, its sample repository and the masker's tests hold planted test secrets"
+paths = ['''src/test/fixtures/scanners/''', '''src/engine/masker\.test\.ts''']
