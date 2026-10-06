@@ -130,8 +130,8 @@ describe("renderReport", () => {
         );
         const body = html.slice(html.indexOf('<section id="findings">'));
         expect(body.indexOf('<h3 class="repo" id="repo-web">web</h3>')).toBeGreaterThan(0);
-        expect(body.indexOf('id="F-002"')).toBeLessThan(body.indexOf('<h3 class="repo" id="repo-api">api</h3>'));
-        expect(body.indexOf('<h3 class="repo" id="repo-api">api</h3>')).toBeLessThan(body.indexOf('id="F-001"'));
+        expect(body.indexOf('open id="F-002"')).toBeLessThan(body.indexOf('<h3 class="repo" id="repo-api">api</h3>'));
+        expect(body.indexOf('<h3 class="repo" id="repo-api">api</h3>')).toBeLessThan(body.indexOf('open id="F-001"'));
         const toc = between(html, '<nav class="toc">', "</nav>");
         expect(toc.indexOf("F-002")).toBeLessThan(toc.indexOf("F-001"));
         expect(toc).toContain('<a href="#repo-api">api</a>');
@@ -231,6 +231,27 @@ describe("renderReport", () => {
                 "Estimated effort: 13 h for the 2 findings the auditor estimated, plus 1 medium (under 2 days), 1 large (more) and 1 not sized."
             );
         });
+    });
+
+    it("filters by severity, aspect and repository, and searches, from inline script only", () => {
+        const html = renderReport(
+            data({
+                repositories: [
+                    { name: "web", branch: "main", sha: "0123456789abcdef", notCovered: [] },
+                    { name: "api", branch: "main", sha: "fedcba9876543210", notCovered: [] }
+                ],
+                findings: [finding({ label: "F-001", repository: "web", aspect: "Security" })]
+            })
+        );
+        const filters = between(html, '<form class="filters"', "</form>");
+        expect(filters).toContain('name="sev"');
+        expect(filters).toContain('<option value="Security">Security</option>');
+        expect(filters).toContain('<option value="api">api</option>');
+        expect(filters).toContain('name="q"');
+        expect(html).toMatch(/<details open id="F-001" class="finding sev-high" data-sev="high" data-aspect="Security" data-repo="web">/);
+        expect(html).toMatch(/<script>[\s\S]*?querySelector[\s\S]*?<\/script>/);
+        expect(html).not.toMatch(/<script[^>]+src=/);
+        expect(between(html, "@media print{", "</style>")).toMatch(/\.filters\{display:none/);
     });
 
     it("gathers the findings tagged ai-built under Signs of AI-generated code", () => {

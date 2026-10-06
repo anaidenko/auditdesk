@@ -1,6 +1,7 @@
 import { type Page, expect, test } from "@playwright/test";
-import { mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { request as httpRequest } from "node:http";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 const samplePath = () => readFileSync("e2e/.sample-path", "utf8").trim();
@@ -184,6 +185,32 @@ test("a high finding marked to wait moves to Can wait in the report's summary", 
     const wait = summary.slice(summary.indexOf("<h3>Can wait"));
     expect(wait).toContain(`href="#${label}"`);
     expect(summary.slice(0, summary.indexOf("<h3>Can wait"))).not.toContain(`href="#${label}"`);
+});
+
+test("opened from disk with the network off, the report's severity filter hides findings below it", async ({ page, context }) => {
+    await finishedRun(page, "Offline report");
+    await page.getByRole("link", { name: "Review the findings" }).click();
+    for (const title of ["User input reaches eval", "Generic API Key"]) {
+        const finding = page.locator("details", { hasText: title }).first();
+        await finding.locator("summary").click();
+        await finding.getByRole("button", { name: "Accept" }).click();
+        await expect(finding).toContainText("accepted");
+    }
+    const html = await (await page.request.get(page.url().replace(/\/findings.*$/, "/report"))).text();
+    const file = join(mkdtempSync(join(tmpdir(), "report-")), "report.html");
+    writeFileSync(file, html);
+    const requests: string[] = [];
+    await context.route(/^https?:/, route => {
+        requests.push(route.request().url());
+        return route.abort();
+    });
+    await page.goto(`file://${file}`);
+    await expect(page.locator(".filters output")).toHaveText("2 of 2 findings shown");
+    await page.locator('.filters select[name="sev"]').selectOption("critical");
+    await expect(page.locator(".filters output")).toHaveText("1 of 2 findings shown");
+    await expect(page.locator("details.finding", { hasText: "User input reaches eval" })).toBeHidden();
+    await expect(page.locator("details.finding", { hasText: "Generic API Key" })).toBeVisible();
+    expect(requests).toEqual([]);
 });
 
 test("starting twice queues one run", async ({ page }) => {

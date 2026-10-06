@@ -65,10 +65,16 @@ pre{margin:0;padding:.6rem 0;background:#fcfcfd;overflow-x:auto;white-space:pre-
 pre code{display:block}.ln{display:inline-block;width:3.4em;padding-right:.9em;text-align:right;color:var(--faint);user-select:none}
 .callout{background:#eef2ff;border:1px solid #e0e7ff;border-radius:8px;padding:.15rem .95rem .6rem;margin:1rem 0 .4rem}.callout h4{color:var(--accent)}
 .refs{font-size:.82rem;color:var(--muted)}
+[hidden]{display:none!important}
+.filters{display:flex;flex-wrap:wrap;gap:.6rem 1rem;align-items:end;margin:1rem 0;padding:.8rem 1rem;border:1px solid var(--line);border-radius:10px;font-size:.82rem;color:var(--muted)}
+.filters label{display:flex;flex-direction:column;gap:.25rem}
+.filters select,.filters input{font:inherit;color:var(--ink);padding:.3rem .5rem;border:1px solid var(--line);border-radius:6px;background:#fff}
+.filters output{margin-left:auto}
 .disclaimer{font-size:.92rem;color:var(--muted)}
 .colophon{margin-top:3rem;padding-top:1rem;border-top:1px solid var(--line);font-size:.78rem;color:var(--faint)}
 @page{size:A4;margin:16mm 15mm 18mm}
 @media print{
+.filters{display:none}
 body{background:#fff;font-size:10.5pt}
 .doc{max-width:none;margin:0;border:0;border-radius:0;box-shadow:none;padding:0}
 .cover{min-height:245mm;display:flex;flex-direction:column;justify-content:center;break-after:page}
@@ -114,6 +120,18 @@ function evidence(ev: ReportFinding["evidence"][number]): string {
     const where = ev.startLine === ev.endLine ? `line ${ev.startLine}` : `lines ${ev.startLine}–${ev.endLine}`;
     return `<figure><figcaption>${e(ev.file)} · ${where}</figcaption>${ev.snippet ? `<pre><code>${code}</code></pre>` : ""}</figure>`;
 }
+
+// The report's one script: it filters and searches the findings in the browser, reaching nothing outside the file.
+const FILTER_SCRIPT = `(()=>{const f=document.querySelector(".filters");if(!f)return;
+const rank={critical:0,high:1,medium:2,low:3,info:4,question:5};
+const cards=[...document.querySelectorAll("section#findings .finding")];
+const rows=[...document.querySelectorAll("section#findings tbody tr")];
+const val=n=>{const el=f.querySelector("[name="+n+"]");return el?el.value:""};
+const apply=()=>{const min=val("sev"),asp=val("aspect"),repo=val("repo"),q=val("q").trim().toLowerCase();const shown=new Set();
+for(const c of cards){const ok=(!min||rank[c.dataset.sev]<=rank[min])&&(!asp||c.dataset.aspect===asp)&&(!repo||c.dataset.repo===repo)&&(!q||c.textContent.toLowerCase().includes(q));c.hidden=!ok;if(ok)shown.add(c.id)}
+for(const r of rows)r.hidden=!shown.has(r.dataset.id);
+f.querySelector("output").textContent=shown.size+" of "+cards.length+" findings shown";};
+f.addEventListener("input",apply);apply();})();`;
 
 const SIZES = [
     ["S", "small (under 2 h)"],
@@ -166,7 +184,7 @@ function finding(f: ReportFinding): string {
         f.likelihood || f.impact
             ? `<div class="pair${f.likelihood && f.impact ? "" : " one"}">${f.likelihood ? `<div><h4>Likelihood</h4><p>${e(f.likelihood)}</p></div>` : ""}${f.impact ? `<div><h4>Impact</h4><p>${e(f.impact)}</p></div>` : ""}</div>`
             : "";
-    return `<details open id="${e(f.label)}" class="finding sev-${e(severityOf(f))}">
+    return `<details open id="${e(f.label)}" class="finding sev-${e(severityOf(f))}" data-sev="${e(severityOf(f))}" data-aspect="${e(f.aspect)}" data-repo="${e(f.repository)}">
 <summary>${badge(f)}<span class="fid">${e(f.label)}</span><span>${e(f.title)}</span></summary>
 <div class="body">
 <p class="meta">${e(meta)}</p>
@@ -211,6 +229,14 @@ export function renderReport(d: ReportData): string {
     }
     // A repository with nothing accepted keeps its heading, or a reader might take it for unaudited.
     const groups = manyRepos ? names.map(n => ({ name: n, list: findings.filter(f => f.repository === n) })) : [];
+    const option = (v: string, label = v) => `<option value="${e(v)}">${e(label)}</option>`;
+    const filters = `<form class="filters" onsubmit="return false">
+<label>Severity <select name="sev">${option("", "All")}${option("critical", "Critical")}${option("high", "High and above")}${option("medium", "Medium and above")}${option("low", "Low and above")}</select></label>
+<label>Aspect <select name="aspect">${option("", "All")}${[...new Set(findings.map(f => f.aspect))].map(a => option(a)).join("")}</select></label>
+${manyRepos ? `<label>Repository <select name="repo">${option("", "All")}${names.map(n => option(n)).join("")}</select></label>` : ""}
+<label>Search <input name="q" type="search" placeholder="Words in a finding"></label>
+<output></output>
+</form>`;
     const repoHead = (n: string) => `<h3 class="repo" id="${e(ids.get(n)!)}">${e(n)}</h3>`;
 
     const tiles = SEVERITIES.map(s => `<div class="tile ${s}${count(s) ? "" : " zero"}"><b>${count(s)}</b><span>${s}</span></div>`).join(
@@ -247,7 +273,7 @@ ${
     const rows = findings
         .map(
             f =>
-                `<tr><td class="nowrap"><a href="#${e(f.label)}">${e(f.label)}</a></td><td>${badge(f)}</td><td>${e(f.title)}</td><td>${e(f.aspect)}</td>${manyRepos ? `<td>${e(f.repository)}</td>` : ""}<td class="nowrap">${e(f.effort ?? "")}</td></tr>`
+                `<tr data-id="${e(f.label)}"><td class="nowrap"><a href="#${e(f.label)}">${e(f.label)}</a></td><td>${badge(f)}</td><td>${e(f.title)}</td><td>${e(f.aspect)}</td>${manyRepos ? `<td>${e(f.repository)}</td>` : ""}<td class="nowrap">${e(f.effort ?? "")}</td></tr>`
         )
         .join("");
     const aiBuilt = d.aiBuilt ? [...findings, ...d.questions].filter(f => f.tags?.includes("ai-built")) : [];
@@ -326,6 +352,7 @@ ${d.repositories
 </section>
 
 <section id="findings"><h2>Findings</h2>
+${findings.length ? filters : ""}
 ${findings.length ? `<table><thead><tr><th>ID</th><th>Severity</th><th>Title</th><th>Aspect</th>${manyRepos ? "<th>Repository</th>" : ""}<th>Effort</th></tr></thead><tbody>${rows}</tbody></table>` : `<p class="muted">No findings were accepted for this report.</p>`}
 ${
     manyRepos
@@ -346,6 +373,7 @@ ${questions}
 </section>
 <p class="colophon">${e(d.auditor)} · ${e(d.generatedAt)}</p>
 </main>
+<script>${FILTER_SCRIPT}</script>
 </body>
 </html>
 `;
