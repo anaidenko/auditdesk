@@ -73,7 +73,7 @@ describe("detectStack", () => {
             "src/index.ts": "\n"
         });
         const s = await detectStack(root);
-        expect(s.tenancyHints).toEqual(["db/migrations/001_init.sql: workspace_id", "prisma/schema.prisma: organizationId"]);
+        expect(s.tenancyHints).toEqual(["organizationId (prisma/schema.prisma)", "workspace_id (db/migrations/001_init.sql)"]);
         expect(suggestAspects(s)).toEqual(["tenancy"]);
     });
 
@@ -120,6 +120,95 @@ describe("detectStack", () => {
         expect(read.every(r => s.manifests.includes(r))).toBe(true);
         expect(read).not.toContain("src/secret-config.ts");
         expect(s.frameworks).toEqual(expect.arrayContaining(["Next.js 16", "Express 5"]));
+    });
+});
+
+describe("detectStack on larger repositories", () => {
+    it("keeps the profile of a multi-tenant app with many migrations under the brief's 4,000-character cap", async () => {
+        const migrations = Object.fromEntries(
+            Array.from({ length: 45 }, (_, i) => [
+                `prisma/migrations/20250101${String(i).padStart(4, "0")}_change_${i}/migration.sql`,
+                `ALTER TABLE "Invoice" ADD COLUMN "organizationId" TEXT;\nALTER TABLE "Team" ADD COLUMN "workspace_id" TEXT;\n`
+            ])
+        );
+        const root = await makeRepo({
+            "package.json": pkg({ "@prisma/client": "7.10.0" }),
+            "prisma/schema.prisma": "model Organization {\n  id String @id\n}\nmodel Invoice {\n  organizationId String\n}\n",
+            "src/index.ts": "\n",
+            ...migrations
+        });
+        const s = await detectStack(root);
+        const text = stackProfileText(s);
+        expect(text.length).toBeLessThan(4000);
+        expect(text).toMatch(/40 SQL migrations under prisma\/migrations/);
+        expect(text).toMatch(/organizationId \(prisma\/schema\.prisma and \d+ more\)/);
+        expect(suggestAspects(s)).toEqual(["tenancy"]);
+    });
+
+    it("marks what only devDependencies list as dev only, and suggests no LLM aspect for it", async () => {
+        const root = await makeRepo({
+            "package.json": pkg(
+                { "react": "19.0.0", "@prisma/client": "7.10.0" },
+                { express: "^4.19.0", pg: "^8.11.0", openai: "^4.0.0", prisma: "7.10.0" }
+            ),
+            "src/App.tsx": "\n"
+        });
+        const s = await detectStack(root);
+        expect(s.frameworks).toEqual(["Express 4 (dev only)", "React 19"]);
+        expect(s.databases).toEqual(["PostgreSQL (dev only)"]);
+        expect(s.orms).toEqual(["Prisma"]);
+        expect(s.llmSdks).toEqual(["OpenAI SDK (dev only)"]);
+        expect(suggestAspects(s)).toEqual([]);
+    });
+
+    it("leaves out manifests and sources under examples, fixtures, vendor and build folders", async () => {
+        const root = await makeRepo({
+            "package.json": pkg({ react: "19.0.0" }),
+            "src/App.tsx": "\n",
+            "examples/chatbot/package.json": pkg({ ai: "4.0.0", openai: "4.0.0" }),
+            "test/fixtures/api/package.json": pkg({ express: "4.0.0" }),
+            "vendor/lib/thing.go": "package lib\n"
+        });
+        const s = await detectStack(root);
+        expect(s.llmSdks).toEqual([]);
+        expect(s.frameworks).toEqual(["React 19"]);
+        expect(s.notCovered).toEqual([]);
+        expect(s.manifests).toEqual(["package.json"]);
+    });
+
+    it("prefers the root manifest's version in a monorepo", async () => {
+        const root = await makeRepo({
+            "apps/legacy/package.json": pkg({ next: "13.5.0" }),
+            "package.json": pkg({ next: "16.0.0" }),
+            "src/a.ts": "\n"
+        });
+        expect((await detectStack(root)).frameworks).toEqual(["Next.js 16"]);
+    });
+
+    it("finds agent instruction files at any depth and in rule folders", async () => {
+        const root = await makeRepo({
+            "package.json": pkg({}),
+            "apps/web/CLAUDE.md": "# Web\n",
+            ".clinerules/style.md": "x\n",
+            ".windsurf/rules/a.md": "x\n",
+            ".github/instructions/ts.instructions.md": "x\n",
+            "index.js": "\n"
+        });
+        expect((await detectStack(root)).aiBuiltSigns).toEqual([
+            ".clinerules",
+            ".github/instructions",
+            ".windsurf/rules",
+            "apps/web/CLAUDE.md"
+        ]);
+    });
+
+    it("skips a file too large to be a manifest without reading it", async () => {
+        const root = await makeRepo({
+            "package.json": pkg({}),
+            "db/migrations/001_seed.sql": "INSERT INTO t VALUES (1);\n".repeat(120_000),
+            "index.js": "\n"
+        });
+        expect((await detectStack(root)).manifests).toEqual(["package.json"]);
     });
 });
 

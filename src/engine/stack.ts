@@ -1,8 +1,8 @@
-import { readFile } from "node:fs/promises";
+import { readFile, stat } from "node:fs/promises";
 
 import type { AspectKey } from "./aspects";
 import { git } from "./git";
-import { resolveInClone } from "./paths";
+import { SKIP_DIRS, resolveInClone } from "./paths";
 
 /** What stack detection found in a clone, from manifests and schemas read as text (design § 6). */
 export interface StackProfile {
@@ -171,8 +171,8 @@ const LLM_SDKS: Table = [
 
 /** Files that agents and AI app builders leave behind; their presence suggests the AI-built mode. */
 const AI_FILES =
-    /^(\.cursorrules|\.windsurfrules|\.clinerules|CLAUDE\.md|AGENTS\.md|GEMINI\.md|\.aider\.conf\.yml|\.github\/copilot-instructions\.md)$/;
-const AI_FOLDERS = /^(\.cursor\/rules|\.bolt|\.kiro)\//;
+    /(^|\/)(\.cursorrules|\.windsurfrules|\.clinerules|CLAUDE\.md|AGENTS\.md|GEMINI\.md|\.aider\.conf\.yml)$|^\.github\/copilot-instructions\.md$/;
+const AI_FOLDERS = /^(\.cursor\/rules|\.bolt|\.kiro|\.clinerules|\.windsurf\/rules|\.github\/instructions)\//;
 const AI_PACKAGES: Table = [["lovable-tagger", "lovable-tagger (Lovable)"]];
 
 // Tenant keys as columns or fields. `account` is left out: Auth.js schemas carry `providerAccountId`
@@ -182,19 +182,42 @@ const TENANT_MODEL = /^\s*model\s+(Tenant|Organi[sz]ation|Workspace|Team|Company
 
 const SQL_MIGRATION = /(^|\/)(migrations?|supabase\/migrations)\/.*\.sql$/i;
 
+/** Examples, fixtures, tests and build output say nothing about what the product runs. */
+const DETECT_SKIP = new Set([
+    ...SKIP_DIRS,
+    "examples",
+    "example",
+    "samples",
+    "fixtures",
+    "__fixtures__",
+    "test",
+    "tests",
+    "__tests__",
+    "e2e"
+]);
+const MAX_FILE_BYTES = 2 * 1024 * 1024;
+const MAX_LIST = 12;
+
 const major = (range: string) => range.match(/\d+/)?.[0];
 
-function labels(table: Table, deps: Map<string, string>): string[] {
-    const out = new Set<string>();
+type Deps = Map<string, { range: string; prod: boolean }>;
+
+/** Labels for the packages a table names; one that only devDependencies list is marked "(dev only)". */
+function labels(table: Table, deps: Deps): string[] {
+    const devOnly = new Map<string, boolean>();
     for (const [name, label] of table) {
         const hits = name.endsWith("/") ? [...deps.keys()].filter(d => d.startsWith(name)) : deps.has(name) ? [name] : [];
         for (const hit of hits) {
-            const v = major(deps.get(hit) ?? "");
-            out.add(v ? label.replace("{v}", v) : label.replace(" {v}", ""));
+            const dep = deps.get(hit)!;
+            const v = major(dep.range);
+            const text = v ? label.replace("{v}", v) : label.replace(" {v}", "");
+            devOnly.set(text, (devOnly.get(text) ?? true) && !dep.prod);
         }
     }
-    return [...out].sort();
+    return [...devOnly].map(([text, dev]) => (dev ? `${text} (dev only)` : text)).sort();
 }
+
+const shipped = (label: string) => !label.endsWith(" (dev only)");
 
 const plural = (n: number) => `${n} ${n === 1 ? "file" : "files"}`;
 
@@ -207,9 +230,17 @@ export async function detectStack(root: string, o: { read?: Reader } = {}): Prom
         o.read ??
         (async rel => {
             const { abs } = await resolveInClone(root, rel);
+            if ((await stat(abs)).size > MAX_FILE_BYTES) throw new Error(`${rel} is too large to be a manifest`);
             return (await readFile(abs, "utf8")).slice(0, MAX_FILE_CHARS);
         });
-    const files = (await git(["ls-files", "-z"], root)).split("\0").filter(f => f && !f.includes("node_modules/"));
+    const files = (await git(["ls-files", "-z"], root)).split("\0").filter(
+        f =>
+            f &&
+            !f
+                .split("/")
+                .slice(0, -1)
+                .some(dir => DETECT_SKIP.has(dir))
+    );
     const manifests: string[] = [];
     const take = async (rel: string) => {
         try {
@@ -221,13 +252,18 @@ export async function detectStack(root: string, o: { read?: Reader } = {}): Prom
         }
     };
 
-    const deps = new Map<string, string>();
-    for (const rel of files.filter(f => /(^|\/)package\.json$/.test(f))) {
+    // The root manifest first, so a monorepo's versions are the root's.
+    const depth = (f: string) => f.split("/").length;
+    const deps: Deps = new Map();
+    for (const rel of files.filter(f => /(^|\/)package\.json$/.test(f)).sort((a, b) => depth(a) - depth(b) || a.localeCompare(b))) {
         const text = await take(rel);
         try {
             const json = JSON.parse(text ?? "") as Record<string, Record<string, string> | undefined>;
-            for (const field of ["dependencies", "devDependencies", "peerDependencies", "optionalDependencies"]) {
-                for (const [name, range] of Object.entries(json[field] ?? {})) if (!deps.has(name)) deps.set(name, String(range));
+            for (const field of ["dependencies", "peerDependencies", "optionalDependencies", "devDependencies"]) {
+                for (const [name, range] of Object.entries(json[field] ?? {})) {
+                    const seen = deps.get(name);
+                    deps.set(name, { range: seen?.range ?? String(range), prod: (seen?.prod ?? false) || field !== "devDependencies" });
+                }
             }
         } catch {
             // A package.json that is not JSON says nothing about the stack.
@@ -235,15 +271,22 @@ export async function detectStack(root: string, o: { read?: Reader } = {}): Prom
     }
 
     const databases = new Set(labels(DATABASES, deps));
-    const tenancy = new Set<string>();
+    // One hint per key, naming the first file that holds it: a schema with many migrations would
+    // otherwise outgrow the profile Andrii confirms.
+    const tenancy = new Map<string, string[]>();
+    const hint = (key: string, rel: string) => {
+        const where = tenancy.get(key) ?? [];
+        if (!where.includes(rel)) where.push(rel);
+        tenancy.set(key, where);
+    };
     const schemas = [...files.filter(f => f.endsWith(".prisma")), ...files.filter(f => SQL_MIGRATION.test(f)).slice(0, MAX_SQL_FILES)];
     for (const rel of schemas) {
         const text = await take(rel);
         if (!text) continue;
         const provider = text.match(/provider\s*=\s*"(\w+)"/g)?.map(p => p.match(/"(\w+)"/)![1]);
         for (const p of provider ?? []) if (PRISMA_PROVIDERS[p]) databases.add(PRISMA_PROVIDERS[p]);
-        for (const m of text.matchAll(TENANT_KEY)) tenancy.add(`${rel}: ${m[0]}`);
-        if (rel.endsWith(".prisma")) for (const m of text.matchAll(TENANT_MODEL)) tenancy.add(`${rel}: model ${m[1]}`);
+        for (const m of text.matchAll(TENANT_KEY)) hint(m[0], rel);
+        if (rel.endsWith(".prisma")) for (const m of text.matchAll(TENANT_MODEL)) hint(`model ${m[1]}`, rel);
     }
 
     const languages: string[] = [];
@@ -275,7 +318,9 @@ export async function detectStack(root: string, o: { read?: Reader } = {}): Prom
         orms: labels(ORMS, deps),
         auth: labels(AUTH, deps),
         llmSdks: labels(LLM_SDKS, deps),
-        tenancyHints: [...tenancy].sort(),
+        tenancyHints: [...tenancy]
+            .sort(([a], [b]) => a.localeCompare(b))
+            .map(([key, where]) => `${key} (${where[0]}${where.length > 1 ? ` and ${where.length - 1} more` : ""})`),
         aiBuiltSigns: aiBuiltSigns.sort(),
         notCovered,
         manifests: manifests.sort()
@@ -284,7 +329,7 @@ export async function detectStack(root: string, o: { read?: Reader } = {}): Prom
 
 /** The conditional aspects the profile calls for (design § 7). */
 export function suggestAspects(s: StackProfile): AspectKey[] {
-    return [...(s.llmSdks.length ? (["llm"] as const) : []), ...(s.tenancyHints.length ? (["tenancy"] as const) : [])];
+    return [...(s.llmSdks.some(shipped) ? (["llm"] as const) : []), ...(s.tenancyHints.length ? (["tenancy"] as const) : [])];
 }
 
 export function suggestAiBuilt(s: StackProfile): boolean {
@@ -303,7 +348,19 @@ export function suggestionsFor(profiles: (StackProfile | null)[]): { aspects: As
 
 /** The profile as the agents read it, in the cached prefix. */
 export function stackProfileText(s: StackProfile): string {
-    const line = (label: string, items: string[]) => `${label}: ${items.length ? items.join(", ") : "none found"}`;
+    const capped = (items: string[]) =>
+        items.length > MAX_LIST ? [...items.slice(0, MAX_LIST), `and ${items.length - MAX_LIST} more`] : items;
+    const line = (label: string, items: string[]) => `${label}: ${items.length ? capped(items).join(", ") : "none found"}`;
+    // SQL migrations are counted per folder rather than listed.
+    const sql = new Map<string, number>();
+    for (const m of s.manifests.filter(f => SQL_MIGRATION.test(f))) {
+        const dir = m.match(/^(.*?(?:^|\/)(?:supabase\/)?migrations?\/)/i)?.[1] ?? "";
+        sql.set(dir, (sql.get(dir) ?? 0) + 1);
+    }
+    const manifests = [
+        ...s.manifests.filter(f => !SQL_MIGRATION.test(f)),
+        ...[...sql].map(([dir, n]) => `${n} SQL ${n === 1 ? "migration" : "migrations"} under ${dir}`)
+    ];
     return [
         line("Languages", s.languages),
         line("Frameworks", s.frameworks),
@@ -314,6 +371,6 @@ export function stackProfileText(s: StackProfile): string {
         line("Multi-tenancy hints", s.tenancyHints),
         line("Signs of AI-assisted development", s.aiBuiltSigns),
         line("Not covered by this audit", s.notCovered),
-        line("Manifests read", s.manifests)
+        line("Manifests read", manifests)
     ].join("\n");
 }
