@@ -4,6 +4,7 @@ import { notFound } from "next/navigation";
 import { deleteProject, setConsent } from "@/app/actions";
 import { Badge, Card, Icon, PageHeader, RunStatus, button } from "@/app/ui";
 import { credentialStatus } from "@/engine/credentials";
+import { overReserve, planUsageLine, readPlanUsage } from "@/engine/plan-usage";
 import { getProject } from "@/server/queries";
 
 import { ModelAccessCard } from "./ModelAccess";
@@ -19,6 +20,8 @@ export default async function ProjectPage({ params }: { params: Promise<{ projec
     if (!project) notFound();
     const defaults = { usd: Number(process.env.DEFAULT_BUDGET_USD ?? 10), tokens: Number(process.env.DEFAULT_BUDGET_TOKENS ?? 400000) };
     const active = project.runs.some(r => r.status === "queued" || r.status === "running");
+    const usage = project.modelAccess === "claude_plan" ? await readPlanUsage() : null;
+    const planUsage = project.modelAccess === "claude_plan" ? { line: planUsageLine(usage), overReserve: overReserve(usage) } : null;
     return (
         <div className="space-y-8">
             <PageHeader
@@ -100,7 +103,7 @@ export default async function ProjectPage({ params }: { params: Promise<{ projec
 
                 <div className="space-y-6 lg:col-span-2">
                     <Card as="section" title="Runs" description="Scanners, the repository map, then one agent per aspect.">
-                        <StartRunForm projectId={project.id} access={project.modelAccess} defaults={defaults} />
+                        <StartRunForm projectId={project.id} access={project.modelAccess} defaults={defaults} planUsage={planUsage} />
                         {project.runs.length > 0 && (
                             <ul className="mt-5 space-y-1 border-t border-zinc-100 pt-4">
                                 {project.runs.map(r => (

@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 
 import type { FormState } from "@/app/actions";
+import { readPlanUsage, reserveRefusal } from "@/engine/plan-usage";
 import type { SeverityName } from "@/engine/types";
 import { prisma } from "@/server/db";
 import { AccessChangedError, ActiveRunError, enqueueRerun } from "@/server/jobs";
@@ -72,10 +73,13 @@ export async function mergeAction(id: string, _prev: FormState, fd: FormData): P
 }
 
 /** Unreviewed findings of the aspect are superseded, their IDs left as gaps; reviewed ones reach the agent as known (design § 9). */
-export async function rerunAspect(runId: string, repositoryId: string, aspect: string) {
+export async function rerunAspect(runId: string, repositoryId: string, aspect: string, fd?: FormData) {
+    const allowPastReserve = fd?.get("allowPastReserve") === "on";
+    const { modelAccess } = await prisma.run.findUniqueOrThrow({ where: { id: runId }, select: { modelAccess: true } });
+    if (modelAccess === "claude_plan" && reserveRefusal(await readPlanUsage(), allowPastReserve)) redirect(`/runs/${runId}?notice=reserve`);
     let notice = "";
     try {
-        await enqueueRerun(runId, repositoryId, aspect);
+        await enqueueRerun(runId, repositoryId, aspect, { allowPastReserve });
     } catch (e) {
         if (e instanceof ActiveRunError) notice = "?notice=busy";
         else if (e instanceof AccessChangedError) notice = "?notice=access";

@@ -125,16 +125,18 @@ model Run {
 }
 
 model Job {
-  id           String    @id @default(uuid())
-  runId        String
-  run          Run       @relation(fields: [runId], references: [id], onDelete: Cascade)
-  aspect       String?
-  repositoryId String?
-  status       JobStatus @default(queued)
-  error        String?
-  createdAt    DateTime  @default(now())
-  startedAt    DateTime?
-  finishedAt   DateTime?
+  id               String    @id @default(uuid())
+  runId            String
+  run              Run       @relation(fields: [runId], references: [id], onDelete: Cascade)
+  aspect           String?
+  repositoryId     String?
+  status           JobStatus @default(queued)
+  /// Andrii's permission for this start to use more than half of the plan's 5-hour window; a re-run asks again.
+  allowPastReserve Boolean   @default(false)
+  error            String?
+  createdAt        DateTime  @default(now())
+  startedAt        DateTime?
+  finishedAt       DateTime?
 
   // The runner's queue reads only queued jobs.
   @@index([createdAt], map: "Job_queued_idx", where: raw("status = 'queued'"))

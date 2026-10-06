@@ -13,9 +13,13 @@ import { startConnectSpy } from "./connect-spy";
 /** A fake Messages API and a refusing proxy: a test whose subprocess reached the network sees it in `spy.attempts`. */
 export async function sdkHarness(
     messages: BetaMessage[],
-    o: { reply?: (n: number) => FakeReply | null; keepModel?: (n: number) => boolean } = {}
+    o: {
+        reply?: (n: number) => FakeReply | null;
+        keepModel?: (n: number) => boolean;
+        headers?: (n: number) => Record<string, string>;
+    } = {}
 ) {
-    const fake = await startFakeAnthropic(messages, { toolPrefix: `mcp__${SERVER}__`, reply: o.reply, keepModel: o.keepModel });
+    const fake = await startFakeAnthropic(messages, { toolPrefix: `mcp__${SERVER}__`, ...o });
     const spy = await startConnectSpy();
     const runDir = await mkdtemp(join(tmpdir(), "auditdesk-run-"));
     const config = (access: ModelAccess = "claude_plan"): SdkRunnerConfig => ({

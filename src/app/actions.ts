@@ -6,6 +6,7 @@ import { redirect } from "next/navigation";
 import { DEFAULT_EFFORT, DEFAULT_MODEL } from "@/engine/agent/request";
 import { workspaceDir } from "@/engine/config";
 import { credentialStatus } from "@/engine/credentials";
+import { readPlanUsage, reserveRefusal } from "@/engine/plan-usage";
 import { prisma } from "@/server/db";
 import { parseModelAccess, parseProjectForm, parseRepositoryForm, parseRunForm } from "@/server/forms";
 import { ActiveRunError, enqueueRun, requestStop } from "@/server/jobs";
@@ -50,6 +51,9 @@ export async function startRun(projectId: string, _prev: FormState, fd: FormData
                     ? "No Claude plan token: add it in Settings or .env.local."
                     : "No API key: add it in Settings or .env.local."
         };
+    const allowPastReserve = fd.get("allowPastReserve") === "on";
+    const refusal = project.modelAccess === "claude_plan" ? reserveRefusal(await readPlanUsage(), allowPastReserve) : null;
+    if (refusal) return { error: `${refusal} Tick "Allow past the 50% reserve" to start anyway.` };
     if (!project.repositories.length) return { error: "Add a repository first." };
     const aspects = ["security"];
     const parsed = parseRunForm(fd, project.repositories.length * aspects.length);
@@ -61,6 +65,7 @@ export async function startRun(projectId: string, _prev: FormState, fd: FormData
             effort: DEFAULT_EFFORT,
             modelAccess: project.modelAccess,
             aspects,
+            allowPastReserve,
             ...parsed.value
         });
     } catch (e) {

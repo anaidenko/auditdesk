@@ -26,4 +26,15 @@ describe("model access on runs", () => {
         await prisma.project.update({ where: { id: project.id }, data: { modelAccess: "claude_plan" } });
         await expect(enqueueRerun(runId, repo.id, "security")).resolves.toBe("queued");
     });
+
+    it("keeps a start's permission past the 50% reserve on its job; a re-run asks again", async () => {
+        const { project, repo } = await projectWithRepo();
+        const runId = await enqueueRun(project.id, { ...RUN, modelAccess: "claude_plan", allowPastReserve: true });
+        await prisma.run.update({ where: { id: runId }, data: { status: "done" } });
+        await enqueueRerun(runId, repo.id, "security");
+        await prisma.run.update({ where: { id: runId }, data: { status: "done" } });
+        await enqueueRerun(runId, repo.id, "security", { allowPastReserve: true });
+        const jobs = await prisma.job.findMany({ where: { runId }, orderBy: { createdAt: "asc" } });
+        expect(jobs.map(j => j.allowPastReserve)).toEqual([true, false, true]);
+    });
 });

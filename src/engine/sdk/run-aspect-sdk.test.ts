@@ -3,7 +3,7 @@ import { existsSync } from "node:fs";
 import { mkdtemp } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { message } from "@/engine/replay";
 import { CHECKLIST, finding, finish, text, tool } from "@/test/agent-messages";
@@ -15,14 +15,19 @@ import { type SdkHarness, sdkHarness } from "@/test/sdk";
 import { NUDGE, REOPEN } from "../agent/run-aspect";
 import { Masker } from "../masker";
 import { MemorySink } from "../memory-sink";
+import { readPlanUsage, recordPlanUsage } from "../plan-usage";
 import { SYSTEM_PROMPT, prefixBlocks } from "../prompts";
+import type { ModelAccess } from "../types";
 
 import type { FakeReply } from "./fake-server";
 import { type SdkRunnerConfig, runAspectSdk } from "./run-aspect-sdk";
 import { sdkToolName } from "./tools";
 
 const harnesses: SdkHarness[] = [];
+// The plan's usage is saved under AUDITDESK_HOME: a fresh one per test.
+beforeEach(async () => vi.stubEnv("AUDITDESK_HOME", await mkdtemp(join(tmpdir(), "auditdesk-home-"))));
 afterEach(async () => {
+    vi.unstubAllEnvs();
     for (const h of harnesses) expect(h.spy.attempts).toEqual([]);
     await Promise.all(harnesses.splice(0).map(h => h.close()));
 });
@@ -37,9 +42,12 @@ async function setup(
         keepModel?: (n: number) => boolean;
         override?: SdkRunnerConfig["override"];
         sink?: MemorySink;
+        headers?: (n: number) => Record<string, string>;
+        access?: ModelAccess;
+        allowPastReserve?: boolean;
     } = {}
 ) {
-    const h = await sdkHarness(responses, { reply: o.reply, keepModel: o.keepModel });
+    const h = await sdkHarness(responses, { reply: o.reply, keepModel: o.keepModel, headers: o.headers });
     harnesses.push(h);
     const clonePath =
         o.clone ??
@@ -58,7 +66,7 @@ async function setup(
     };
     const run = () =>
         runAspectSdk(
-            { ...h.config(), override: o.override },
+            { ...h.config(o.access), override: o.override, allowPastReserve: o.allowPastReserve },
             {
                 model: "claude-sonnet-5-5",
                 effort: "low",
@@ -294,5 +302,64 @@ describe("runAspectSdk", { timeout: 60_000 }, () => {
         expect(out.status).toBe("failed");
         expect(out.note).toMatch(/Isolation check failed/);
         expect(sink.findings).toHaveLength(0);
+    });
+
+    describe("the 50% reserve of the plan's 5-hour window (Andrii, 2026-10-06)", () => {
+        const resets = () => Math.floor(Date.now() / 1000) + 3600;
+        const windowAt = (utilization: number) => () => ({
+            "anthropic-ratelimit-unified-status": "allowed",
+            "anthropic-ratelimit-unified-representative-claim": "five_hour",
+            "anthropic-ratelimit-unified-reset": String(resets()),
+            "anthropic-ratelimit-unified-5h-utilization": String(utilization),
+            "anthropic-ratelimit-unified-5h-reset": String(resets())
+        });
+
+        it("saves the 5-hour usage the plan reports", async () => {
+            const { run } = await setup([finish()], { headers: windowAt(0.23) });
+            await run();
+            await expect(readPlanUsage()).resolves.toMatchObject({ utilization: 0.23 });
+        });
+
+        it("stops past 50% after that turn, keeping its finding", async () => {
+            const { h, sink, run } = await setup([tool("report_finding", finding()), finish()], { headers: windowAt(0.55) });
+            expect(await run()).toMatchObject({
+                status: "partial",
+                note: expect.stringMatching(/5-hour usage reached 55%, above the 50% reserve/)
+            });
+            expect(sink.findings).toHaveLength(1);
+            expect(h.fake.requests).toHaveLength(1);
+        });
+
+        it("goes on past 50% when the start was allowed", async () => {
+            const { run } = await setup([tool("report_finding", finding()), finish()], { headers: windowAt(0.55), allowPastReserve: true });
+            expect((await run()).status).toBe("done");
+        });
+
+        it("does not start above 50% without permission, and sends nothing", async () => {
+            await recordPlanUsage({ utilization: 0.6, resetsAt: resets() });
+            const { h, run } = await setup([finish()]);
+            expect(await run()).toMatchObject({ status: "partial", note: expect.stringMatching(/^Not started\. .*at 60%/) });
+            expect(h.fake.requests).toHaveLength(0);
+        });
+
+        it("stops when extra usage paid for a call, even when allowed past 50%", async () => {
+            const { h, run } = await setup([tool("read_file", { path: "src/db.js", start_line: 1, end_line: 1 }), finish()], {
+                allowPastReserve: true,
+                headers: () => ({
+                    "anthropic-ratelimit-unified-status": "rejected",
+                    "anthropic-ratelimit-unified-representative-claim": "five_hour",
+                    "anthropic-ratelimit-unified-reset": String(resets()),
+                    "anthropic-ratelimit-unified-overage-status": "allowed"
+                })
+            });
+            expect(await run()).toMatchObject({ status: "partial", note: expect.stringContaining("extra usage") });
+            expect(h.fake.requests).toHaveLength(1);
+        });
+
+        it("leaves an API key run alone", async () => {
+            await recordPlanUsage({ utilization: 0.9, resetsAt: resets() });
+            const { run } = await setup([finish()], { access: "api_key" });
+            expect((await run()).status).toBe("done");
+        });
     });
 });

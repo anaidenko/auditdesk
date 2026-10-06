@@ -30,11 +30,14 @@ export function AddRepositoryForm({ projectId }: { projectId: string }) {
 export function StartRunForm({
     projectId,
     access,
-    defaults
+    defaults,
+    planUsage
 }: {
     projectId: string;
     access: ModelAccess;
     defaults: { usd: number; tokens: number };
+    /** Claude plan only: the last 5-hour reading, and whether it is past the reserve. */
+    planUsage: { line: string; overReserve: boolean } | null;
 }) {
     const [state, action, pending] = useActionState<FormState, FormData>(startRun.bind(null, projectId), { error: null });
     return (
@@ -56,6 +59,17 @@ export function StartRunForm({
                     />
                 </label>
             </div>
+            {planUsage && (
+                <div className="space-y-2 text-xs text-zinc-600">
+                    <p data-testid="plan-usage">{planUsage.line}</p>
+                    {planUsage.overReserve && (
+                        <label className="flex items-center gap-2 font-medium text-amber-800">
+                            <input type="checkbox" name="allowPastReserve" className="size-4 rounded border-zinc-300 accent-amber-600" />
+                            Allow past the 50% reserve
+                        </label>
+                    )}
+                </div>
+            )}
             <button disabled={pending} className={`${button.primary} w-full`}>
                 <Icon name="play" />
                 Start run

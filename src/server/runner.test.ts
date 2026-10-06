@@ -7,6 +7,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { apiAspectRunner } from "@/engine/agent/run-aspect";
 import { git } from "@/engine/git";
+import { recordPlanUsage } from "@/engine/plan-usage";
 import { message, replayFetch } from "@/engine/replay";
 import { REPLAY_RULESETS, replayRunner } from "@/engine/scanners/replay";
 import { prisma } from "@/server/db";
@@ -185,7 +186,7 @@ describe("runner", () => {
 });
 
 describe("runLoop", () => {
-    const job = (id: string) => ({ id, runId: id, aspect: null, repositoryId: null });
+    const job = (id: string) => ({ id, runId: id, aspect: null, repositoryId: null, allowPastReserve: false });
     const loop = (o: {
         sweep?: () => Promise<unknown>;
         jobs: string[];
@@ -295,3 +296,26 @@ it("fails a Claude plan run that has no token before cloning, and calls nothing"
     expect(run.calls).toHaveLength(0);
     expect((await prisma.repository.findUniqueOrThrow({ where: { id: repo.id } })).commitSha).toBeNull();
 });
+
+it("leaves a Claude plan agent unstarted above the 50% reserve, and runs it when the start was allowed", async () => {
+    await home();
+    const replay = join(await mkdtemp(join(tmpdir(), "replay-")), "model.json");
+    await writeFile(replay, JSON.stringify([finish()]));
+    vi.stubEnv("AUDITDESK_REPLAY_MODEL", replay);
+    vi.stubEnv("AUDITDESK_SCANNER_REPLAY", "src/test/fixtures/scanners");
+    vi.stubEnv("WORKSPACE_DIR", await mkdtemp(join(tmpdir(), "ws-")));
+    await recordPlanUsage({ utilization: 0.6, resetsAt: Math.floor(Date.now() / 1000) + 3600 });
+    const { project } = await projectWithRepo(await makeSampleRepo());
+    const held = await enqueueRun(project.id, { ...runOptions, modelAccess: "claude_plan" });
+    await processJob((await claimJob())!);
+    const first = await prisma.run.findUniqueOrThrow({ where: { id: held }, include: { agents: true, calls: true } });
+    expect(first.agents.map(a => a.status)).toEqual(["partial"]);
+    expect(first.agents[0].note).toMatch(/^Not started\. .*at 60%/);
+    expect(first.calls).toHaveLength(0);
+
+    const allowed = await enqueueRun(project.id, { ...runOptions, modelAccess: "claude_plan", allowPastReserve: true });
+    await processJob((await claimJob())!);
+    const second = await prisma.run.findUniqueOrThrow({ where: { id: allowed }, include: { agents: true, calls: true } });
+    expect(second.agents.map(a => a.status)).toEqual(["done"]);
+    expect(second.calls).toHaveLength(1);
+}, 60_000);

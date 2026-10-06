@@ -33,12 +33,12 @@ const noop = async () => {};
 const NOWHERE = { HTTPS_PROXY: "http://127.0.0.1:9", HTTP_PROXY: "http://127.0.0.1:9", NO_PROXY: "127.0.0.1,localhost" };
 
 /** The run's engine, or why it cannot start. Replayed runs get the fake model on either engine. */
-export async function engineFor(access: ModelAccess, runDir: string): Promise<Engine | string> {
+export async function engineFor(access: ModelAccess, runDir: string, o: { allowPastReserve?: boolean } = {}): Promise<Engine | string> {
     const replay = process.env.AUDITDESK_REPLAY_MODEL;
     if (replay && access === "api_key") return { kind: "api", runAspect: apiAspectRunner(createClient(null)), close: noop };
     if (replay) {
         const fake = await startFakeAnthropic(JSON.parse(await readFile(replay, "utf8")), { toolPrefix: `mcp__${SERVER}__` });
-        const runAspect = sdkAspectRunner({ access, credential: "replay", runDir, baseUrl: fake.url, extraEnv: NOWHERE });
+        const runAspect = sdkAspectRunner({ access, credential: "replay", runDir, baseUrl: fake.url, extraEnv: NOWHERE, ...o });
         return { kind: "sdk", runAspect, close: fake.close };
     }
     const credential = await resolveCredential(access);
@@ -48,7 +48,7 @@ export async function engineFor(access: ModelAccess, runDir: string): Promise<En
             : "No API key: add it in Settings or .env.local.";
     return access === "api_key"
         ? { kind: "api", runAspect: apiAspectRunner(createClient(credential)), close: noop }
-        : { kind: "sdk", runAspect: sdkAspectRunner({ access, credential, runDir }), close: noop };
+        : { kind: "sdk", runAspect: sdkAspectRunner({ access, credential, runDir, ...o }), close: noop };
 }
 
 export function defaultDeps(sink: PrismaSink, runAspect: AspectRunner): AuditDeps {
@@ -81,7 +81,9 @@ export async function processJob(job: Job, deps?: (sink: PrismaSink) => AuditDep
     };
     if (!run.project.aiConsentAt) return finish("failed", "The client's AI consent is not recorded for this project.");
     // No credential, no clone: the run fails before it touches the client's code.
-    const engine = deps ? null : await engineFor(run.modelAccess, join(workspaceDir(), run.projectId, "runs", run.id));
+    const engine = deps
+        ? null
+        : await engineFor(run.modelAccess, join(workspaceDir(), run.projectId, "runs", run.id), { allowPastReserve: job.allowPastReserve });
     if (typeof engine === "string") return finish("failed", engine);
     await prisma.run.update({ where: { id: run.id }, data: { status: "running", startedAt: run.startedAt ?? new Date() } });
     try {

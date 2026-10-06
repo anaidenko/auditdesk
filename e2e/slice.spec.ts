@@ -1,6 +1,7 @@
 import { type Page, expect, test } from "@playwright/test";
-import { readFileSync } from "node:fs";
+import { mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { request as httpRequest } from "node:http";
+import { join } from "node:path";
 
 const samplePath = () => readFileSync("e2e/.sample-path", "utf8").trim();
 
@@ -118,4 +119,27 @@ test("a foreign Host header is refused", async () => {
         req.end();
     });
     expect(status).toBe(403);
+});
+
+// AUDITDESK_HOME of the end-to-end server (playwright.config.ts), where the engine saves the plan's usage.
+const E2E_HOME = "/tmp/auditdesk-e2e-home";
+
+test("a Claude plan run above half of the 5-hour window starts only when allowed", async ({ page }) => {
+    const now = Math.floor(Date.now() / 1000);
+    const usage = join(E2E_HOME, "plan-usage.json");
+    mkdirSync(E2E_HOME, { recursive: true });
+    writeFileSync(usage, JSON.stringify({ utilization: 0.62, resetsAt: now + 3600, seenAt: now }));
+    try {
+        await newProject(page, "Reserve");
+        await page.getByLabel(/client agreed/).check();
+        await page.getByRole("button", { name: "Save" }).click();
+        await expect(page.getByTestId("plan-usage")).toContainText("62%");
+        await page.getByRole("button", { name: "Start run" }).click();
+        await expect(page.getByText(/above the 50% reserve/)).toBeVisible();
+        await page.getByLabel("Allow past the 50% reserve").check();
+        await page.getByRole("button", { name: "Start run" }).click();
+        await expect(page.getByTestId("run-status")).toHaveText("done", { timeout: 60_000 });
+    } finally {
+        rmSync(usage, { force: true });
+    }
 });

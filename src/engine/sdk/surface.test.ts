@@ -297,4 +297,19 @@ describe("the bundled Claude Code against the fake server", { timeout: 60_000 },
         const key = await probe([ping("a"), done()], { credential: "key", headers: headers([0.23, 0.55]) });
         expect(windows(key.out)).toEqual([]);
     });
+
+    // isUsingOverage is the CLI's "status rejected, overage allowed": the plan's limit is spent and extra usage pays (Task E.7a).
+    it("reports a request that extra usage paid for as isUsingOverage", async () => {
+        const r = await probe([done()], {
+            credential: "plan",
+            headers: () => ({
+                "anthropic-ratelimit-unified-status": "rejected",
+                "anthropic-ratelimit-unified-representative-claim": "five_hour",
+                "anthropic-ratelimit-unified-reset": String(Math.floor(Date.now() / 1000) + 3600),
+                "anthropic-ratelimit-unified-overage-status": "allowed"
+            })
+        });
+        expect(r.requests).toHaveLength(1);
+        expect(r.out.flatMap(m => (m.type === "rate_limit_event" ? [m.rate_limit_info.isUsingOverage] : []))).toContain(true);
+    });
 });

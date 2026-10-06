@@ -8,6 +8,7 @@ import { APPROVED_FALLBACKS } from "../agent/request";
 import { type AgentOutcome, type AspectInput, type AspectRunner, NUDGE, REOPEN, outcomeOf } from "../agent/run-aspect";
 import type { AgentContext } from "../agent/tools";
 import { exhausted } from "../budget";
+import { PLAN_RESERVE, clock, percent, readPlanUsage, recordPlanUsage, reserveRefusal } from "../plan-usage";
 import { priceMessage } from "../prices";
 import type { CallRecord, ModelAccess } from "../types";
 
@@ -23,6 +24,8 @@ export interface SdkRunnerConfig {
     /** Tests and replayed runs only: the fake server. */
     baseUrl?: string;
     extraEnv?: Record<string, string>;
+    /** Andrii's permission for this start to use more than PLAN_RESERVE of the plan's 5-hour window. */
+    allowPastReserve?: boolean;
     /** Tests only: the control of the isolation test. */
     override?: Partial<Options>;
 }
@@ -98,6 +101,11 @@ export async function runAspectSdk(cfg: SdkRunnerConfig, o: AspectInput): Promis
     const dir = join(cfg.runDir, "sdk", ctx.agentRunId);
     await mkdir(join(dir, "cwd"), { recursive: true });
     await mkdir(join(dir, "config"), { recursive: true });
+    const plan = cfg.access === "claude_plan";
+    if (plan) {
+        const refusal = reserveRefusal(await readPlanUsage(), !!cfg.allowPastReserve);
+        if (refusal) return end("partial", `Not started. ${refusal} Re-run this aspect then, or allow it past the reserve.`);
+    }
 
     const approved = [o.model, ...(APPROVED_FALLBACKS[o.model] ?? [])];
     const responses = new Responses();
@@ -249,12 +257,25 @@ export async function runAspectSdk(cfg: SdkRunnerConfig, o: AspectInput): Promis
                     break;
                 case "rate_limit_event": {
                     const info = m.rate_limit_info;
-                    if (info.status === "rejected" && info.rateLimitType)
+                    // Extra usage is off on Andrii's account; if it ever pays for a call, the agent stops (Task E.7a).
+                    if (info.isUsingOverage && !stop)
+                        stop = { status: "partial", note: "Stopped: extra usage paid for a call; this tool spends none." };
+                    else if (info.status === "rejected" && info.rateLimitType)
                         planLimit = { window: info.rateLimitType, resetsAt: info.resetsAt };
                     const fiveHour = (info as PlanWindows).unifiedWindows?.five_hour;
                     if (fiveHour) {
-                        const note = `Claude plan: 5-hour usage ${Math.round(fiveHour.utilization * 100)}%, resets ${clock(fiveHour.resetsAt)}.`;
+                        const note = `Claude plan: 5-hour usage ${percent(fiveHour.utilization)}, resets ${clock(fiveHour.resetsAt)}.`;
                         write(() => ctx.sink.progress(note));
+                        write(() =>
+                            recordPlanUsage(fiveHour).catch(e =>
+                                ctx.sink.progress(`Could not save the plan's usage: ${(e as Error).message}`, "warn")
+                            )
+                        );
+                        if (plan && !cfg.allowPastReserve && fiveHour.utilization > PLAN_RESERVE && !stop && !planLimit)
+                            stop = {
+                                status: "partial",
+                                note: `Stopped: the Claude plan's 5-hour usage reached ${percent(fiveHour.utilization)}, above the ${percent(PLAN_RESERVE)} reserve; it resets ${clock(fiveHour.resetsAt)}. Re-run this aspect then, or allow it past the reserve.`
+                            };
                     }
                     break;
                 }
@@ -306,9 +327,6 @@ export async function runAspectSdk(cfg: SdkRunnerConfig, o: AspectInput): Promis
         q.close();
     }
 }
-
-const clock = (epochSeconds: number) =>
-    new Date(epochSeconds * 1000).toLocaleString("en-GB", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
 
 /** Per-call usage from the stream: message_start carries input and cache counts, message_delta the final ones. */
 function callRecord(
