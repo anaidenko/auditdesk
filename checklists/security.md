@@ -94,3 +94,10 @@ unguessable, home-grown crypto, hard-coded IVs or salts.
 ## SEC-15 Other dangerous patterns
 
 What Semgrep flags outside the items above, and anything exploitable that fits no other item.
+
+## SEC-16 Gaps typical of generated code (AI-built)
+
+Authorization present on some routes and missing on their siblings (the list endpoint checks,
+the export or delete endpoint does not); validation applied unevenly across handlers that take
+the same input; placeholder secrets, demo accounts or `TODO: add auth` left on live paths;
+security code copied from an example and never adapted (a JWT secret of `"secret"`, CORS `*`).

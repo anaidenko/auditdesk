@@ -198,6 +198,12 @@ ${
                 `<tr><td class="nowrap"><a href="#${e(f.label)}">${e(f.label)}</a></td><td>${badge(f)}</td><td>${e(f.title)}</td><td>${e(f.aspect)}</td>${manyRepos ? `<td>${e(f.repository)}</td>` : ""}<td class="nowrap">${e(f.effort ?? "")}</td></tr>`
         )
         .join("");
+    const aiBuilt = findings.filter(f => f.tags?.includes("ai-built"));
+    const aiSection = aiBuilt.length
+        ? `<section id="ai-built"><h2>Signs of AI-generated code</h2>
+<p class="muted">Findings typical of code written largely by AI tools: uneven checks, packages to verify, copies that drifted apart. Each is described in full under Findings.</p>
+${tocItems(aiBuilt)}</section>`
+        : "";
     const questions = d.questions.length
         ? `<section id="questions"><h2>Open questions</h2>
 <p class="muted">Points the code alone could not settle; each needs an answer from the team.</p>
@@ -234,6 +240,7 @@ ${d.questions.map(finding).join("\n")}</section>`
             ? groups.map(g => `<p class="toc-repo"><a href="#${e(ids.get(g.name)!)}">${e(g.name)}</a></p>${tocItems(g.list)}`).join("")
             : tocItems(findings)
     }</li>
+${aiBuilt.length ? `<li><a href="#ai-built">Signs of AI-generated code</a></li>` : ""}
 ${d.questions.length ? `<li><a href="#questions">Open questions</a>${tocItems(d.questions)}</li>` : ""}
 <li><a href="#disclaimer">Disclaimer</a></li>
 </ol></nav>
@@ -260,6 +267,7 @@ ${tools}
 ${findings.length ? `<table><thead><tr><th>ID</th><th>Severity</th><th>Title</th><th>Aspect</th>${manyRepos ? "<th>Repository</th>" : ""}<th>Effort</th></tr></thead><tbody>${rows}</tbody></table>` : `<p class="muted">No findings were accepted for this report.</p>`}
 ${manyRepos ? groups.map(g => `${repoHead(g.name)}\n${g.list.map(finding).join("\n")}`).join("\n") : findings.map(finding).join("\n")}
 </section>
+${aiSection}
 ${questions}
 
 <section id="disclaimer"><h2>Disclaimer</h2>

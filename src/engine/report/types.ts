@@ -17,6 +17,7 @@ export interface ReportFinding {
     evidence: Evidence[];
     references: References;
     repository: string;
+    tags?: string[];
 }
 
 export interface ReportData {

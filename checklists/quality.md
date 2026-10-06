@@ -48,3 +48,9 @@ Pipelines), pre-commit hooks.
 `==`, mutation of shared objects or props, dates computed in local time, money computed in
 floating point, the result of `find` or a lookup used without a null check. Floating promises
 belong to ARC-03, and how money is stored to DAT-01.
+
+## QUA-08 Copy-paste drift (AI-built)
+
+Near-identical modules, components or handlers generated one by one that have since diverged:
+a fix applied to one copy and not the others, the same helper written several ways, error
+handling and naming that change from file to file within one feature.

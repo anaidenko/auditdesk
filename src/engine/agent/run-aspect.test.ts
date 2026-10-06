@@ -8,7 +8,7 @@ import { makeRepo } from "@/test/git-repo";
 import { SAMPLE_KEY } from "@/test/sample-repo";
 
 import { ASPECTS } from "../aspects";
-import { type Checklist, loadChecklist } from "../checklists";
+import { type Checklist, loadChecklist, parseChecklist } from "../checklists";
 import { Masker } from "../masker";
 import { MemorySink } from "../memory-sink";
 import { prefixBlocks } from "../prompts";
@@ -72,6 +72,15 @@ describe("runAspect", () => {
         expect(sink.findings[0].evidence[0].snippet).toContain("SELECT * FROM u");
         expect(sink.calls).toHaveLength(3);
         expect(requests).toHaveLength(3);
+    });
+
+    it("tags a finding filed under an AI-built item ai-built", async () => {
+        const checklist = parseChecklist("security", "# Security\n\n## SEC-01 Authentication\n\n## SEC-02 Missing checks (AI-built)\n");
+        const { sink, run } = await setup([tool("report_finding", finding({ checklist_item: "SEC-02", tags: ["auth"] })), finish()], {
+            checklist
+        });
+        await run();
+        expect(sink.findings[0].tags).toEqual(["auth", "ai-built"]);
     });
 
     it("returns bad evidence to the model as an error it can correct", async () => {

@@ -226,4 +226,31 @@ describe("the cached prefix", () => {
         expect(inputs.map(i => i.share.tokens)).toEqual([100_000, 100_000, 100_000, 100_000]);
         expect(inputs.map(i => i.share.usd)).toEqual([2.5, 2.5, 2.5, 2.5]);
     });
+
+    it("gives the agent the AI-built items only when the mode is on", async () => {
+        const runWith = async (aiBuilt: boolean) => {
+            const { inputs, runAspect } = capturing();
+            await audit(
+                new TestSink(),
+                await makeSampleRepo(),
+                await mkdtemp(join(tmpdir(), "ws-")),
+                { brief: { product: null, concerns: null, outOfScope: null, aiBuilt } },
+                runAspect
+            );
+            return inputs[0];
+        };
+        const [off, on] = [await runWith(false), await runWith(true)];
+        expect(off.firstMessage).not.toMatch(/SEC-16/);
+        expect(off.ctx.checklist.items.map(i => i.id)).not.toContain("SEC-16");
+        expect(on.firstMessage).toMatch(/SEC-16/);
+    });
+
+    it("leaves the shared prefix as it was when the AI-built mode is off and no brief is written", async () => {
+        const prefix = async (over: Partial<AuditInput>) => {
+            const { inputs, runAspect } = capturing();
+            await audit(new TestSink(), await makeSampleRepo(), await mkdtemp(join(tmpdir(), "ws-")), over, runAspect);
+            return JSON.stringify(inputs[0].system);
+        };
+        expect(await prefix({ brief: { product: null, concerns: null, outOfScope: null, aiBuilt: false } })).toBe(await prefix({}));
+    });
 });

@@ -1,13 +1,13 @@
 import { describe, expect, it } from "vitest";
 
-import { loadChecklist, parseChecklist } from "./checklists";
+import { forMode, loadChecklist, parseChecklist } from "./checklists";
 
 describe("checklists", () => {
     it("parses item IDs and titles", () => {
         const c = parseChecklist("security", "# Security\n\nIntro.\n\n## SEC-01 Authentication\n\nBody.\n\n## SEC-02 Sessions\n\nBody.\n");
         expect(c.items).toEqual([
-            { id: "SEC-01", title: "Authentication" },
-            { id: "SEC-02", title: "Sessions" }
+            { id: "SEC-01", title: "Authentication", aiBuilt: false },
+            { id: "SEC-02", title: "Sessions", aiBuilt: false }
         ]);
     });
 
@@ -19,8 +19,28 @@ describe("checklists", () => {
         expect(() => parseChecklist("security", "# S\n\n## DEP-01 A\n")).toThrow(/DEP-01/);
     });
 
-    it("ships a security checklist numbered SEC-01 to SEC-15 without gaps", async () => {
+    it("ships a security checklist numbered SEC-01 to SEC-16 without gaps", async () => {
         const c = await loadChecklist("security");
-        expect(c.items.map(i => i.id)).toEqual(Array.from({ length: 15 }, (_, i) => `SEC-${String(i + 1).padStart(2, "0")}`));
+        expect(c.items.map(i => i.id)).toEqual(Array.from({ length: 16 }, (_, i) => `SEC-${String(i + 1).padStart(2, "0")}`));
+    });
+
+    it("marks the AI-built items, and leaves them out unless the mode is on", () => {
+        const c = parseChecklist(
+            "security",
+            "# Security\n\nIntro.\n\n## SEC-01 Authentication\n\nA.\n\n## SEC-02 Missing checks (AI-built)\n\nB.\n"
+        );
+        expect(c.items.map(i => i.aiBuilt)).toEqual([false, true]);
+        const off = forMode(c, false);
+        expect(off.items.map(i => i.id)).toEqual(["SEC-01"]);
+        expect(off.text).not.toMatch(/SEC-02|Missing checks|B\./);
+        expect(off.text).toContain("A.");
+        expect(forMode(c, true)).toEqual(c);
+    });
+
+    it("ships the AI-built items of design § 7 in Security, Dependencies and Code quality", async () => {
+        const built = async (a: string) => (await loadChecklist(a)).items.filter(i => i.aiBuilt).map(i => i.id);
+        expect(await built("security")).toEqual(["SEC-16"]);
+        expect(await built("dependencies")).toEqual(["DEP-09"]);
+        expect(await built("quality")).toEqual(["QUA-08"]);
     });
 });

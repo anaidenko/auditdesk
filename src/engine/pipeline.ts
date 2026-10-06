@@ -4,7 +4,7 @@ import type { Effort } from "./agent/request";
 import type { AgentOutcome, AspectRunner } from "./agent/run-aspect";
 import { aspectTitle } from "./aspects";
 import { shareFor } from "./budget";
-import { loadChecklist } from "./checklists";
+import { forMode, loadChecklist } from "./checklists";
 import { readSnippet } from "./files";
 import { Masker } from "./masker";
 import { type Brief, aspectMessage, briefText, prefixBlocks } from "./prompts";
@@ -158,7 +158,7 @@ export async function runAudit(input: AuditInput, deps: AuditDeps): Promise<{ st
                 continue;
             }
             if (input.only) await sink.supersedeUnreviewed(repo.id, aspect);
-            const checklist = await loadChecklist(aspect, deps.checklistsDir);
+            const checklist = forMode(await loadChecklist(aspect, deps.checklistsDir), input.brief?.aiBuilt ?? false);
             const agentRunId = await sink.startAgent(repo.id, aspect, share);
             await sink.progress(`Agent: ${checklist.title} (${share.tokens.toLocaleString("en-US")} tokens, $${share.usd.toFixed(2)})…`);
             const outcome = await deps

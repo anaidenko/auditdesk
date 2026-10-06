@@ -48,7 +48,8 @@ export async function loadReportData(projectId: string): Promise<ReportData> {
         effortHours: r.effortHours,
         evidence: r.evidence as unknown as Evidence[],
         references: r.references as References,
-        repository: names.get(r.repositoryId ?? "") ?? "—"
+        repository: names.get(r.repositoryId ?? "") ?? "—",
+        tags: r.tags
     });
     // Per repository and aspect, the latest agent that finished, across runs: a re-run adds a second
     // agent to its run, and a run that failed before its agents started has none.

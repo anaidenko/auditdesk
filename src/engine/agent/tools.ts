@@ -213,7 +213,9 @@ async function reportFinding(ctx: AgentContext, input: z.infer<typeof findingInp
         recommendation: input.recommendation,
         effort: input.effort,
         references: input.cwe ? { cwe: input.cwe } : {},
-        tags: input.tags,
+        tags: ctx.checklist.items.find(i => i.id === input.checklist_item)?.aiBuilt
+            ? [...new Set([...input.tags, "ai-built"])]
+            : input.tags,
         source: "agent",
         fingerprint: fingerprint(base)
     });

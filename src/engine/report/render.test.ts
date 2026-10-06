@@ -141,6 +141,26 @@ describe("renderReport", () => {
         expect(renderReport(data())).not.toContain('class="repo"');
     });
 
+    it("gathers the findings tagged ai-built under Signs of AI-generated code", () => {
+        const html = renderReport(
+            data({
+                findings: [
+                    finding({ label: "F-001", title: "Raw SQL" }),
+                    finding({ label: "F-002", title: "Admin action unchecked", tags: ["ai-built"] })
+                ]
+            })
+        );
+        const section = between(html, '<section id="ai-built">', "</section>");
+        expect(section).toContain("Signs of AI-generated code");
+        expect(section).toContain('href="#F-002"');
+        expect(section).not.toContain('href="#F-001"');
+        expect(between(html, '<nav class="toc">', "</nav>")).toContain('<a href="#ai-built">Signs of AI-generated code</a>');
+    });
+
+    it("has no AI-generated code section when no finding carries the tag", () => {
+        expect(renderReport(data())).not.toContain('id="ai-built"');
+    });
+
     // The cover names a single repository; a column repeating it wrapped in the PDF (R.3).
     it("shows the repository column only when the audit spans more than one repository", () => {
         const head = (html: string) => between(html, "<thead>", "</thead>");
