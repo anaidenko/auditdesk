@@ -28,10 +28,15 @@ export async function enqueueRun(
 
 export async function enqueueRerun(runId: string, repositoryId: string, aspect: string): Promise<void> {
     try {
-        await prisma.$transaction([
-            prisma.run.update({ where: { id: runId }, data: { status: "queued", stopRequested: false, finishedAt: null } }),
-            prisma.job.create({ data: { runId, repositoryId, aspect } })
-        ]);
+        await prisma.$transaction(async tx => {
+            // Only a finished run is re-queued: a second press would otherwise queue a second, paid job.
+            const { count } = await tx.run.updateMany({
+                where: { id: runId, status: { notIn: ["queued", "running"] } },
+                data: { status: "queued", stopRequested: false, finishedAt: null }
+            });
+            if (!count) throw new ActiveRunError();
+            await tx.job.create({ data: { runId, repositoryId, aspect } });
+        });
     } catch (e) {
         if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === "P2002") throw new ActiveRunError();
         throw e;

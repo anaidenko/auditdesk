@@ -68,18 +68,58 @@ export async function processJob(job: Job, deps: (sink: PrismaSink) => AuditDeps
     }
 }
 
+export interface LoopDeps {
+    markInterrupted: () => Promise<unknown>;
+    claimJob: () => Promise<Job | null>;
+    processJob: (job: Job) => Promise<void>;
+    sleep: (ms: number) => Promise<unknown>;
+    log: (message: string, error: unknown) => void;
+    pollMs: number;
+    /** Tests end the loop; the server's never does. */
+    keepGoing?: () => boolean;
+}
+
+/**
+ * Nothing may end this loop: if it died, every later run would wait in "queued" until a restart.
+ * The startup sweep must succeed before the first claim, or a stale queued job would run unasked.
+ */
+export async function runLoop(d: LoopDeps): Promise<void> {
+    const keepGoing = d.keepGoing ?? (() => true);
+    for (;;) {
+        try {
+            await d.markInterrupted();
+            break;
+        } catch (e) {
+            d.log("The startup sweep failed; retrying. Is the database up?", e);
+            await d.sleep(d.pollMs);
+        }
+    }
+    while (keepGoing()) {
+        const job = await d.claimJob().catch(() => null);
+        if (!job) {
+            await d.sleep(d.pollMs);
+            continue;
+        }
+        try {
+            await d.processJob(job);
+        } catch (e) {
+            d.log(`Job ${job.id} ended with an error the run could not record.`, e);
+        }
+    }
+}
+
 const g = globalThis as unknown as { auditdeskRunner?: boolean };
 
 /** Started once per server process by instrumentation.ts; one job at a time in v1 (design § 5). */
 export function startRunner(pollMs = 2000): void {
     if (g.auditdeskRunner) return;
     g.auditdeskRunner = true;
-    void (async () => {
-        await markInterrupted();
-        for (;;) {
-            const job = await claimJob().catch(() => null);
-            if (job) await processJob(job);
-            else await sleep(pollMs);
-        }
-    })();
+    void runLoop({
+        markInterrupted,
+        claimJob,
+        processJob: job => processJob(job),
+        sleep,
+        log: (message, error) => console.error(`[runner] ${message}`, error),
+        pollMs
+    });
 }

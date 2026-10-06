@@ -8,9 +8,9 @@ import { beforeEach, describe, expect, it } from "vitest";
 import { message, replayFetch } from "@/engine/replay";
 import { REPLAY_RULESETS, replayRunner } from "@/engine/scanners/replay";
 import { prisma } from "@/server/db";
-import { claimJob, enqueueRerun, enqueueRun, markInterrupted } from "@/server/jobs";
+import { ActiveRunError, claimJob, enqueueRerun, enqueueRun, markInterrupted } from "@/server/jobs";
 import { listen } from "@/server/pg";
-import { processJob } from "@/server/runner";
+import { processJob, runLoop } from "@/server/runner";
 import type { PrismaSink } from "@/server/sink";
 import { resetDb } from "@/test/db";
 import { projectWithRepo } from "@/test/factories";
@@ -106,6 +106,15 @@ describe("runner", () => {
         expect(Number(rerun.usdShare)).toBeLessThanOrEqual(0.5);
     });
 
+    it("queues a re-run once, however many times its button is pressed", async () => {
+        const { project, repo } = await projectWithRepo(await makeSampleRepo());
+        const runId = await enqueueRun(project.id, runOptions);
+        await processJob((await claimJob())!, await deps());
+        await enqueueRerun(runId, repo.id, "security");
+        await expect(enqueueRerun(runId, repo.id, "security")).rejects.toBeInstanceOf(ActiveRunError);
+        expect(await prisma.job.count({ where: { runId, status: "queued" } })).toBe(1);
+    });
+
     it("refuses to run without the client's AI consent", async () => {
         const { project } = await projectWithRepo();
         await prisma.project.update({ where: { id: project.id }, data: { aiConsentAt: null } });
@@ -127,5 +136,55 @@ describe("runner", () => {
         await new Promise(r => setTimeout(r, 200));
         await stop();
         expect(heard).toContain(runId);
+    });
+});
+
+describe("runLoop", () => {
+    const job = (id: string) => ({ id, runId: id, aspect: null, repositoryId: null });
+    const loop = (o: { sweep?: () => Promise<unknown>; jobs: string[]; process: (id: string) => Promise<void>; claims?: string[] }) => {
+        const queue = [...o.jobs];
+        let claimed = 0;
+        return runLoop({
+            markInterrupted: o.sweep ?? (async () => 0),
+            claimJob: async () => {
+                claimed++;
+                o.claims?.push("claim");
+                const id = queue.shift();
+                return id ? job(id) : null;
+            },
+            processJob: j => o.process(j.id),
+            sleep: async () => {},
+            log: () => {},
+            pollMs: 0,
+            // Drain the queue, then one empty claim.
+            keepGoing: () => claimed <= o.jobs.length
+        });
+    };
+
+    it("keeps serving jobs after one of them throws", async () => {
+        const done: string[] = [];
+        await loop({
+            jobs: ["a", "b"],
+            process: async id => {
+                if (id === "a") throw new Error("its project was deleted mid-run");
+                done.push(id);
+            }
+        });
+        expect(done).toEqual(["b"]);
+    });
+
+    it("retries the startup sweep until the database answers, and claims nothing before it", async () => {
+        const calls: string[] = [];
+        let failures = 2;
+        await loop({
+            sweep: async () => {
+                calls.push("sweep");
+                if (failures-- > 0) throw new Error("ECONNREFUSED");
+            },
+            jobs: [],
+            process: async () => {},
+            claims: calls
+        });
+        expect(calls.slice(0, 4)).toEqual(["sweep", "sweep", "sweep", "claim"]);
     });
 });

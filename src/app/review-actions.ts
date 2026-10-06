@@ -5,7 +5,7 @@ import { redirect } from "next/navigation";
 
 import type { SeverityName } from "@/engine/types";
 import { prisma } from "@/server/db";
-import { enqueueRerun } from "@/server/jobs";
+import { ActiveRunError, enqueueRerun } from "@/server/jobs";
 import { accept, edit, exclude, merge, reject } from "@/server/review";
 
 async function listPath(id: string) {
@@ -55,6 +55,11 @@ export async function mergeAction(id: string, fd: FormData) {
 
 /** Unreviewed findings of the aspect are superseded, their IDs left as gaps; reviewed ones reach the agent as known (design § 9). */
 export async function rerunAspect(runId: string, repositoryId: string, aspect: string) {
-    await enqueueRerun(runId, repositoryId, aspect);
+    try {
+        await enqueueRerun(runId, repositoryId, aspect);
+    } catch (e) {
+        // A second press: the first one already queued the re-run, so show it.
+        if (!(e instanceof ActiveRunError)) throw e;
+    }
     redirect(`/runs/${runId}`);
 }
