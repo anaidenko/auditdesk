@@ -10,6 +10,8 @@ read-only tools. Setup and commands: README.md.
 - Be concise: short explanations, the focus on code.
 - For a large change, describe the approach and wait for a "go" before writing it.
 - Chat with Andrii in Russian. Everything committed is in English.
+- End a turn with a message that opens with `TL;DR` and stands alone: it repeats every link,
+  number, decision and open question from the work above it, and links each file it mentions.
 
 ## This project
 
