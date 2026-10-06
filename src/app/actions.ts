@@ -1,0 +1,59 @@
+"use server";
+
+import { revalidatePath } from "next/cache";
+import { redirect } from "next/navigation";
+
+import { DEFAULT_EFFORT, DEFAULT_MODEL } from "@/engine/agent/request";
+import { workspaceDir } from "@/engine/config";
+import { prisma } from "@/server/db";
+import { parseProjectForm, parseRepositoryForm, parseRunForm } from "@/server/forms";
+import { ActiveRunError, enqueueRun, requestStop } from "@/server/jobs";
+import { deleteProject as removeProject } from "@/server/projects";
+
+export type FormState = { error: string | null };
+
+export async function createProject(_prev: FormState, fd: FormData): Promise<FormState> {
+    const parsed = parseProjectForm(fd);
+    if (!parsed.ok) return { error: parsed.error };
+    const p = await prisma.project.create({ data: parsed.value });
+    redirect(`/projects/${p.id}`);
+}
+
+export async function addRepository(projectId: string, _prev: FormState, fd: FormData): Promise<FormState> {
+    const parsed = parseRepositoryForm(fd);
+    if (!parsed.ok) return { error: parsed.error };
+    await prisma.repository.create({ data: { projectId, ...parsed.value } });
+    revalidatePath(`/projects/${projectId}`);
+    return { error: null };
+}
+
+export async function setConsent(projectId: string, fd: FormData): Promise<void> {
+    await prisma.project.update({ where: { id: projectId }, data: { aiConsentAt: fd.get("consent") === "on" ? new Date() : null } });
+    revalidatePath(`/projects/${projectId}`);
+}
+
+export async function startRun(projectId: string, _prev: FormState, fd: FormData): Promise<FormState> {
+    const project = await prisma.project.findUniqueOrThrow({ where: { id: projectId }, include: { repositories: true } });
+    if (!project.aiConsentAt) return { error: "Record the client's AI consent first." };
+    if (!project.repositories.length) return { error: "Add a repository first." };
+    const aspects = ["security"];
+    const parsed = parseRunForm(fd, project.repositories.length * aspects.length);
+    if (!parsed.ok) return { error: parsed.error };
+    let runId: string;
+    try {
+        runId = await enqueueRun(projectId, { model: DEFAULT_MODEL, effort: DEFAULT_EFFORT, aspects, ...parsed.value });
+    } catch (e) {
+        if (e instanceof ActiveRunError) return { error: e.message };
+        throw e;
+    }
+    redirect(`/runs/${runId}`);
+}
+
+export async function stopRun(runId: string): Promise<void> {
+    await requestStop(runId);
+}
+
+export async function deleteProject(projectId: string): Promise<void> {
+    await removeProject(projectId, workspaceDir());
+    redirect("/");
+}

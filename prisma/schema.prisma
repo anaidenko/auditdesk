@@ -1,0 +1,224 @@
+generator client {
+  provider        = "prisma-client"
+  output          = "../src/generated/prisma"
+  previewFeatures = ["partialIndexes"]
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum RunStatus {
+  queued
+  running
+  done
+  failed
+  interrupted
+  stopped
+}
+
+enum JobStatus {
+  queued
+  running
+  done
+  failed
+  interrupted
+}
+
+enum AgentStatus {
+  pending
+  running
+  done
+  partial
+  declined
+  failed
+  stopped
+}
+
+enum FindingKind {
+  finding
+  question
+}
+
+enum Severity {
+  critical
+  high
+  medium
+  low
+  info
+}
+
+enum FindingSource {
+  scanner
+  agent
+}
+
+enum FindingStatus {
+  unreviewed
+  accepted
+  edited
+  rejected
+  excluded
+  merged
+  superseded
+}
+
+model Project {
+  id                String       @id @default(uuid())
+  name              String
+  aiConsentAt       DateTime?
+  nextFindingNumber Int          @default(1)
+  createdAt         DateTime     @default(now())
+  repositories      Repository[]
+  runs              Run[]
+  findings          Finding[]
+}
+
+model Repository {
+  id        String     @id @default(uuid())
+  projectId String
+  project   Project    @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  source    String
+  branch    String
+  commitSha String?
+  clonePath String?
+  createdAt DateTime   @default(now())
+  findings  Finding[]
+  agents    AgentRun[]
+}
+
+model Run {
+  id            String     @id @default(uuid())
+  projectId     String
+  project       Project    @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  status        RunStatus  @default(queued)
+  model         String
+  effort        String
+  aspects       String[]
+  budgetUsd     Decimal    @db.Decimal(10, 4)
+  budgetTokens  Int
+  stopRequested Boolean    @default(false)
+  toolVersions  Json?
+  /// Repository ID to the commit this run audited: a re-run returns to it (design § 9).
+  commits       Json?
+  error         String?
+  createdAt     DateTime   @default(now())
+  startedAt     DateTime?
+  finishedAt    DateTime?
+  jobs          Job[]
+  agents        AgentRun[]
+  calls         ApiCall[]
+  events        RunEvent[]
+  findings      Finding[]
+
+  // One queued or running run per project: a double click cannot start two (plan § Decisions 6).
+  // The predicate is spelled as PostgreSQL stores it (IN becomes = ANY): Prisma 7.10 diffs the stored text.
+  @@unique([projectId], map: "Run_one_active_per_project", where: raw("status = ANY (ARRAY['queued'::\"RunStatus\", 'running'::\"RunStatus\"])"))
+}
+
+model Job {
+  id           String    @id @default(uuid())
+  runId        String
+  run          Run       @relation(fields: [runId], references: [id], onDelete: Cascade)
+  aspect       String?
+  repositoryId String?
+  status       JobStatus @default(queued)
+  error        String?
+  createdAt    DateTime  @default(now())
+  startedAt    DateTime?
+  finishedAt   DateTime?
+
+  // The runner's queue reads only queued jobs.
+  @@index([createdAt], map: "Job_queued_idx", where: raw("status = 'queued'"))
+}
+
+model AgentRun {
+  id           String      @id @default(uuid())
+  runId        String
+  run          Run         @relation(fields: [runId], references: [id], onDelete: Cascade)
+  repositoryId String
+  repository   Repository  @relation(fields: [repositoryId], references: [id], onDelete: Cascade)
+  aspect       String
+  status       AgentStatus @default(pending)
+  summary      String?
+  coverage     Json?
+  note         String?
+  tokenShare   Int
+  usdShare     Decimal     @db.Decimal(10, 4)
+  createdAt    DateTime    @default(now())
+  finishedAt   DateTime?
+  calls        ApiCall[]
+}
+
+model ApiCall {
+  id                 String    @id @default(uuid())
+  runId              String
+  run                Run       @relation(fields: [runId], references: [id], onDelete: Cascade)
+  agentRunId         String?
+  agentRun           AgentRun? @relation(fields: [agentRunId], references: [id], onDelete: SetNull)
+  requestedModel     String
+  servedModel        String
+  fallback           Boolean
+  inputTokens        Int
+  cacheWrite5mTokens Int
+  cacheWrite1hTokens Int
+  cacheReadTokens    Int
+  outputTokens       Int
+  costUsd            Decimal?  @db.Decimal(12, 6)
+  stopReason         String?
+  refusalCategory    String?
+  createdAt          DateTime  @default(now())
+}
+
+model RunEvent {
+  id        BigInt   @id @default(autoincrement())
+  runId     String
+  run       Run      @relation(fields: [runId], references: [id], onDelete: Cascade)
+  level     String   @default("info")
+  message   String
+  createdAt DateTime @default(now())
+
+  @@index([runId, id])
+}
+
+model Finding {
+  id             String                   @id @default(uuid())
+  projectId      String
+  project        Project                  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  number         Int
+  runId          String?
+  run            Run?                     @relation(fields: [runId], references: [id], onDelete: SetNull)
+  repositoryId   String?
+  repository     Repository?              @relation(fields: [repositoryId], references: [id], onDelete: SetNull)
+  agentRunId     String?
+  aspect         String
+  kind           FindingKind
+  checklistItem  String?
+  title          String
+  severity       Severity?
+  likelihood     String?
+  impact         String?
+  summary        String
+  explanation    String
+  recommendation String
+  effort         String?
+  effortHours    Int?
+  evidence       Json                     @db.JsonB
+  references     Json                     @default("{}") @db.JsonB
+  tags           String[]
+  source         FindingSource
+  fingerprint    String
+  status         FindingStatus            @default(unreviewed)
+  statusReason   String?
+  note           String?
+  mergedIntoId   String?
+  search         Unsupported("tsvector")?
+  createdAt      DateTime                 @default(now())
+  updatedAt      DateTime                 @updatedAt
+
+  @@unique([projectId, number])
+  @@index([projectId, fingerprint])
+  @@index([search], type: Gin)
+  // The review list opens on unreviewed findings.
+  @@index([projectId, severity], map: "Finding_unreviewed_idx", where: raw("status = 'unreviewed'"))
+}

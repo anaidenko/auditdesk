@@ -1,0 +1,18 @@
+services:
+  db:
+    image: postgres:18
+    environment:
+      POSTGRES_USER: auditdesk
+      POSTGRES_PASSWORD: auditdesk
+      POSTGRES_DB: auditdesk
+    # Published on loopback only; Docker otherwise publishes on every interface (design § 12).
+    ports:
+      - "127.0.0.1:5433:5432"
+    volumes:
+      - db:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U auditdesk"]
+      interval: 2s
+      retries: 30
+volumes:
+  db:
