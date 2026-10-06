@@ -1,23 +1,31 @@
 "use client";
 
+import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 
 import { stopRun } from "@/app/actions";
 import type { RunSnapshot } from "@/server/queries";
 
+import { clockTime } from "./clock";
+
 export function RunProgress({ runId }: { runId: string }) {
     const [snap, setSnap] = useState<Omit<RunSnapshot, "events"> | null>(null);
     const [events, setEvents] = useState<RunSnapshot["events"]>([]);
+    const router = useRouter();
     useEffect(() => {
         const source = new EventSource(`/runs/${runId}/events`);
         source.onmessage = e => {
             const next = JSON.parse(e.data) as RunSnapshot;
             setSnap(next);
             setEvents(prev => [...prev, ...next.events]);
-            if (next.terminal) source.close();
+            if (next.terminal) {
+                source.close();
+                // The page around this component (the re-run buttons) is rendered by the server.
+                router.refresh();
+            }
         };
         return () => source.close();
-    }, [runId]);
+    }, [runId, router]);
 
     if (!snap) return <p className="text-zinc-500">Connecting…</p>;
     return (
@@ -46,7 +54,7 @@ export function RunProgress({ runId }: { runId: string }) {
             <ol className="max-h-[28rem] overflow-y-auto rounded border border-zinc-200 bg-white p-3 font-mono text-xs">
                 {events.map(e => (
                     <li key={e.id} className={e.level === "error" ? "text-red-700" : e.level === "warn" ? "text-amber-700" : ""}>
-                        {e.at.slice(11, 19)} {e.message}
+                        {clockTime(e.at)} {e.message}
                     </li>
                 ))}
             </ol>

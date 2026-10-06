@@ -19,6 +19,8 @@ test("a run from project to downloaded report", async ({ page }) => {
     await page.getByRole("button", { name: "Save" }).click();
     await page.getByRole("button", { name: "Start run" }).click();
     await expect(page.getByTestId("run-status")).toHaveText("done", { timeout: 60_000 });
+    // Rendered by the server once the run ends, without a reload.
+    await expect(page.getByRole("button", { name: "Re-run this aspect" })).toBeVisible();
 
     await page.getByRole("link", { name: "Review the findings" }).click();
     const evalFinding = page.locator("details", { hasText: "User input reaches eval" });
