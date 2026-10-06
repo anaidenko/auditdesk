@@ -168,7 +168,10 @@ async function reportFinding(ctx: AgentContext, input: z.infer<typeof findingInp
     const evidence = [];
     for (const e of input.evidence) {
         const { abs, rel } = await resolveInClone(ctx.clonePath, e.file);
-        const lines = (await readFile(abs, "utf8")).split(/\r?\n/);
+        const text = await readFile(abs, "utf8").catch(() => {
+            throw new ToolError(`${rel} is a directory or unreadable; evidence must name a file.`);
+        });
+        const lines = text.split(/\r?\n/);
         if (e.start_line < 1 || e.end_line < e.start_line || e.end_line > lines.length)
             throw new ToolError(`${rel} has ${lines.length} lines; ${e.start_line}-${e.end_line} is not a valid range.`);
         const snippet = lines.slice(e.start_line - 1, Math.min(e.end_line, e.start_line + SNIPPET_LINES - 1)).join("\n");

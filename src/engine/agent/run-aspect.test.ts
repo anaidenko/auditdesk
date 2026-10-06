@@ -97,6 +97,17 @@ describe("runAspect", () => {
         expect(sink.findings).toHaveLength(1);
     });
 
+    it("returns evidence that names a directory to the model, instead of failing the run", async () => {
+        const { sink, requests, run } = await setup([
+            tool("report_finding", finding({ evidence: [{ file: "src", start_line: 1, end_line: 1 }] })),
+            tool("report_finding", finding()),
+            finish()
+        ]);
+        expect((await run()).status).toBe("done");
+        expect(JSON.stringify(requests[1].body.messages)).toMatch(/src is a directory or unreadable/);
+        expect(sink.findings).toHaveLength(1);
+    });
+
     it("masks secrets in tool results before they enter the conversation", async () => {
         const { requests, run } = await setup([tool("read_file", { path: "src/db.js", start_line: 1, end_line: 2 }), finish()], {
             secrets: [SAMPLE_KEY]
