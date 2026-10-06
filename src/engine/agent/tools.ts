@@ -79,85 +79,104 @@ const finishInput = z.strictObject({
     coverage: z.array(z.strictObject({ item: z.string(), status: z.enum(["examined", "partly", "not_examined"]) }))
 });
 
+/** One tool as both engines declare it: through betaZodTool on the API, through an MCP server on the SDK. */
+export interface ToolSpec {
+    name: string;
+    description: string;
+    inputSchema: z.ZodObject;
+    /** No side effect: the SDK may run it beside other read-only calls. */
+    readOnly: boolean;
+    // `never`: each spec takes its own schema's output, and the engines pass what that schema parsed.
+    run: (args: never) => Promise<string>;
+}
+
+const spec = <S extends z.ZodObject>(s: {
+    name: string;
+    description: string;
+    inputSchema: S;
+    readOnly: boolean;
+    run: (args: z.infer<S>) => Promise<string>;
+}): ToolSpec => s;
+
 /** The same seven tools for every aspect, declared from the first request: the cached prefix starts with them (design § 8). */
+export function toolSpecs(ctx: AgentContext): ToolSpec[] {
+    return [
+        spec({
+            name: "list_files",
+            description:
+                "List files under a directory of the repository, with sizes. Dependency and build folders are skipped; symlinks are listed, not followed.",
+            inputSchema: z.strictObject({
+                dir: z.string().describe('"." for the root.'),
+                glob: z.string().describe('Such as "**/*.ts", or an empty string.')
+            }),
+            readOnly: true,
+            run: guard(ctx, async ({ dir, glob }) => listFiles(ctx.clonePath, { dir, glob: glob || undefined }))
+        }),
+        spec({
+            name: "read_file",
+            description: "Read a line range of a file, with line numbers. At most 400 lines per call.",
+            inputSchema: z.strictObject({ path: z.string(), start_line: z.number().int(), end_line: z.number().int() }),
+            readOnly: true,
+            run: guard(ctx, async ({ path, start_line, end_line }) =>
+                readFileRange(ctx.clonePath, path, start_line, end_line, line => ctx.masker.mask(line))
+            )
+        }),
+        spec({
+            name: "grep",
+            description: "Search the repository with a JavaScript regular expression. At most 200 matches.",
+            inputSchema: z.strictObject({
+                pattern: z.string(),
+                glob: z.string().describe("Limits the files searched, or an empty string.")
+            }),
+            readOnly: true,
+            run: guard(ctx, async ({ pattern, glob }) =>
+                grepFiles(ctx.clonePath, pattern, { glob: glob || undefined, mask: line => ctx.masker.mask(line) })
+            )
+        }),
+        spec({
+            name: "repo_map",
+            description: "The repository map again: entry points, routes, data schema, environment variables, tests.",
+            inputSchema: z.strictObject({}),
+            readOnly: true,
+            run: guard(ctx, async () => ctx.repoMap)
+        }),
+        spec({
+            name: "scanner_results",
+            description: "The findings gitleaks, osv-scanner and Semgrep filed for an aspect of this repository, with their IDs.",
+            inputSchema: z.strictObject({ aspect: z.string().describe("Such as security or dependencies.") }),
+            readOnly: true,
+            run: guard(ctx, async ({ aspect }) => {
+                const rows = await ctx.sink.findingIndex(ctx.repositoryId, { source: "scanner", aspect });
+                return rows.length ? rows.join("\n") : `No scanner findings for ${aspect}.`;
+            })
+        }),
+        spec({
+            name: "report_finding",
+            description: "File one confirmed finding or question. Evidence lines must exist; the snippet is taken from the file.",
+            inputSchema: findingInput,
+            readOnly: false,
+            run: guard(ctx, async input => reportFinding(ctx, input))
+        }),
+        spec({
+            name: "finish_aspect",
+            description: "End this aspect with a summary and the coverage of every checklist item.",
+            inputSchema: finishInput,
+            readOnly: false,
+            run: guard(ctx, async input => finishAspect(ctx, input))
+        })
+    ];
+}
+
+/** The API engine's declaration: strict tools on the SDK's tool runner. */
 export function makeTools(ctx: AgentContext) {
     const strict = <T extends object>(tool: T): T & { strict: true } => ({
         ...tool,
         ...("input_schema" in tool ? { input_schema: strictSchema(tool.input_schema as object) } : {}),
         strict: true as const
     });
-    return [
-        strict(
-            betaZodTool({
-                name: "list_files",
-                description:
-                    "List files under a directory of the repository, with sizes. Dependency and build folders are skipped; symlinks are listed, not followed.",
-                inputSchema: z.strictObject({
-                    dir: z.string().describe('"." for the root.'),
-                    glob: z.string().describe('Such as "**/*.ts", or an empty string.')
-                }),
-                run: guard(ctx, async ({ dir, glob }) => listFiles(ctx.clonePath, { dir, glob: glob || undefined }))
-            })
-        ),
-        strict(
-            betaZodTool({
-                name: "read_file",
-                description: "Read a line range of a file, with line numbers. At most 400 lines per call.",
-                inputSchema: z.strictObject({ path: z.string(), start_line: z.number().int(), end_line: z.number().int() }),
-                run: guard(ctx, async ({ path, start_line, end_line }) =>
-                    readFileRange(ctx.clonePath, path, start_line, end_line, line => ctx.masker.mask(line))
-                )
-            })
-        ),
-        strict(
-            betaZodTool({
-                name: "grep",
-                description: "Search the repository with a JavaScript regular expression. At most 200 matches.",
-                inputSchema: z.strictObject({
-                    pattern: z.string(),
-                    glob: z.string().describe("Limits the files searched, or an empty string.")
-                }),
-                run: guard(ctx, async ({ pattern, glob }) =>
-                    grepFiles(ctx.clonePath, pattern, { glob: glob || undefined, mask: line => ctx.masker.mask(line) })
-                )
-            })
-        ),
-        strict(
-            betaZodTool({
-                name: "repo_map",
-                description: "The repository map again: entry points, routes, data schema, environment variables, tests.",
-                inputSchema: z.strictObject({}),
-                run: guard(ctx, async () => ctx.repoMap)
-            })
-        ),
-        strict(
-            betaZodTool({
-                name: "scanner_results",
-                description: "The findings gitleaks, osv-scanner and Semgrep filed for an aspect of this repository, with their IDs.",
-                inputSchema: z.strictObject({ aspect: z.string().describe("Such as security or dependencies.") }),
-                run: guard(ctx, async ({ aspect }) => {
-                    const rows = await ctx.sink.findingIndex(ctx.repositoryId, { source: "scanner", aspect });
-                    return rows.length ? rows.join("\n") : `No scanner findings for ${aspect}.`;
-                })
-            })
-        ),
-        strict(
-            betaZodTool({
-                name: "report_finding",
-                description: "File one confirmed finding or question. Evidence lines must exist; the snippet is taken from the file.",
-                inputSchema: findingInput,
-                run: guard(ctx, async input => reportFinding(ctx, input))
-            })
-        ),
-        strict(
-            betaZodTool({
-                name: "finish_aspect",
-                description: "End this aspect with a summary and the coverage of every checklist item.",
-                inputSchema: finishInput,
-                run: guard(ctx, async input => finishAspect(ctx, input))
-            })
-        )
-    ];
+    return toolSpecs(ctx).map(s =>
+        strict(betaZodTool({ name: s.name, description: s.description, inputSchema: s.inputSchema, run: args => s.run(args as never) }))
+    );
 }
 
 async function reportFinding(ctx: AgentContext, input: z.infer<typeof findingInput>): Promise<string> {

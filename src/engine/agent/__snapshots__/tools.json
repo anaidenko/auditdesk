@@ -1,0 +1,234 @@
+[
+  {
+    "name": "list_files",
+    "description": "List files under a directory of the repository, with sizes. Dependency and build folders are skipped; symlinks are listed, not followed.",
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "dir": {
+          "type": "string",
+          "description": "\".\" for the root."
+        },
+        "glob": {
+          "type": "string",
+          "description": "Such as \"**/*.ts\", or an empty string."
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "dir",
+        "glob"
+      ]
+    },
+    "strict": true
+  },
+  {
+    "name": "read_file",
+    "description": "Read a line range of a file, with line numbers. At most 400 lines per call.",
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "path": {
+          "type": "string"
+        },
+        "start_line": {
+          "type": "integer"
+        },
+        "end_line": {
+          "type": "integer"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "path",
+        "start_line",
+        "end_line"
+      ]
+    },
+    "strict": true
+  },
+  {
+    "name": "grep",
+    "description": "Search the repository with a JavaScript regular expression. At most 200 matches.",
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "pattern": {
+          "type": "string"
+        },
+        "glob": {
+          "type": "string",
+          "description": "Limits the files searched, or an empty string."
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "pattern",
+        "glob"
+      ]
+    },
+    "strict": true
+  },
+  {
+    "name": "repo_map",
+    "description": "The repository map again: entry points, routes, data schema, environment variables, tests.",
+    "input_schema": {
+      "type": "object",
+      "properties": {},
+      "additionalProperties": false
+    },
+    "strict": true
+  },
+  {
+    "name": "scanner_results",
+    "description": "The findings gitleaks, osv-scanner and Semgrep filed for an aspect of this repository, with their IDs.",
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "aspect": {
+          "type": "string",
+          "description": "Such as security or dependencies."
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "aspect"
+      ]
+    },
+    "strict": true
+  },
+  {
+    "name": "report_finding",
+    "description": "File one confirmed finding or question. Evidence lines must exist; the snippet is taken from the file.",
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "kind": {
+          "type": "string",
+          "description": "{enum: [\"finding\",\"question\"]}"
+        },
+        "checklist_item": {
+          "type": "string",
+          "description": "The checklist item this belongs to, such as SEC-04."
+        },
+        "title": {
+          "type": "string",
+          "description": "At most 12 words."
+        },
+        "severity": {
+          "type": "string",
+          "description": "\"none\" for a question.\n\n{enum: [\"critical\",\"high\",\"medium\",\"low\",\"info\",\"none\"]}"
+        },
+        "likelihood": {
+          "type": "string"
+        },
+        "impact": {
+          "type": "string"
+        },
+        "summary": {
+          "type": "string",
+          "description": "For a non-technical founder."
+        },
+        "explanation": {
+          "type": "string",
+          "description": "For the client's engineers."
+        },
+        "recommendation": {
+          "type": "string"
+        },
+        "effort": {
+          "type": "string",
+          "description": "S: under 2 hours. M: under 2 days. L: more.\n\n{enum: [\"S\",\"M\",\"L\"]}"
+        },
+        "evidence": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "file": {
+                "type": "string"
+              },
+              "start_line": {
+                "type": "integer"
+              },
+              "end_line": {
+                "type": "integer"
+              }
+            },
+            "additionalProperties": false,
+            "required": [
+              "file",
+              "start_line",
+              "end_line"
+            ]
+          }
+        },
+        "cwe": {
+          "type": "string",
+          "description": "A CWE ID such as CWE-89, or an empty string."
+        },
+        "tags": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "checklist_item",
+        "title",
+        "severity",
+        "likelihood",
+        "impact",
+        "summary",
+        "explanation",
+        "recommendation",
+        "effort",
+        "evidence",
+        "cwe",
+        "tags"
+      ]
+    },
+    "strict": true
+  },
+  {
+    "name": "finish_aspect",
+    "description": "End this aspect with a summary and the coverage of every checklist item.",
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "summary": {
+          "type": "string"
+        },
+        "coverage": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "item": {
+                "type": "string"
+              },
+              "status": {
+                "type": "string",
+                "description": "{enum: [\"examined\",\"partly\",\"not_examined\"]}"
+              }
+            },
+            "additionalProperties": false,
+            "required": [
+              "item",
+              "status"
+            ]
+          }
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "summary",
+        "coverage"
+      ]
+    },
+    "strict": true
+  }
+]
