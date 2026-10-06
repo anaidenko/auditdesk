@@ -1,9 +1,5 @@
-import { mkdir, writeFile } from "node:fs/promises";
-import { join } from "node:path";
-
-import { workspaceDir } from "@/engine/config";
 import { renderReport } from "@/engine/report/render";
-import { loadReportData } from "@/server/report";
+import { keepReportCopy, loadReportData, reportFileName } from "@/server/report";
 
 export const dynamic = "force-dynamic";
 
@@ -15,10 +11,8 @@ export async function GET(request: Request, { params }: { params: Promise<{ proj
     const { projectId } = await params;
     const data = await loadReportData(projectId);
     const html = renderReport(data);
-    const name = `auditdesk-${data.projectName.toLowerCase().replace(/[^a-z0-9]+/g, "-")}-${data.generatedAt}.html`;
-    const dir = join(workspaceDir(), projectId, "reports");
-    await mkdir(dir, { recursive: true });
-    await writeFile(join(dir, name), html);
+    const name = reportFileName(data, "html");
+    await keepReportCopy(projectId, name, html);
     return new Response(html, {
         headers: { "Content-Type": "text/html; charset=utf-8", "Content-Disposition": `attachment; filename="${name}"` }
     });

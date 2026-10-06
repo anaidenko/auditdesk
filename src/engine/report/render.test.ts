@@ -1,41 +1,8 @@
 import { describe, expect, it } from "vitest";
 
+import { reportData as data, reportFinding as finding } from "@/test/report-data";
+
 import { renderReport } from "./render";
-import type { ReportData, ReportFinding } from "./types";
-
-const finding = (over: Partial<ReportFinding>): ReportFinding => ({
-    label: "F-001",
-    severity: "high",
-    aspect: "security",
-    checklistItem: "SEC-04",
-    title: "Raw SQL",
-    likelihood: "l",
-    impact: "i",
-    summary: "s",
-    explanation: "e",
-    recommendation: "r",
-    effort: "S",
-    effortHours: null,
-    evidence: [{ file: "a.ts", startLine: 1, endLine: 2, snippet: 'q("<script>alert(1)</script>")' }],
-    references: { cwe: "CWE-89" },
-    repository: "app",
-    ...over
-});
-
-const data = (over: Partial<ReportData> = {}): ReportData => ({
-    projectName: "Acme",
-    generatedAt: "2026-10-20",
-    auditor: "Andrii Naidenko",
-    repositories: [{ name: "app", branch: "main", sha: "0123456789abcdef" }],
-    aspects: [{ title: "Security", status: "done", note: null, coverage: [{ item: "SEC-04", title: "Injection", status: "examined" }] }],
-    servedModels: ["claude-opus-5-5", "claude-opus-4-8"],
-    modelAccess: ["api_key"],
-    toolVersions: null,
-    findings: [finding({ label: "F-002", severity: "low" }), finding({ label: "F-001", severity: "critical" })],
-    questions: [],
-    costUsd: null,
-    ...over
-});
 
 describe("renderReport", () => {
     it("orders findings of one severity by their number", () => {
@@ -89,5 +56,41 @@ describe("renderReport", () => {
     it("names the model access, and its terms, in Scope and method", () => {
         const html = renderReport({ ...data(), modelAccess: ["claude_plan"] });
         expect(html).toContain("Model access: a Claude subscription through the Claude Agent SDK, under Anthropic's Consumer Terms.");
+    });
+
+    // The redesign of 2026-10-06 (plan 2026-10-06-auditdesk-report-redesign.md, R.1).
+    const between = (html: string, start: string, end: string) => {
+        const from = html.indexOf(start);
+        return html.slice(from, html.indexOf(end, from));
+    };
+
+    it("opens with a cover naming the project, the auditor and each repository's commit", () => {
+        const cover = between(renderReport(data()), '<header class="cover"', "</header>");
+        expect(cover).toContain("Acme");
+        expect(cover).toContain("Andrii Naidenko");
+        expect(cover).toContain("0123456789");
+    });
+
+    it("lists every section and every finding ID in its contents", () => {
+        const html = renderReport(data({ questions: [finding({ label: "F-003", severity: null, title: "Who rotates the key?" })] }));
+        const toc = between(html, '<nav class="toc"', "</nav>");
+        for (const id of ["summary", "scope", "findings", "questions", "disclaimer", "F-001", "F-002", "F-003"])
+            expect(toc).toContain(`href="#${id}"`);
+        for (const id of ["summary", "scope", "findings", "questions", "disclaimer"]) expect(html).toContain(`id="${id}"`);
+    });
+
+    it("numbers evidence lines from their start line", () => {
+        const html = renderReport(
+            data({ findings: [finding({ evidence: [{ file: "a.ts", startLine: 41, endLine: 42, snippet: "one\ntwo" }] })] })
+        );
+        expect(html).toMatch(/<span class="ln">41<\/span>one/);
+        expect(html).toMatch(/<span class="ln">42<\/span>two/);
+    });
+
+    it("prints on A4, with every finding open", () => {
+        const html = renderReport(data({ questions: [finding({ label: "F-003", severity: null })] }));
+        expect(html).toMatch(/@page\s*\{[^}]*size:\s*A4/);
+        expect(html).toContain("<details");
+        expect(html.match(/<details(?! open)/g)).toBeNull();
     });
 });

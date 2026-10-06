@@ -35,7 +35,11 @@ export default async function ProjectPage({ params }: { params: Promise<{ projec
                         </Link>
                         <a href={`/projects/${project.id}/report`} className={button.secondary}>
                             <Icon name="download" />
-                            Download report
+                            HTML report
+                        </a>
+                        <a href={`/projects/${project.id}/report/pdf`} className={button.secondary}>
+                            <Icon name="download" />
+                            PDF report
                         </a>
                     </>
                 }

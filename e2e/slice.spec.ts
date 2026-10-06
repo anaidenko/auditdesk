@@ -36,6 +36,9 @@ test("a run from project to downloaded report", async ({ page }) => {
     const html = await report.text();
     expect(html).toContain(`id="${label}"`);
     expect(html).not.toContain("Generic API Key"); // gitleaks' finding was not accepted, so it stays out
+    const pdf = await page.request.get(page.url().replace(/\/findings.*$/, "/report/pdf"));
+    expect(pdf.headers()["content-type"]).toBe("application/pdf");
+    expect((await pdf.body()).subarray(0, 5).toString()).toBe("%PDF-");
     // New projects default to Claude plan: the main flow ran the SDK engine against the fake server.
     expect(html).toContain("through the Claude Agent SDK");
 });
