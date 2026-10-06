@@ -15,3 +15,6 @@ next-env.d.ts
 # Machine-local Claude Code state (hook metrics, local settings)
 .claude/local/
 .claude/settings.local.json
+
+# End-to-end scratch
+e2e/.sample-path
