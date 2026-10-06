@@ -6,7 +6,7 @@ import type { ReportData, ReportFinding } from "./types";
 const CSS = `
 body{font:15px/1.55 system-ui,-apple-system,"Segoe UI",sans-serif;color:#18181b;max-width:960px;margin:2rem auto;padding:0 1.5rem}
 h1{font-size:1.9rem;margin:0 0 .25rem}h2{margin-top:2.5rem;border-bottom:1px solid #e4e4e7;padding-bottom:.25rem}
-table{border-collapse:collapse;width:100%;font-size:.9rem}th,td{text-align:left;padding:.35rem .5rem;border-bottom:1px solid #e4e4e7;vertical-align:top}
+table{border-collapse:collapse;width:100%;font-size:.9rem}td:first-child{white-space:nowrap}th,td{text-align:left;padding:.35rem .5rem;border-bottom:1px solid #e4e4e7;vertical-align:top}
 pre{background:#f4f4f5;padding:.6rem;overflow-x:auto;font-size:.8rem;white-space:pre-wrap}
 details{border:1px solid #e4e4e7;border-radius:6px;margin:.75rem 0;padding:.5rem .9rem}summary{cursor:pointer;font-weight:600}
 .sev{display:inline-block;min-width:4.5rem;font-size:.75rem;text-transform:uppercase;letter-spacing:.04em}
