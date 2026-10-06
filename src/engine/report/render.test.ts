@@ -180,6 +180,59 @@ describe("renderReport", () => {
         expect(html).not.toMatch(/complian/i);
     });
 
+    describe("the summary", () => {
+        const summary = (html: string) => between(html, '<section id="summary">', "</section>");
+        const listed = (html: string, heading: string) => {
+            const part = summary(html).split(`<h3>${heading}`)[1] ?? "";
+            return [...part.split("<h3>")[0].matchAll(/href="#(F-\d{3})"/g)].map(m => m[1]);
+        };
+
+        it("puts critical and high findings before sign-off by default, and the rest under can wait", () => {
+            const html = renderReport(
+                data({
+                    findings: [
+                        finding({ label: "F-001", severity: "critical" }),
+                        finding({ label: "F-002", severity: "high" }),
+                        finding({ label: "F-003", severity: "medium" }),
+                        finding({ label: "F-004", severity: "low" })
+                    ]
+                })
+            );
+            expect(listed(html, "Fix before sign-off")).toEqual(["F-001", "F-002"]);
+            expect(listed(html, "Can wait")).toEqual(["F-003", "F-004"]);
+        });
+
+        it("follows Andrii's override over the default", () => {
+            const html = renderReport(
+                data({
+                    findings: [
+                        finding({ label: "F-001", severity: "high", fixBeforeSignoff: false }),
+                        finding({ label: "F-002", severity: "low", fixBeforeSignoff: true })
+                    ]
+                })
+            );
+            expect(listed(html, "Fix before sign-off")).toEqual(["F-002"]);
+            expect(listed(html, "Can wait")).toEqual(["F-001"]);
+        });
+
+        it("adds up the hours Andrii set and counts the rest by size", () => {
+            const html = renderReport(
+                data({
+                    findings: [
+                        finding({ label: "F-001", effort: "S", effortHours: 3 }),
+                        finding({ label: "F-002", effort: "M", effortHours: 10 }),
+                        finding({ label: "F-003", effort: "M" }),
+                        finding({ label: "F-004", effort: "L" }),
+                        finding({ label: "F-005", effort: null })
+                    ]
+                })
+            );
+            expect(summary(html)).toContain(
+                "Estimated effort: 13 h for the 2 findings the auditor estimated, plus 1 medium (under 2 days), 1 large (more) and 1 not sized."
+            );
+        });
+    });
+
     it("gathers the findings tagged ai-built under Signs of AI-generated code", () => {
         const html = renderReport(
             data({

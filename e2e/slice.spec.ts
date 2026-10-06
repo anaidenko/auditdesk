@@ -169,6 +169,23 @@ test("a review refusal is shown on the page, not as an error page", async ({ pag
     await expect(page.getByText("No finding F-099 in this project.")).toBeVisible();
 });
 
+test("a high finding marked to wait moves to Can wait in the report's summary", async ({ page }) => {
+    await finishedRun(page, "Sign-off");
+    await page.getByRole("link", { name: "Review the findings" }).click();
+    const evalFinding = page.locator("details", { hasText: "User input reaches eval" });
+    await evalFinding.locator("summary").click();
+    const label = (await evalFinding.locator("summary").innerText()).match(/F-\d{3}/)![0];
+    await evalFinding.getByRole("link", { name: "Edit or merge" }).click();
+    await page.getByLabel("Sign-off").selectOption("later");
+    await page.getByRole("button", { name: "Save", exact: true }).click();
+    await expect(page.getByRole("heading", { name: "Findings" })).toBeVisible();
+    const html = await (await page.request.get(page.url().replace(/\/findings.*$/, "/report"))).text();
+    const summary = html.slice(html.indexOf('<section id="summary">'), html.indexOf('<section id="scope">'));
+    const wait = summary.slice(summary.indexOf("<h3>Can wait"));
+    expect(wait).toContain(`href="#${label}"`);
+    expect(summary.slice(0, summary.indexOf("<h3>Can wait"))).not.toContain(`href="#${label}"`);
+});
+
 test("starting twice queues one run", async ({ page }) => {
     await newProject(page, "Double");
     await page.getByLabel(/client agreed/).check();

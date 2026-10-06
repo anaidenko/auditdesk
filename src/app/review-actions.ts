@@ -59,6 +59,7 @@ export async function editAction(id: string, _prev: FormState, fd: FormData): Pr
             recommendation: text(fd, "recommendation"),
             effort: optional(fd, "effort") as "S" | "M" | "L" | null,
             effortHours: hours ? Number(hours) : null,
+            fixBeforeSignoff: { before: true, later: false }[text(fd, "signoff")] ?? null,
             note: optional(fd, "note")
         })
     );

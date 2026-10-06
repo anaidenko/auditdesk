@@ -61,6 +61,7 @@ export async function loadReportData(projectId: string): Promise<ReportData> {
         references: r.references as References,
         repository: names.get(r.repositoryId ?? "") ?? "—",
         tags: r.tags,
+        fixBeforeSignoff: r.fixBeforeSignoff,
         refs: referencesFor(referenceData, r.checklistItem, r.references as References)
     });
     // Per repository and aspect, the latest agent that finished, across runs: a re-run adds a second

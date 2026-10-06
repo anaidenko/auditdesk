@@ -150,6 +150,7 @@ describe("references in the report", () => {
         expect(finding.refs?.cwe?.label).toBe("CWE-918");
         expect(finding.refs?.top10?.label).toBe("A01:2025 Broken Access Control");
         expect(finding.refs?.cheatsheets.map(c => c.label)).toContain("Authorization Cheat Sheet");
+        expect(finding.fixBeforeSignoff).toBeNull();
     });
 });
 

@@ -115,6 +115,31 @@ function evidence(ev: ReportFinding["evidence"][number]): string {
     return `<figure><figcaption>${e(ev.file)} · ${where}</figcaption>${ev.snippet ? `<pre><code>${code}</code></pre>` : ""}</figure>`;
 }
 
+const SIZES = [
+    ["S", "small (under 2 h)"],
+    ["M", "medium (under 2 days)"],
+    ["L", "large (more)"]
+] as const;
+
+/** The hours Andrii set, added up, and the other findings counted by size. */
+function effortSummary(findings: ReportFinding[]): string | null {
+    if (!findings.length) return null;
+    const estimated = findings.filter(f => f.effortHours != null);
+    const rest = findings.filter(f => f.effortHours == null);
+    const parts = [
+        ...SIZES.map(([s, name]) => [rest.filter(f => f.effort === s).length, name] as const),
+        [rest.filter(f => !f.effort).length, "not sized"] as const
+    ]
+        .filter(([n]) => n > 0)
+        .map(([n, name]) => `${n} ${name}`);
+    const list = (xs: string[]) => (xs.length > 1 ? `${xs.slice(0, -1).join(", ")} and ${xs.at(-1)}` : (xs[0] ?? ""));
+    const hours = estimated.reduce((sum, f) => sum + (f.effortHours ?? 0), 0);
+    const head = estimated.length
+        ? `${hours} h for the ${estimated.length === 1 ? "finding" : `${estimated.length} findings`} the auditor estimated`
+        : "";
+    return `Estimated effort: ${head && parts.length ? `${head}, plus ${list(parts)}` : head || list(parts)}.`;
+}
+
 function finding(f: ReportFinding): string {
     const meta = [f.repository, f.aspect, f.checklistItem, f.effort && `effort ${f.effort}${f.effortHours ? ` (${f.effortHours} h)` : ""}`]
         .filter(Boolean)
@@ -160,7 +185,15 @@ export function renderReport(d: ReportData): string {
     const number = (f: ReportFinding) => Number(f.label.replace(/\D/g, ""));
     const findings = [...d.findings].sort((a, b) => compareFindings({ ...a, number: number(a) }, { ...b, number: number(b) }));
     const count = (s: string) => findings.filter(f => f.severity === s).length;
-    const top = findings.filter(f => f.severity === "critical" || f.severity === "high");
+    // Andrii's call per finding wins; otherwise critical and high come before sign-off (design § 10).
+    const before = (f: ReportFinding) => f.fixBeforeSignoff ?? (f.severity === "critical" || f.severity === "high");
+    const fixFirst = findings.filter(before);
+    const canWait = findings.filter(f => !before(f));
+    const riskList = (list: ReportFinding[], none: string) =>
+        list.length
+            ? `<ul class="risks">${list.map(f => `<li>${badge(f)}<a class="fid" href="#${e(f.label)}">${e(f.label)}</a><span>${e(f.title)}</span></li>`).join("")}</ul>`
+            : `<p class="muted">${e(none)}</p>`;
+    const effortLine = effortSummary(findings);
     const tocItems = (list: ReportFinding[]) =>
         list.length
             ? `<ul>${list.map(f => `<li>${badge(f)}<a class="fid" href="#${e(f.label)}">${e(f.label)}</a><span>${e(f.title)}</span></li>`).join("")}</ul>`
@@ -266,8 +299,11 @@ ${d.questions.length ? `<li><a href="#questions">Open questions</a>${tocItems(d.
 
 <section id="summary"><h2>Summary</h2>
 <p>${SEVERITIES.map(s => `${count(s)} ${s}`).join(" · ")}.</p>
-<h3>Top risks</h3>
-${top.length ? `<ul class="risks">${top.map(f => `<li>${badge(f)}<a class="fid" href="#${e(f.label)}">${e(f.label)}</a><span>${e(f.title)}</span></li>`).join("")}</ul>` : `<p class="muted">No critical or high findings.</p>`}
+<h3>Fix before sign-off</h3>
+${riskList(fixFirst, "Nothing needs fixing before sign-off.")}
+<h3>Can wait</h3>
+${riskList(canWait, "Nothing else was found.")}
+${effortLine ? `<p>${e(effortLine)}</p>` : ""}
 </section>
 
 <section id="scope"><h2>Scope and method</h2>

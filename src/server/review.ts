@@ -10,6 +10,7 @@ export const REPORTABLE = ["accepted", "edited"] as const;
 
 export interface EditableFields {
     title?: string;
+    fixBeforeSignoff?: boolean | null;
     severity?: SeverityName | null;
     likelihood?: string | null;
     impact?: string | null;

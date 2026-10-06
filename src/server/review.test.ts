@@ -48,6 +48,14 @@ describe("review", () => {
         });
     });
 
+    it("keeps Andrii's sign-off call, and clears it back to the severity's default", async () => {
+        const { a } = await twoFindings();
+        await edit(a.id, { fixBeforeSignoff: true });
+        expect((await prisma.finding.findUniqueOrThrow({ where: { id: a.id } })).fixBeforeSignoff).toBe(true);
+        await edit(a.id, { fixBeforeSignoff: null });
+        expect((await prisma.finding.findUniqueOrThrow({ where: { id: a.id } })).fixBeforeSignoff).toBeNull();
+    });
+
     it("refuses a severity on a question", async () => {
         const { project, a: _a } = await twoFindings();
         const repo = await prisma.repository.findFirstOrThrow({ where: { projectId: project.id } });
