@@ -10,7 +10,12 @@ export const CREDENTIAL_ENV = { api_key: "ANTHROPIC_API_KEY", claude_plan: "CLAU
     string
 >;
 
-export type CredentialStatus = { source: "env" } | { source: "saved"; last4: string } | { source: "none" };
+export type CredentialStatus =
+    | { source: "env" }
+    | { source: "saved"; last4: string }
+    | { source: "none" }
+    /** The saved file cannot be used; the message says how to fix it. */
+    | { source: "error"; message: string };
 
 export class CredentialError extends Error {}
 
@@ -28,8 +33,13 @@ async function readStore(): Promise<Store> {
     const path = credentialsPath();
     const info = await stat(path).catch(() => null);
     if (!info) return {};
-    if (info.mode & 0o077) throw new Error(`${path} is readable by other users; run chmod 600 on it.`);
-    return JSON.parse(await readFile(path, "utf8")) as Store;
+    if (info.mode & 0o077) throw new CredentialError(`${path} is readable by other users; run chmod 600 on it.`);
+    try {
+        return JSON.parse(await readFile(path, "utf8")) as Store;
+    } catch {
+        // Not the parser's message: it quotes the text around the error, which may be part of a key.
+        throw new CredentialError(`${path} is not valid JSON; fix it or delete it and save the values again.`);
+    }
 }
 
 async function writeStore(store: Store): Promise<void> {
@@ -46,7 +56,13 @@ export async function resolveCredential(access: ModelAccess): Promise<string | n
 
 export async function credentialStatus(access: ModelAccess): Promise<CredentialStatus> {
     if (fromEnv(access)) return { source: "env" };
-    const saved = (await readStore())[access];
+    let saved: string | undefined;
+    try {
+        saved = (await readStore())[access];
+    } catch (e) {
+        if (e instanceof CredentialError) return { source: "error", message: e.message };
+        throw e;
+    }
     return saved ? { source: "saved", last4: saved.slice(-4) } : { source: "none" };
 }
 

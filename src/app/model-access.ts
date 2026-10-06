@@ -11,5 +11,6 @@ export const ACCESS_TOOLTIP = [
 ];
 
 export function credentialText(s: CredentialStatus): string {
+    if (s.source === "error") return s.message;
     return s.source === "env" ? "set in .env.local" : s.source === "saved" ? `saved · …${s.last4}` : "not set";
 }

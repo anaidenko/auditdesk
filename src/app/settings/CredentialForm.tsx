@@ -5,6 +5,7 @@ import { useActionState } from "react";
 import type { FormState } from "@/app/actions";
 import { removeCredentialAction, saveCredentialAction } from "@/app/credential-actions";
 import { FormError, button, input } from "@/app/ui";
+import type { CredentialStatus } from "@/engine/credentials";
 import type { ModelAccess } from "@/engine/types";
 
 export function CredentialForm({
@@ -16,7 +17,7 @@ export function CredentialForm({
     access: ModelAccess;
     label: string;
     status: string;
-    source: "env" | "saved" | "none";
+    source: CredentialStatus["source"];
 }) {
     const [state, action, pending] = useActionState<FormState, FormData>(saveCredentialAction.bind(null, access), { error: null });
     return (
@@ -24,9 +25,9 @@ export function CredentialForm({
             <p className="text-sm text-zinc-700" data-testid={`status-${access}`}>
                 {status}
             </p>
-            {source === "env" ? (
-                <p className="text-sm text-zinc-500">Edit .env.local to change it.</p>
-            ) : (
+            {source === "env" && <p className="text-sm text-zinc-500">Edit .env.local to change it.</p>}
+            {/* An unusable saved file: the status above says how to fix it; saving would fail on it too. */}
+            {(source === "saved" || source === "none") && (
                 <form action={action} className="flex flex-wrap gap-3">
                     <input
                         name="value"

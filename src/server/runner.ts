@@ -84,13 +84,17 @@ export async function processJob(job: Job, deps?: (sink: PrismaSink) => AuditDep
     // Before the clone: a re-run would otherwise supersede the aspect's findings and then not start (Task E.7a).
     const refusal = run.modelAccess === "claude_plan" ? reserveRefusal(await readPlanUsage(), job.allowPastReserve) : null;
     if (refusal) return finish("failed", `Not started. ${refusal} Start it again then, or allow it past the reserve.`);
-    // No credential, no clone: the run fails before it touches the client's code.
-    const engine = deps
-        ? null
-        : await engineFor(run.modelAccess, join(workspaceDir(), run.projectId, "runs", run.id), { allowPastReserve: job.allowPastReserve });
-    if (typeof engine === "string") return finish("failed", engine);
-    await prisma.run.update({ where: { id: run.id }, data: { status: "running", startedAt: run.startedAt ?? new Date() } });
+    let engine: Engine | null = null;
     try {
+        // No credential, no clone: the run fails before it touches the client's code.
+        if (!deps) {
+            const chosen = await engineFor(run.modelAccess, join(workspaceDir(), run.projectId, "runs", run.id), {
+                allowPastReserve: job.allowPastReserve
+            });
+            if (typeof chosen === "string") return await finish("failed", chosen);
+            engine = chosen;
+        }
+        await prisma.run.update({ where: { id: run.id }, data: { status: "running", startedAt: run.startedAt ?? new Date() } });
         const { stopped } = await runAudit(
             {
                 runId: run.id,

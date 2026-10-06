@@ -44,7 +44,9 @@ export async function setModelAccess(projectId: string, fd: FormData): Promise<v
 export async function startRun(projectId: string, _prev: FormState, fd: FormData): Promise<FormState> {
     const project = await prisma.project.findUniqueOrThrow({ where: { id: projectId }, include: { repositories: true } });
     if (!project.aiConsentAt) return { error: "Record the client's AI consent first." };
-    if ((await credentialStatus(project.modelAccess)).source === "none")
+    const credential = await credentialStatus(project.modelAccess);
+    if (credential.source === "error") return { error: credential.message };
+    if (credential.source === "none")
         return {
             error:
                 project.modelAccess === "claude_plan"

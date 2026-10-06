@@ -1,11 +1,12 @@
 import Anthropic from "@anthropic-ai/sdk";
-import { mkdtemp, writeFile } from "node:fs/promises";
+import { chmod, mkdtemp, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Client } from "pg";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { apiAspectRunner } from "@/engine/agent/run-aspect";
+import { credentialsPath, saveCredential } from "@/engine/credentials";
 import { git } from "@/engine/git";
 import { recordPlanUsage } from "@/engine/plan-usage";
 import { message, replayFetch } from "@/engine/replay";
@@ -336,4 +337,19 @@ it("refuses a Claude plan re-run above the 50% reserve before cloning, so the as
     expect(run.error).toMatch(/^Not started\. .*at 60%/);
     expect((await prisma.finding.findFirstOrThrow({ where: { projectId: project.id, source: "agent" } })).status).toBe("unreviewed");
     expect((await prisma.repository.findUniqueOrThrow({ where: { id: repo.id } })).commitSha).toBeNull();
+});
+
+// The review's Minor 5: engineFor threw outside processJob's try, so the run's end was recorded as "could not record its end".
+it("fails a run whose credentials file other users can read, with the reason, as any other failure", async () => {
+    await home();
+    vi.stubEnv("AUDITDESK_REPLAY_MODEL", "");
+    vi.stubEnv("CLAUDE_CODE_OAUTH_TOKEN", "");
+    await saveCredential("claude_plan", "plan-token-wxyz");
+    await chmod(credentialsPath(), 0o644);
+    const { project } = await projectWithRepo(await makeSampleRepo());
+    const runId = await enqueueRun(project.id, { ...runOptions, modelAccess: "claude_plan" });
+    await processJob((await claimJob())!);
+    const run = await prisma.run.findUniqueOrThrow({ where: { id: runId }, include: { events: true } });
+    expect(run).toMatchObject({ status: "failed", error: expect.stringMatching(/chmod 600/) });
+    expect(run.events.map(e => e.message)).toContainEqual(expect.stringMatching(/^Run failed: .*chmod 600/));
 });

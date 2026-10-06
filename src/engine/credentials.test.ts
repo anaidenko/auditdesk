@@ -62,4 +62,19 @@ describe("credentials", () => {
         await writeFile(join(process.env.AUDITDESK_HOME!, "unrelated"), "");
         await expect(credentialStatus("api_key")).resolves.toEqual({ source: "none" });
     });
+
+    // The review's Minor 5: thrown from a page, the guidance would be hidden behind Next's error digest.
+    it("reports a credentials file other users can read as its status, for the page to show", async () => {
+        await saveCredential("api_key", "saved-key-abcd");
+        await chmod(credentialsPath(), 0o644);
+        await expect(credentialStatus("api_key")).resolves.toEqual({ source: "error", message: expect.stringMatching(/chmod 600/) });
+    });
+
+    it("never quotes a broken credentials file in its error", async () => {
+        await saveCredential("api_key", "saved-key-abcd");
+        await writeFile(credentialsPath(), '{"api_key": "sk-ant-api03-secretpart', { mode: 0o600 });
+        const error = (await resolveCredential("api_key").catch(e => e)) as Error;
+        expect(error.message).toMatch(/not valid JSON/);
+        expect(error.message).not.toContain("secretpart");
+    });
 });
