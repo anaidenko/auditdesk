@@ -2,6 +2,8 @@ src/generated
 pnpm-lock.yaml
 checklists
 evals/answers
+# Recorded scanner outputs stay byte for byte as the scanners wrote them
+src/test/fixtures
 
 # Prose keeps its hand-made line breaks
 *.md
