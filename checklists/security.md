@@ -4,6 +4,11 @@ Always on. Examine each item against the repository's own code. Scanner results 
 already filed as findings; report what they missed. When the multi-tenancy aspect is on,
 tenant scoping belongs to it, not to SEC-03.
 
+Severity: critical means exploitable now by an unauthenticated attacker with serious impact
+(all users' data, remote code execution, a live credential). High means exploitable with modest
+preconditions (any signed-in user, a guessable ID), or serious impact for some users. Medium
+needs unusual conditions or has limited impact. Low is defence in depth.
+
 ## SEC-01 Authentication
 
 Password storage (bcrypt, scrypt or argon2 with a work factor; never a fast hash), login,
