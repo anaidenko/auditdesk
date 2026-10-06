@@ -3,6 +3,7 @@
 import { useActionState } from "react";
 
 import { type FormState, addRepository, startRun } from "@/app/actions";
+import { FormError, Icon, button, input, label } from "@/app/ui";
 import { DEFAULT_EFFORT, DEFAULT_MODEL } from "@/engine/agent/request";
 
 export function AddRepositoryForm({ projectId }: { projectId: string }) {
@@ -12,14 +13,14 @@ export function AddRepositoryForm({ projectId }: { projectId: string }) {
             <input
                 name="source"
                 placeholder="git@github.com:acme/app.git or /Users/…/app"
-                className="w-96 rounded border border-zinc-300 px-3 py-2"
+                className={`${input} min-w-64 flex-[3]`}
                 aria-label="Repository URL or path"
             />
-            <input name="branch" placeholder="main" className="w-40 rounded border border-zinc-300 px-3 py-2" aria-label="Branch" />
-            <button disabled={pending} className="rounded border border-zinc-900 px-4 py-2 disabled:opacity-50">
+            <input name="branch" placeholder="main" className={`${input} w-32 flex-1`} aria-label="Branch" />
+            <button disabled={pending} className={button.secondary}>
                 Add repository
             </button>
-            {state.error && <p className="w-full text-sm text-red-700">{state.error}</p>}
+            {state.error && <FormError>{state.error}</FormError>}
         </form>
     );
 }
@@ -27,36 +28,32 @@ export function AddRepositoryForm({ projectId }: { projectId: string }) {
 export function StartRunForm({ projectId, defaults }: { projectId: string; defaults: { usd: number; tokens: number } }) {
     const [state, action, pending] = useActionState<FormState, FormData>(startRun.bind(null, projectId), { error: null });
     return (
-        <form action={action} className="flex flex-wrap items-end gap-3">
-            <label className="text-sm">
-                Cap, USD
-                <input
-                    name="budgetUsd"
-                    type="number"
-                    step="0.5"
-                    min="0.5"
-                    defaultValue={defaults.usd}
-                    className="mt-1 block w-28 rounded border border-zinc-300 px-3 py-2"
-                />
-            </label>
-            <label className="text-sm">
-                Cap, tokens
-                <input
-                    name="budgetTokens"
-                    type="number"
-                    step="10000"
-                    min="20000"
-                    defaultValue={defaults.tokens}
-                    className="mt-1 block w-36 rounded border border-zinc-300 px-3 py-2"
-                />
-            </label>
-            <button disabled={pending} className="rounded bg-zinc-900 px-4 py-2 text-white disabled:opacity-50">
+        <form action={action} className="space-y-4">
+            <div className="grid grid-cols-2 gap-3">
+                <label className={label}>
+                    Cap, USD
+                    <input name="budgetUsd" type="number" step="0.5" min="0.5" defaultValue={defaults.usd} className={`${input} mt-1.5`} />
+                </label>
+                <label className={label}>
+                    Cap, tokens
+                    <input
+                        name="budgetTokens"
+                        type="number"
+                        step="10000"
+                        min="20000"
+                        defaultValue={defaults.tokens}
+                        className={`${input} mt-1.5`}
+                    />
+                </label>
+            </div>
+            <button disabled={pending} className={`${button.primary} w-full`}>
+                <Icon name="play" />
                 Start run
             </button>
-            <p className="w-full text-sm text-zinc-500">
+            <p className="text-xs text-zinc-500">
                 Security aspect · {DEFAULT_MODEL} · effort {DEFAULT_EFFORT}. The cap is checked between calls.
             </p>
-            {state.error && <p className="w-full text-sm text-red-700">{state.error}</p>}
+            {state.error && <FormError>{state.error}</FormError>}
         </form>
     );
 }
