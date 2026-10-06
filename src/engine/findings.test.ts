@@ -30,13 +30,21 @@ describe("findings", () => {
         expect(indexLine(f)).toBe("F-003 [high] SEC-04 a.ts:9 Raw SQL");
     });
 
-    it("sorts by severity, then aspect, then number", () => {
+    it("sorts by severity, then the catalogue's aspect order, then number", () => {
         const rows = [
             { severity: "low", aspect: "security", number: 1 },
             { severity: "critical", aspect: "security", number: 3 },
             { severity: null, aspect: "security", number: 2 },
             { severity: "critical", aspect: "architecture", number: 4 }
         ] as const;
-        expect([...rows].sort(compareFindings).map(r => r.number)).toEqual([4, 3, 1, 2]);
+        expect([...rows].sort(compareFindings).map(r => r.number)).toEqual([3, 4, 1, 2]);
+    });
+
+    it("orders findings of one severity by the catalogue's aspects, whether named by key or title", () => {
+        const f = (aspect: string, number: number) => ({ severity: "high" as const, aspect, number });
+        const keys = [f("tenancy", 1), f("security", 2), f("quality", 3), f("data", 4), f("legacy", 5)];
+        expect(keys.sort(compareFindings).map(x => x.aspect)).toEqual(["security", "data", "quality", "tenancy", "legacy"]);
+        const titles = [f("Code quality and tests", 1), f("Security", 2), f("Data model and database", 3)];
+        expect(titles.sort(compareFindings).map(x => x.aspect)).toEqual(["Security", "Data model and database", "Code quality and tests"]);
     });
 });

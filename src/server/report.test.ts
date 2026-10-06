@@ -94,6 +94,25 @@ describe("aspects in the report", () => {
     });
 });
 
+describe("aspects and repositories that changed", () => {
+    it("keeps an aspect no longer in the catalogue in the scope, instead of failing the report", async () => {
+        const { project, repo } = await projectWithRepo("/tmp/app");
+        const r = await run(project.id, "done", VERSIONS, new Date("2026-10-06T10:00:00Z"));
+        await agent(r.id, repo.id, "done", new Date("2026-10-06T10:01:00Z"), "legacy");
+        const d = await loadReportData(project.id);
+        expect(d.aspects.map(a => a.title)).toEqual(["legacy (app)"]);
+    });
+
+    it("lists repositories in the order they were added, whatever was updated since", async () => {
+        const { project, repo } = await projectWithRepo("/tmp/web");
+        await prisma.repository.create({
+            data: { projectId: project.id, source: "/tmp/api", branch: "main", createdAt: new Date(Date.now() + 1000) }
+        });
+        await prisma.repository.update({ where: { id: repo.id }, data: { commitSha: "a".repeat(40) } });
+        expect((await loadReportData(project.id)).repositories.map(r => r.name)).toEqual(["web", "api"]);
+    });
+});
+
 describe("the report's file name", () => {
     it("joins the project's name and the date with one hyphen, whatever the name ends with", () => {
         const d = { projectName: "naidenko.dev (own site)", generatedAt: "2026-10-06" } as ReportData;

@@ -105,7 +105,7 @@ describe("runAudit", () => {
         sink.runSpend = async () => ({ usd: 0.4, freshTokens: 1000, unpriced: true });
         await audit(sink, await makeSampleRepo(), await mkdtemp(join(tmpdir(), "ws-")));
         expect(sink.agents).toEqual([]);
-        expect(sink.events.some(e => /budget unknown/.test(e))).toBe(true);
+        expect(sink.events.some(e => /^Skipped Security: budget unknown/.test(e))).toBe(true);
     });
 
     it("starts no agent once Stop has been pressed", async () => {

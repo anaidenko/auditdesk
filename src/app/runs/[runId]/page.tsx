@@ -23,7 +23,7 @@ export default async function RunPage({
     const run = await prisma.run.findUnique({
         where: { id: runId },
         include: {
-            project: { include: { repositories: true } },
+            project: { include: { repositories: { orderBy: { createdAt: "asc" } } } },
             agents: { orderBy: { createdAt: "asc" } },
             _count: { select: { jobs: true } }
         }

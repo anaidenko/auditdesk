@@ -2,6 +2,7 @@ import { join } from "node:path";
 
 import type { Effort } from "./agent/request";
 import type { AgentOutcome, AspectRunner } from "./agent/run-aspect";
+import { aspectTitle } from "./aspects";
 import { shareFor } from "./budget";
 import { loadChecklist } from "./checklists";
 import { readSnippet } from "./files";
@@ -128,7 +129,7 @@ export async function runAudit(input: AuditInput, deps: AuditDeps): Promise<{ st
             if (spent.unpriced) {
                 // The dollars already spent are unknown, so no share of what is left can be computed.
                 await sink.progress(
-                    `Skipped ${aspect}: budget unknown, because a call of this run was served by a model with no price row.`,
+                    `Skipped ${aspectTitle(aspect)}: budget unknown, because a call of this run was served by a model with no price row.`,
                     "warn"
                 );
                 continue;
@@ -136,7 +137,7 @@ export async function runAudit(input: AuditInput, deps: AuditDeps): Promise<{ st
             const remaining = input.budget.usd - spent.usd;
             const share = { usd: Math.min(fullShare.usd, Math.max(remaining, 0)), tokens: fullShare.tokens };
             if (share.usd <= 0) {
-                await sink.progress(`Skipped ${aspect}: the run's budget is spent.`, "warn");
+                await sink.progress(`Skipped ${aspectTitle(aspect)}: the run's budget is spent.`, "warn");
                 continue;
             }
             if (input.only) await sink.supersedeUnreviewed(repo.id, aspect);

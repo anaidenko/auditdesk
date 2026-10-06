@@ -29,7 +29,7 @@ function repoName(source: string): string {
 export async function loadReportData(projectId: string): Promise<ReportData> {
     const project = await prisma.project.findUniqueOrThrow({
         where: { id: projectId },
-        include: { repositories: true }
+        include: { repositories: { orderBy: { createdAt: "asc" } } }
     });
     const names = new Map(project.repositories.map(r => [r.id, repoName(r.source)]));
     const rows = await prisma.finding.findMany({ where: { projectId, status: { in: [...REPORTABLE] } }, orderBy: { number: "asc" } });
@@ -72,7 +72,11 @@ export async function loadReportData(projectId: string): Promise<ReportData> {
     });
     const aspects = await Promise.all(
         latestAgents.map(async a => {
-            const checklist = await loadChecklist(a.aspect);
+            // An aspect dropped from the catalogue keeps its scope row, titled by its key.
+            const checklist = await loadChecklist(a.aspect).catch(() => ({
+                title: aspectTitle(a.aspect),
+                items: [] as { id: string; title: string }[]
+            }));
             const titles = new Map(checklist.items.map(i => [i.id, i.title]));
             const coverage = ((a.coverage as { item: string; status: string }[] | null) ?? []).map(c => ({
                 ...c,
