@@ -99,7 +99,11 @@ export async function loadReportData(projectId: string): Promise<ReportData> {
 }
 
 export function reportFileName(d: ReportData, ext: "html" | "pdf"): string {
-    return `auditdesk-${d.projectName.toLowerCase().replace(/[^a-z0-9]+/g, "-")}-${d.generatedAt}.${ext}`;
+    const slug = d.projectName
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, "-")
+        .replace(/^-|-$/g, "");
+    return `auditdesk-${slug}-${d.generatedAt}.${ext}`;
 }
 
 /** Each download keeps a copy beside the project's clones (design § 5). */
