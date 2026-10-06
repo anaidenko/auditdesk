@@ -1,7 +1,9 @@
-import { basename } from "node:path";
+import { mkdir, writeFile } from "node:fs/promises";
+import { basename, join } from "node:path";
 import "server-only";
 
 import { loadChecklist } from "@/engine/checklists";
+import { workspaceDir } from "@/engine/config";
 import { findingLabel } from "@/engine/findings";
 import type { ReportData, ReportFinding } from "@/engine/report/types";
 import type { ToolVersions } from "@/engine/scanners/types";
@@ -94,4 +96,19 @@ export async function loadReportData(projectId: string): Promise<ReportData> {
         questions: rows.filter(r => r.kind === "question").map(toReport),
         costUsd: calls.some(c => c.costUsd === null) ? null : calls.reduce((s, c) => s + Number(c.costUsd), 0)
     };
+}
+
+export function reportFileName(d: ReportData, ext: "html" | "pdf"): string {
+    const slug = d.projectName
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, "-")
+        .replace(/^-|-$/g, "");
+    return `auditdesk-${slug}-${d.generatedAt}.${ext}`;
+}
+
+/** Each download keeps a copy beside the project's clones (design § 5). */
+export async function keepReportCopy(projectId: string, name: string, content: string | Buffer): Promise<void> {
+    const dir = join(workspaceDir(), projectId, "reports");
+    await mkdir(dir, { recursive: true });
+    await writeFile(join(dir, name), content);
 }

@@ -1,7 +1,8 @@
 import { beforeEach, describe, expect, it } from "vitest";
 
+import type { ReportData } from "@/engine/report/types";
 import { prisma } from "@/server/db";
-import { loadReportData } from "@/server/report";
+import { loadReportData, reportFileName } from "@/server/report";
 import { resetDb } from "@/test/db";
 import { projectWithRepo } from "@/test/factories";
 
@@ -66,5 +67,12 @@ describe("the report's scope", () => {
         const d = await loadReportData(project.id);
         expect(d.aspects.map(a => a.status)).toEqual(["done"]);
         expect(d.toolVersions?.osvQueriedAt).toBe("2026-10-06T00:00:00Z");
+    });
+});
+
+describe("the report's file name", () => {
+    it("joins the project's name and the date with one hyphen, whatever the name ends with", () => {
+        const d = { projectName: "naidenko.dev (own site)", generatedAt: "2026-10-06" } as ReportData;
+        expect(reportFileName(d, "pdf")).toBe("auditdesk-naidenko-dev-own-site-2026-10-06.pdf");
     });
 });
