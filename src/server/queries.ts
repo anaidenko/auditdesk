@@ -1,5 +1,6 @@
 import "server-only";
 
+import type { ModelAccess } from "@/engine/types";
 import { prisma } from "@/server/db";
 
 export function listProjects() {
@@ -12,6 +13,7 @@ export function getProject(id: string) {
 
 export interface RunSnapshot {
     status: string;
+    modelAccess: ModelAccess;
     stopRequested: boolean;
     events: { id: string; level: string; message: string; at: string }[];
     agents: { id: string; aspect: string; status: string; note: string | null }[];
@@ -33,6 +35,7 @@ export async function runSnapshot(runId: string, afterEventId: bigint): Promise<
     });
     return {
         status: run.status,
+        modelAccess: run.modelAccess,
         stopRequested: run.stopRequested,
         events: run.events.map(e => ({ id: e.id.toString(), level: e.level, message: e.message, at: e.createdAt.toISOString() })),
         agents: run.agents.map(a => ({ id: a.id, aspect: a.aspect, status: a.status, note: a.note })),

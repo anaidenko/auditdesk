@@ -3,6 +3,7 @@ import Link from "next/link";
 import { listProjects } from "@/server/queries";
 
 import { NewProjectForm } from "./NewProjectForm";
+import { ACCESS_LABEL } from "./model-access";
 import { Badge, Card, Icon, PageHeader } from "./ui";
 
 export const dynamic = "force-dynamic";
@@ -27,15 +28,18 @@ export default async function Home() {
                                     <span className="grid size-9 shrink-0 place-items-center rounded-lg bg-indigo-50 text-indigo-600">
                                         <Icon name="folder" />
                                     </span>
-                                    {p.aiConsentAt ? (
-                                        <Badge tone="emerald" dot>
-                                            consent recorded
-                                        </Badge>
-                                    ) : (
-                                        <Badge tone="amber" dot>
-                                            no consent yet
-                                        </Badge>
-                                    )}
+                                    <span className="flex flex-wrap justify-end gap-1.5">
+                                        <Badge tone="slate">{ACCESS_LABEL[p.modelAccess]}</Badge>
+                                        {p.aiConsentAt ? (
+                                            <Badge tone="emerald" dot>
+                                                consent recorded
+                                            </Badge>
+                                        ) : (
+                                            <Badge tone="amber" dot>
+                                                no consent yet
+                                            </Badge>
+                                        )}
+                                    </span>
                                 </div>
                                 <span className="mt-4 font-semibold text-zinc-900 group-hover:text-indigo-700">{p.name}</span>
                                 <span className="mt-1 text-sm text-zinc-500">

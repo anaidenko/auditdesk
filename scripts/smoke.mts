@@ -7,6 +7,7 @@ import nextEnv from "@next/env";
 import { DEFAULT_MODEL, agentParams } from "../src/engine/agent/request";
 import { makeTools } from "../src/engine/agent/tools";
 import { parseChecklist } from "../src/engine/checklists";
+import { resolveCredential } from "../src/engine/credentials";
 import { Masker } from "../src/engine/masker";
 import { MemorySink } from "../src/engine/memory-sink";
 import { createClient } from "../src/engine/model";
@@ -15,7 +16,7 @@ import { prefixBlocks } from "../src/engine/prompts";
 
 nextEnv.loadEnvConfig(process.cwd());
 
-const client = createClient();
+const client = createClient(await resolveCredential("api_key"));
 const system = prefixBlocks({
     stackProfile: "TypeScript",
     repoMap: "# Repository map\n" + "src/index.ts (10 bytes)\n".repeat(150),

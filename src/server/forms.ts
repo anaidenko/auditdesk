@@ -1,4 +1,5 @@
 import { validateBudget } from "@/engine/budget";
+import type { ModelAccess } from "@/engine/types";
 import { parseSource } from "@/engine/workspace";
 
 type Parsed<T> = { ok: true; value: T } | { ok: false; error: string };
@@ -21,7 +22,12 @@ export function parseRepositoryForm(fd: FormData): Parsed<{ source: string; bran
 
 export function parseRunForm(fd: FormData, agents: number): Parsed<{ budgetUsd: number; budgetTokens: number }> {
     const budgetUsd = Number(fd.get("budgetUsd"));
-    const budgetTokens = Math.floor(Number(fd.get("budgetTokens")));
+    const budgetTokens = Math.round(Number(fd.get("budgetKTokens")) * 1000);
     const error = validateBudget({ usd: budgetUsd, tokens: budgetTokens }, agents);
     return error ? { ok: false, error } : { ok: true, value: { budgetUsd, budgetTokens } };
+}
+
+export function parseModelAccess(fd: FormData): Parsed<ModelAccess> {
+    const v = String(fd.get("modelAccess") ?? "");
+    return v === "claude_plan" || v === "api_key" ? { ok: true, value: v } : { ok: false, error: "Choose Claude plan or API key." };
 }

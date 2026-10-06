@@ -76,6 +76,11 @@ export async function loadReportData(projectId: string): Promise<ReportData> {
         select: { servedModel: true }
     });
     const calls = await prisma.apiCall.findMany({ where: { run: { projectId } }, select: { costUsd: true } });
+    const accesses = await prisma.run.findMany({
+        where: { projectId, calls: { some: {} } },
+        distinct: ["modelAccess"],
+        select: { modelAccess: true }
+    });
     return {
         projectName: project.name,
         generatedAt: new Date().toISOString().slice(0, 10),
@@ -83,6 +88,7 @@ export async function loadReportData(projectId: string): Promise<ReportData> {
         repositories: project.repositories.map(r => ({ name: names.get(r.id)!, branch: r.branch, sha: r.commitSha ?? "not cloned" })),
         aspects,
         servedModels: served.map(s => s.servedModel),
+        modelAccess: accesses.map(a => a.modelAccess),
         toolVersions: (scanned?.toolVersions as ToolVersions | null) ?? null,
         findings: rows.filter(r => r.kind === "finding").map(toReport),
         questions: rows.filter(r => r.kind === "question").map(toReport),

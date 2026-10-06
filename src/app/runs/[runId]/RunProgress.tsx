@@ -53,7 +53,7 @@ export function RunProgress({ runId }: { runId: string }) {
                         </form>
                     )}
                 </Stat>
-                <Stat label="Spend">
+                <Stat label={snap.modelAccess === "claude_plan" ? "Spend (API-equivalent, not billed)" : "Spend"}>
                     <span className="text-2xl font-semibold tracking-tight tabular-nums">${snap.spendUsd.toFixed(2)}</span>
                     {snap.unpriced && <span className="text-xs text-amber-700">+ unpriced calls</span>}
                 </Stat>

@@ -3,39 +3,15 @@ import type { BetaMessage } from "@anthropic-ai/sdk/resources/beta/messages/mess
 import { describe, expect, it } from "vitest";
 
 import { message, replayFetch } from "@/engine/replay";
+import { CHECKLIST, finding, finish, text, tool } from "@/test/agent-messages";
 import { makeRepo } from "@/test/git-repo";
 import { SAMPLE_KEY } from "@/test/sample-repo";
 
-import { parseChecklist } from "../checklists";
 import { Masker } from "../masker";
 import { MemorySink } from "../memory-sink";
 import { prefixBlocks } from "../prompts";
 
 import { runAspect } from "./run-aspect";
-
-const CHECKLIST = parseChecklist("security", "# Security\n\n## SEC-01 Authentication\n\n## SEC-04 Injection\n");
-
-let n = 0;
-const tool = (name: string, input: object, extra: Partial<BetaMessage> = {}) =>
-    message({ content: [{ type: "tool_use", id: `toolu_${++n}`, name, input, caller: null }], stop_reason: "tool_use", ...extra } as never);
-const text = (t: string) => message({ content: [{ type: "text", text: t, citations: null }], stop_reason: "end_turn" } as never);
-const finding = (over: object = {}) => ({
-    kind: "finding",
-    checklist_item: "SEC-04",
-    title: "Raw SQL from the query string",
-    severity: "high",
-    likelihood: "Any visitor can reach it.",
-    impact: "Reads every user record.",
-    summary: "s",
-    explanation: "e",
-    recommendation: "r",
-    effort: "S",
-    evidence: [{ file: "src/db.js", start_line: 2, end_line: 2 }],
-    cwe: "CWE-89",
-    tags: [],
-    ...over
-});
-const finish = (coverage = [{ item: "SEC-04", status: "examined" }]) => tool("finish_aspect", { summary: "Done.", coverage });
 
 async function setup(
     responses: BetaMessage[],

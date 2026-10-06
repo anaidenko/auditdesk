@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { parseProjectForm, parseRepositoryForm, parseRunForm } from "./forms";
+import { parseModelAccess, parseProjectForm, parseRepositoryForm, parseRunForm } from "./forms";
 
 const fd = (o: Record<string, string>) => {
     const f = new FormData();
@@ -27,17 +27,30 @@ describe("forms", () => {
         });
     });
 
-    it("refuses a run whose per-agent share is under the task-budget minimum", () => {
-        expect(parseRunForm(fd({ budgetUsd: "10", budgetTokens: "10000" }), 1)).toMatchObject({
+    it("refuses a run whose per-agent share is under the task-budget minimum, in thousands", () => {
+        expect(parseRunForm(fd({ budgetUsd: "10", budgetKTokens: "10" }), 1)).toMatchObject({
             ok: false,
-            error: expect.stringMatching(/20,000/)
+            error: expect.stringMatching(/20 thousand/)
         });
     });
 
-    it("reads a valid run form", () => {
-        expect(parseRunForm(fd({ budgetUsd: "10", budgetTokens: "400000" }), 1)).toEqual({
+    it("reads the token cap in thousands", () => {
+        expect(parseRunForm(fd({ budgetUsd: "10", budgetKTokens: "400" }), 1)).toEqual({
             ok: true,
-            value: { budgetUsd: 10, budgetTokens: 400000 }
+            value: { budgetUsd: 10, budgetTokens: 400_000 }
         });
+    });
+});
+
+describe("parseModelAccess", () => {
+    it("accepts the two accesses and nothing else", () => {
+        const fd = (v: string) => {
+            const f = new FormData();
+            f.set("modelAccess", v);
+            return f;
+        };
+        expect(parseModelAccess(fd("claude_plan"))).toEqual({ ok: true, value: "claude_plan" });
+        expect(parseModelAccess(fd("api_key"))).toEqual({ ok: true, value: "api_key" });
+        expect(parseModelAccess(fd("both"))).toEqual({ ok: false, error: "Choose Claude plan or API key." });
     });
 });

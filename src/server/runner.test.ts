@@ -1,23 +1,27 @@
 import Anthropic from "@anthropic-ai/sdk";
-import { mkdtemp, writeFile } from "node:fs/promises";
+import { chmod, mkdtemp, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Client } from "pg";
-import { beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { apiAspectRunner } from "@/engine/agent/run-aspect";
+import { credentialsPath, saveCredential } from "@/engine/credentials";
 import { git } from "@/engine/git";
+import { recordPlanUsage } from "@/engine/plan-usage";
 import { message, replayFetch } from "@/engine/replay";
 import { REPLAY_RULESETS, replayRunner } from "@/engine/scanners/replay";
 import { prisma } from "@/server/db";
 import { ActiveRunError, claimJob, enqueueRerun, enqueueRun, markInterrupted } from "@/server/jobs";
 import { listen } from "@/server/pg";
-import { processJob, runLoop } from "@/server/runner";
-import type { PrismaSink } from "@/server/sink";
+import { type Engine, engineFor, processJob, runLoop } from "@/server/runner";
+import { PrismaSink } from "@/server/sink";
 import { resetDb } from "@/test/db";
-import { projectWithRepo } from "@/test/factories";
+import { projectWithRepo, sampleFinding } from "@/test/factories";
 import { makeSampleRepo } from "@/test/sample-repo";
 
 beforeEach(resetDb);
+afterEach(() => vi.unstubAllEnvs());
 
 const finish = () =>
     message({
@@ -29,7 +33,7 @@ async function deps() {
     const ws = await mkdtemp(join(tmpdir(), "ws-"));
     return (sink: PrismaSink) => ({
         sink,
-        client: new Anthropic({ apiKey: "t", fetch: replayFetch([finish()]).fetch, maxRetries: 0 }),
+        runAspect: apiAspectRunner(new Anthropic({ apiKey: "t", fetch: replayFetch([finish()]).fetch, maxRetries: 0 })),
         scanners: replayRunner("src/test/fixtures/scanners"),
         fetchRulesets: async () => REPLAY_RULESETS,
         workspaceDir: ws,
@@ -37,7 +41,15 @@ async function deps() {
     });
 }
 
-const runOptions = { model: "claude-opus-5-5", effort: "medium", aspects: ["security"], budgetUsd: 10, budgetTokens: 400_000 };
+const runOptions = {
+    model: "claude-opus-5-5",
+    effort: "medium",
+    // A new project's default; these tests inject their engine, so the access only meets the re-run check.
+    modelAccess: "claude_plan" as const,
+    aspects: ["security"],
+    budgetUsd: 10,
+    budgetTokens: 400_000
+};
 
 describe("runner", () => {
     it("runs a queued job to the end, filing scanner findings and recording the commit", async () => {
@@ -175,7 +187,7 @@ describe("runner", () => {
 });
 
 describe("runLoop", () => {
-    const job = (id: string) => ({ id, runId: id, aspect: null, repositoryId: null });
+    const job = (id: string) => ({ id, runId: id, aspect: null, repositoryId: null, allowPastReserve: false });
     const loop = (o: {
         sweep?: () => Promise<unknown>;
         jobs: string[];
@@ -248,4 +260,96 @@ describe("runLoop", () => {
         });
         expect(calls.slice(0, 4)).toEqual(["sweep", "sweep", "sweep", "claim"]);
     });
+});
+
+const home = async () => vi.stubEnv("AUDITDESK_HOME", await mkdtemp(join(tmpdir(), "auditdesk-home-")));
+
+describe("engineFor", () => {
+    it("picks the SDK engine for a Claude plan run and the API engine for an API key run", async () => {
+        await home();
+        vi.stubEnv("AUDITDESK_REPLAY_MODEL", "");
+        vi.stubEnv("CLAUDE_CODE_OAUTH_TOKEN", "t1");
+        vi.stubEnv("ANTHROPIC_API_KEY", "k1");
+        expect(((await engineFor("claude_plan", "/tmp/r")) as Engine).kind).toBe("sdk");
+        expect(((await engineFor("api_key", "/tmp/r")) as Engine).kind).toBe("api");
+    });
+
+    it("names the missing credential instead of an engine", async () => {
+        await home();
+        vi.stubEnv("AUDITDESK_REPLAY_MODEL", "");
+        vi.stubEnv("CLAUDE_CODE_OAUTH_TOKEN", "");
+        vi.stubEnv("ANTHROPIC_API_KEY", "");
+        await expect(engineFor("claude_plan", "/tmp/r")).resolves.toMatch(/No Claude plan token/);
+        await expect(engineFor("api_key", "/tmp/r")).resolves.toMatch(/No API key/);
+    });
+});
+
+it("fails a Claude plan run that has no token before cloning, and calls nothing", async () => {
+    await home();
+    vi.stubEnv("AUDITDESK_REPLAY_MODEL", "");
+    vi.stubEnv("CLAUDE_CODE_OAUTH_TOKEN", "");
+    const { project, repo } = await projectWithRepo(await makeSampleRepo());
+    const runId = await enqueueRun(project.id, { ...runOptions, modelAccess: "claude_plan" });
+    await processJob((await claimJob())!);
+    const run = await prisma.run.findUniqueOrThrow({ where: { id: runId }, include: { calls: true } });
+    expect(run.status).toBe("failed");
+    expect(run.error).toMatch(/No Claude plan token/);
+    expect(run.calls).toHaveLength(0);
+    expect((await prisma.repository.findUniqueOrThrow({ where: { id: repo.id } })).commitSha).toBeNull();
+});
+
+it("does not start a Claude plan run above the 50% reserve, and runs it when the start was allowed", async () => {
+    await home();
+    const replay = join(await mkdtemp(join(tmpdir(), "replay-")), "model.json");
+    await writeFile(replay, JSON.stringify([finish()]));
+    vi.stubEnv("AUDITDESK_REPLAY_MODEL", replay);
+    vi.stubEnv("AUDITDESK_SCANNER_REPLAY", "src/test/fixtures/scanners");
+    vi.stubEnv("WORKSPACE_DIR", await mkdtemp(join(tmpdir(), "ws-")));
+    await recordPlanUsage({ utilization: 0.6, resetsAt: Math.floor(Date.now() / 1000) + 3600 });
+    const { project } = await projectWithRepo(await makeSampleRepo());
+    const held = await enqueueRun(project.id, { ...runOptions, modelAccess: "claude_plan" });
+    await processJob((await claimJob())!);
+    const first = await prisma.run.findUniqueOrThrow({ where: { id: held }, include: { agents: true, calls: true } });
+    expect(first).toMatchObject({ status: "failed", error: expect.stringMatching(/^Not started\. .*at 60%/) });
+    expect(first.agents).toHaveLength(0);
+    expect(first.calls).toHaveLength(0);
+
+    const allowed = await enqueueRun(project.id, { ...runOptions, modelAccess: "claude_plan", allowPastReserve: true });
+    await processJob((await claimJob())!);
+    const second = await prisma.run.findUniqueOrThrow({ where: { id: allowed }, include: { agents: true, calls: true } });
+    expect(second.agents.map(a => a.status)).toEqual(["done"]);
+    expect(second.calls).toHaveLength(1);
+}, 60_000);
+
+// The review's Minor 3: the engine's own refusal comes after the pipeline cloned and superseded the aspect's findings.
+it("refuses a Claude plan re-run above the 50% reserve before cloning, so the aspect's findings stay", async () => {
+    await home();
+    const { project, repo } = await projectWithRepo(await makeSampleRepo());
+    const runId = await enqueueRun(project.id, { ...runOptions, modelAccess: "claude_plan" });
+    await prisma.job.updateMany({ where: { runId }, data: { status: "done" } });
+    await prisma.run.update({ where: { id: runId }, data: { status: "done" } });
+    await new PrismaSink(runId, project.id).createFinding(sampleFinding(repo.id));
+    await recordPlanUsage({ utilization: 0.6, resetsAt: Math.floor(Date.now() / 1000) + 3600 });
+    await enqueueRerun(runId, repo.id, "security");
+    await processJob((await claimJob())!);
+    const run = await prisma.run.findUniqueOrThrow({ where: { id: runId } });
+    expect(run.status).toBe("failed");
+    expect(run.error).toMatch(/^Not started\. .*at 60%/);
+    expect((await prisma.finding.findFirstOrThrow({ where: { projectId: project.id, source: "agent" } })).status).toBe("unreviewed");
+    expect((await prisma.repository.findUniqueOrThrow({ where: { id: repo.id } })).commitSha).toBeNull();
+});
+
+// The review's Minor 5: engineFor threw outside processJob's try, so the run's end was recorded as "could not record its end".
+it("fails a run whose credentials file other users can read, with the reason, as any other failure", async () => {
+    await home();
+    vi.stubEnv("AUDITDESK_REPLAY_MODEL", "");
+    vi.stubEnv("CLAUDE_CODE_OAUTH_TOKEN", "");
+    await saveCredential("claude_plan", "plan-token-wxyz");
+    await chmod(credentialsPath(), 0o644);
+    const { project } = await projectWithRepo(await makeSampleRepo());
+    const runId = await enqueueRun(project.id, { ...runOptions, modelAccess: "claude_plan" });
+    await processJob((await claimJob())!);
+    const run = await prisma.run.findUniqueOrThrow({ where: { id: runId }, include: { events: true } });
+    expect(run).toMatchObject({ status: "failed", error: expect.stringMatching(/chmod 600/) });
+    expect(run.events.map(e => e.message)).toContainEqual(expect.stringMatching(/^Run failed: .*chmod 600/));
 });

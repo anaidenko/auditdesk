@@ -1,9 +1,7 @@
-import type Anthropic from "@anthropic-ai/sdk";
 import { join } from "node:path";
 
 import type { Effort } from "./agent/request";
-import type { AgentOutcome } from "./agent/run-aspect";
-import { runAspect } from "./agent/run-aspect";
+import type { AgentOutcome, AspectRunner } from "./agent/run-aspect";
 import { shareFor } from "./budget";
 import { loadChecklist } from "./checklists";
 import { readSnippet } from "./files";
@@ -41,7 +39,8 @@ export interface AuditInput {
 
 export interface AuditDeps {
     sink: PipelineSink;
-    client: Anthropic;
+    /** The aspect agent on the run's engine: the Messages API or the Agent SDK. */
+    runAspect: AspectRunner;
     scanners: ScannerRunner;
     fetchRulesets: (dir: string) => Promise<Ruleset[]>;
     workspaceDir: string;
@@ -143,31 +142,32 @@ export async function runAudit(input: AuditInput, deps: AuditDeps): Promise<{ st
             const checklist = await loadChecklist(aspect, deps.checklistsDir);
             const agentRunId = await sink.startAgent(repo.id, aspect, share);
             await sink.progress(`Agent: ${checklist.title} (${share.tokens.toLocaleString("en-US")} tokens, $${share.usd.toFixed(2)})…`);
-            const outcome = await runAspect({
-                client: deps.client,
-                model: input.model,
-                effort: input.effort,
-                share,
-                ctx: {
-                    clonePath,
-                    repositoryId: repo.id,
-                    agentRunId,
-                    aspect,
-                    checklist,
-                    masker,
-                    repoMap,
-                    sink,
-                    state: { finished: null, reported: [], fatal: null }
-                },
-                system,
-                firstMessage: aspectMessage({ checklist, findingIndex: await sink.findingIndex(repo.id), budgetTokens: share.tokens })
-            }).catch(async (e: Error) => {
-                // Recorded before the run fails, or the agent would show "running" forever.
-                await sink
-                    .finishAgent(agentRunId, { status: "failed", note: `Error: ${e.message}`, summary: null, coverage: [] })
-                    .catch(() => {});
-                throw e;
-            });
+            const outcome = await deps
+                .runAspect({
+                    model: input.model,
+                    effort: input.effort,
+                    share,
+                    ctx: {
+                        clonePath,
+                        repositoryId: repo.id,
+                        agentRunId,
+                        aspect,
+                        checklist,
+                        masker,
+                        repoMap,
+                        sink,
+                        state: { finished: null, reported: [], fatal: null }
+                    },
+                    system,
+                    firstMessage: aspectMessage({ checklist, findingIndex: await sink.findingIndex(repo.id), budgetTokens: share.tokens })
+                })
+                .catch(async (e: Error) => {
+                    // Recorded before the run fails, or the agent would show "running" forever.
+                    await sink
+                        .finishAgent(agentRunId, { status: "failed", note: `Error: ${e.message}`, summary: null, coverage: [] })
+                        .catch(() => {});
+                    throw e;
+                });
             await sink.finishAgent(agentRunId, outcome);
             await sink.progress(
                 `${checklist.title}: ${outcome.status}${outcome.note ? ` — ${outcome.note}` : ""}`,

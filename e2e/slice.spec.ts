@@ -1,6 +1,7 @@
 import { type Page, expect, test } from "@playwright/test";
-import { readFileSync } from "node:fs";
+import { mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { request as httpRequest } from "node:http";
+import { join } from "node:path";
 
 const samplePath = () => readFileSync("e2e/.sample-path", "utf8").trim();
 
@@ -19,6 +20,8 @@ test("a run from project to downloaded report", async ({ page }) => {
     await page.getByRole("button", { name: "Save" }).click();
     await page.getByRole("button", { name: "Start run" }).click();
     await expect(page.getByTestId("run-status")).toHaveText("done", { timeout: 60_000 });
+    // A Claude plan run's cap is in API-equivalent dollars (plan, Decision for Andrii 4).
+    await expect(page.getByText(/cap \$10\.00 API-equivalent/)).toBeVisible();
     // Rendered by the server once the run ends, without a reload.
     await expect(page.getByRole("button", { name: "Re-run this aspect" })).toBeVisible();
 
@@ -33,6 +36,33 @@ test("a run from project to downloaded report", async ({ page }) => {
     const html = await report.text();
     expect(html).toContain(`id="${label}"`);
     expect(html).not.toContain("Generic API Key"); // gitleaks' finding was not accepted, so it stays out
+    // New projects default to Claude plan: the main flow ran the SDK engine against the fake server.
+    expect(html).toContain("through the Claude Agent SDK");
+});
+
+test("an API key saved in Settings runs an audit, and no page shows the key", async ({ page }) => {
+    const key = "sk-ant-e2e-0000000000000000wxyz";
+    await page.goto("/settings");
+    await page.getByLabel("API key value").fill(key);
+    await page.getByRole("button", { name: "Save" }).click();
+    await expect(page.getByTestId("status-api_key")).toHaveText("saved · …wxyz");
+    expect(await page.content()).not.toContain(key);
+
+    await newProject(page, "On a key");
+    await page.getByLabel("API key", { exact: true }).check();
+    await page.getByRole("button", { name: "Apply" }).click();
+    await expect(page.getByTestId("credential-status")).toHaveText("API key: saved · …wxyz");
+    expect(await page.content()).not.toContain(key);
+    await page.getByLabel(/client agreed/).check();
+    await page.getByRole("button", { name: "Save" }).click();
+    await page.getByRole("button", { name: "Start run" }).click();
+    await expect(page.getByTestId("run-status")).toHaveText("done", { timeout: 60_000 });
+});
+
+test("the model access tooltip says what was approved", async ({ page }) => {
+    await newProject(page, "Tooltip");
+    await page.getByLabel("About model access").click();
+    await expect(page.getByRole("tooltip")).toContainText("Choose the API key when a client's NDA requires commercial terms");
 });
 
 async function finishedRun(page: Page, name: string) {
@@ -91,4 +121,48 @@ test("a foreign Host header is refused", async () => {
         req.end();
     });
     expect(status).toBe(403);
+});
+
+// AUDITDESK_HOME of the end-to-end server (playwright.config.ts), where the engine saves the plan's usage.
+const E2E_HOME = "/tmp/auditdesk-e2e-home";
+
+test("a Claude plan run above half of the 5-hour window starts only when allowed", async ({ page }) => {
+    const now = Math.floor(Date.now() / 1000);
+    const usage = join(E2E_HOME, "plan-usage.json");
+    mkdirSync(E2E_HOME, { recursive: true });
+    writeFileSync(usage, JSON.stringify({ utilization: 0.62, resetsAt: now + 3600, seenAt: now }));
+    try {
+        await newProject(page, "Reserve");
+        await page.getByLabel(/client agreed/).check();
+        await page.getByRole("button", { name: "Save" }).click();
+        await expect(page.getByTestId("plan-usage")).toContainText("62%");
+        await page.getByRole("button", { name: "Start run" }).click();
+        await expect(page.getByText(/above the 50% reserve/)).toBeVisible();
+        await page.getByLabel("Allow past the 50% reserve").check();
+        await page.getByRole("button", { name: "Start run" }).click();
+        await expect(page.getByTestId("run-status")).toHaveText("done", { timeout: 60_000 });
+    } finally {
+        rmSync(usage, { force: true });
+    }
+});
+
+// The review's Minor 4: a page rendered before the reading crossed 50% has no checkbox, yet the refusal names it.
+test("a run form rendered below the reserve offers the checkbox when the start is refused", async ({ page }) => {
+    const now = Math.floor(Date.now() / 1000);
+    const usage = join(E2E_HOME, "plan-usage.json");
+    try {
+        await newProject(page, "Stale reserve");
+        await page.getByLabel(/client agreed/).check();
+        await page.getByRole("button", { name: "Save" }).click();
+        await expect(page.getByTestId("plan-usage")).toContainText("not measured yet");
+        mkdirSync(E2E_HOME, { recursive: true });
+        writeFileSync(usage, JSON.stringify({ utilization: 0.58, resetsAt: now + 3600, seenAt: now }));
+        await page.getByRole("button", { name: "Start run" }).click();
+        await expect(page.getByText(/above the 50% reserve/)).toBeVisible();
+        await page.getByLabel("Allow past the 50% reserve").check();
+        await page.getByRole("button", { name: "Start run" }).click();
+        await expect(page.getByTestId("run-status")).toHaveText("done", { timeout: 60_000 });
+    } finally {
+        rmSync(usage, { force: true });
+    }
 });

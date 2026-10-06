@@ -1,5 +1,6 @@
 import "server-only";
 
+import type { ModelAccess } from "@/engine/types";
 import { Prisma } from "@/generated/prisma/client";
 import { prisma } from "@/server/db";
 import { RUN_CHANNEL } from "@/server/pg";
@@ -10,15 +11,30 @@ export class ActiveRunError extends Error {
     }
 }
 
+export class AccessChangedError extends Error {
+    constructor() {
+        super("This run's model access differs from the project's now; start a new run.");
+    }
+}
+
 export async function enqueueRun(
     projectId: string,
-    o: { model: string; effort: string; aspects: string[]; budgetUsd: number; budgetTokens: number }
+    o: {
+        model: string;
+        effort: string;
+        modelAccess: ModelAccess;
+        aspects: string[];
+        budgetUsd: number;
+        budgetTokens: number;
+        allowPastReserve?: boolean;
+    }
 ): Promise<string> {
+    const { allowPastReserve = false, ...run } = o;
     try {
         return await prisma.$transaction(async tx => {
-            const run = await tx.run.create({ data: { projectId, ...o } });
-            await tx.job.create({ data: { runId: run.id } });
-            return run.id;
+            const { id } = await tx.run.create({ data: { projectId, ...run } });
+            await tx.job.create({ data: { runId: id, allowPastReserve } });
+            return id;
         });
     } catch (e) {
         if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === "P2002") throw new ActiveRunError();
@@ -27,9 +43,20 @@ export async function enqueueRun(
 }
 
 /** "already queued" is a second press; another active run in the project throws ActiveRunError. */
-export async function enqueueRerun(runId: string, repositoryId: string, aspect: string): Promise<"queued" | "already queued"> {
+export async function enqueueRerun(
+    runId: string,
+    repositoryId: string,
+    aspect: string,
+    o: { allowPastReserve?: boolean } = {}
+): Promise<"queued" | "already queued"> {
     try {
         return await prisma.$transaction(async tx => {
+            const run = await tx.run.findUniqueOrThrow({
+                where: { id: runId },
+                select: { modelAccess: true, project: { select: { modelAccess: true } } }
+            });
+            // A run keeps its access; the project's switch speaks for new runs only (plan, Decision 1).
+            if (run.modelAccess !== run.project.modelAccess) throw new AccessChangedError();
             // Only a finished run is re-queued: a second press would otherwise queue a second, paid job.
             const { count } = await tx.run.updateMany({
                 where: { id: runId, status: { notIn: ["queued", "running"] } },
@@ -39,7 +66,7 @@ export async function enqueueRerun(runId: string, repositoryId: string, aspect: 
                 await tx.run.findUniqueOrThrow({ where: { id: runId } });
                 return "already queued";
             }
-            await tx.job.create({ data: { runId, repositoryId, aspect } });
+            await tx.job.create({ data: { runId, repositoryId, aspect, allowPastReserve: o.allowPastReserve ?? false } });
             return "queued";
         });
     } catch (e) {
@@ -50,13 +77,15 @@ export async function enqueueRerun(runId: string, repositoryId: string, aspect: 
 
 /** One job per caller, never the same one twice: FOR UPDATE SKIP LOCKED (design § 5). */
 export async function claimJob() {
-    const rows = await prisma.$queryRaw<{ id: string; runId: string; aspect: string | null; repositoryId: string | null }[]>`
+    const rows = await prisma.$queryRaw<
+        { id: string; runId: string; aspect: string | null; repositoryId: string | null; allowPastReserve: boolean }[]
+    >`
         UPDATE "Job" SET status = 'running', "startedAt" = now()
         WHERE id = (
             SELECT id FROM "Job" WHERE status = 'queued'
             ORDER BY "createdAt" FOR UPDATE SKIP LOCKED LIMIT 1
         )
-        RETURNING id, "runId", aspect, "repositoryId"`;
+        RETURNING id, "runId", aspect, "repositoryId", "allowPastReserve"`;
     return rows[0] ?? null;
 }
 

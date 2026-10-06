@@ -1,23 +1,62 @@
+import { readFile } from "node:fs/promises";
+import { join } from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
 import "server-only";
 
+import { type AspectRunner, apiAspectRunner } from "@/engine/agent/run-aspect";
 import { workspaceDir } from "@/engine/config";
+import { resolveCredential } from "@/engine/credentials";
 import { createClient } from "@/engine/model";
 import { type AuditDeps, runAudit } from "@/engine/pipeline";
+import { readPlanUsage, reserveRefusal } from "@/engine/plan-usage";
 import { dockerRunner } from "@/engine/scanners/docker";
 import { REPLAY_RULESETS, replayRunner } from "@/engine/scanners/replay";
 import { RULESETS, fetchRulesets } from "@/engine/scanners/rulesets";
+import { startFakeAnthropic } from "@/engine/sdk/fake-server";
+import { sdkAspectRunner } from "@/engine/sdk/run-aspect-sdk";
+import { SERVER } from "@/engine/sdk/tools";
+import type { ModelAccess } from "@/engine/types";
 import { prisma } from "@/server/db";
 import { claimJob, markInterrupted } from "@/server/jobs";
 import { PrismaSink } from "@/server/sink";
 
 type Job = NonNullable<Awaited<ReturnType<typeof claimJob>>>;
 
-export function defaultDeps(sink: PrismaSink): AuditDeps {
+export interface Engine {
+    kind: "api" | "sdk";
+    runAspect: AspectRunner;
+    close(): Promise<void>;
+}
+
+const noop = async () => {};
+
+// Replayed runs: anything not for the fake server goes to a closed loopback port and fails.
+const NOWHERE = { HTTPS_PROXY: "http://127.0.0.1:9", HTTP_PROXY: "http://127.0.0.1:9", NO_PROXY: "127.0.0.1,localhost" };
+
+/** The run's engine, or why it cannot start. Replayed runs get the fake model on either engine. */
+export async function engineFor(access: ModelAccess, runDir: string, o: { allowPastReserve?: boolean } = {}): Promise<Engine | string> {
+    const replay = process.env.AUDITDESK_REPLAY_MODEL;
+    if (replay && access === "api_key") return { kind: "api", runAspect: apiAspectRunner(createClient(null)), close: noop };
+    if (replay) {
+        const fake = await startFakeAnthropic(JSON.parse(await readFile(replay, "utf8")), { toolPrefix: `mcp__${SERVER}__` });
+        const runAspect = sdkAspectRunner({ access, credential: "replay", runDir, baseUrl: fake.url, extraEnv: NOWHERE, ...o });
+        return { kind: "sdk", runAspect, close: fake.close };
+    }
+    const credential = await resolveCredential(access);
+    if (!credential)
+        return access === "claude_plan"
+            ? "No Claude plan token: run `claude setup-token`, then add it in Settings or .env.local."
+            : "No API key: add it in Settings or .env.local.";
+    return access === "api_key"
+        ? { kind: "api", runAspect: apiAspectRunner(createClient(credential)), close: noop }
+        : { kind: "sdk", runAspect: sdkAspectRunner({ access, credential, runDir, ...o }), close: noop };
+}
+
+export function defaultDeps(sink: PrismaSink, runAspect: AspectRunner): AuditDeps {
     const replay = process.env.AUDITDESK_SCANNER_REPLAY;
     return {
         sink,
-        client: createClient(),
+        runAspect,
         scanners: replay ? replayRunner(replay) : dockerRunner(),
         fetchRulesets: replay ? async () => REPLAY_RULESETS : dir => fetchRulesets(RULESETS, dir),
         workspaceDir: workspaceDir(),
@@ -25,7 +64,7 @@ export function defaultDeps(sink: PrismaSink): AuditDeps {
     };
 }
 
-export async function processJob(job: Job, deps: (sink: PrismaSink) => AuditDeps = defaultDeps): Promise<void> {
+export async function processJob(job: Job, deps?: (sink: PrismaSink) => AuditDeps): Promise<void> {
     const run = await prisma.run.findUniqueOrThrow({ where: { id: job.runId }, include: { project: { include: { repositories: true } } } });
     const sink = new PrismaSink(run.id, run.projectId);
     const finish = async (status: "done" | "failed" | "stopped", error: string | null) => {
@@ -42,8 +81,20 @@ export async function processJob(job: Job, deps: (sink: PrismaSink) => AuditDeps
         );
     };
     if (!run.project.aiConsentAt) return finish("failed", "The client's AI consent is not recorded for this project.");
-    await prisma.run.update({ where: { id: run.id }, data: { status: "running", startedAt: run.startedAt ?? new Date() } });
+    // Before the clone: a re-run would otherwise supersede the aspect's findings and then not start (Task E.7a).
+    const refusal = run.modelAccess === "claude_plan" ? reserveRefusal(await readPlanUsage(), job.allowPastReserve) : null;
+    if (refusal) return finish("failed", `Not started. ${refusal} Start it again then, or allow it past the reserve.`);
+    let engine: Engine | null = null;
     try {
+        // No credential, no clone: the run fails before it touches the client's code.
+        if (!deps) {
+            const chosen = await engineFor(run.modelAccess, join(workspaceDir(), run.projectId, "runs", run.id), {
+                allowPastReserve: job.allowPastReserve
+            });
+            if (typeof chosen === "string") return await finish("failed", chosen);
+            engine = chosen;
+        }
+        await prisma.run.update({ where: { id: run.id }, data: { status: "running", startedAt: run.startedAt ?? new Date() } });
         const { stopped } = await runAudit(
             {
                 runId: run.id,
@@ -61,11 +112,13 @@ export async function processJob(job: Job, deps: (sink: PrismaSink) => AuditDeps
                 aspects: run.aspects,
                 only: job.aspect && job.repositoryId ? { repositoryId: job.repositoryId, aspect: job.aspect } : undefined
             },
-            deps(sink)
+            deps ? deps(sink) : defaultDeps(sink, engine!.runAspect)
         );
         await finish(stopped ? "stopped" : "done", null);
     } catch (e) {
         await finish("failed", (e as Error).message);
+    } finally {
+        await engine?.close();
     }
 }
 

@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 
 import { rerunAspect } from "@/app/review-actions";
 import { Alert, Card, Icon, PageHeader, RunStatus, button } from "@/app/ui";
+import { overReserve, readPlanUsage } from "@/engine/plan-usage";
 import { prisma } from "@/server/db";
 
 import { RunProgress } from "./RunProgress";
@@ -39,6 +40,8 @@ export default async function RunPage({
                 ?.replace(/\.git$/, "") ?? r.source
         ])
     );
+    // A re-run is a new start: above the reserve it asks again (Task E.7a).
+    const askReserve = run.modelAccess === "claude_plan" && overReserve(await readPlanUsage());
     const targets = run.project.repositories.flatMap(r =>
         run.aspects.map(aspect => ({ repositoryId: r.id, aspect, status: latest.get(`${r.id}:${aspect}`)?.status ?? "not started" }))
     );
@@ -58,10 +61,17 @@ export default async function RunPage({
                     </Link>
                 }
             >
-                {run.model} · effort {run.effort} · cap ${Number(run.budgetUsd).toFixed(2)} · started{" "}
+                {run.model} · effort {run.effort} · cap ${Number(run.budgetUsd).toFixed(2)}
+                {run.modelAccess === "claude_plan" ? " API-equivalent" : ""} · started{" "}
                 {(run.startedAt ?? run.createdAt).toISOString().slice(0, 16).replace("T", " ")} UTC
             </PageHeader>
             {notice === "busy" && <Alert>Another run of this project is queued or running; re-run this aspect when it ends.</Alert>}
+            {notice === "access" && <Alert>This run used another model access than the project uses now; start a new run.</Alert>}
+            {notice === "reserve" && (
+                <Alert>
+                    The Claude plan&apos;s 5-hour usage is above the 50% reserve. Tick &quot;Allow past the 50% reserve&quot; to re-run now.
+                </Alert>
+            )}
             {/* A re-run adds a job: the new key starts a fresh stream, where the old one had ended on "done". */}
             <RunProgress key={run._count.jobs} runId={run.id} />
             {run.status !== "queued" && run.status !== "running" && (
@@ -80,7 +90,17 @@ export default async function RunPage({
                                     <span className="font-medium capitalize">{a.aspect}</span>
                                     <span className="font-mono text-xs text-zinc-500">{repoName.get(a.repositoryId)}</span>
                                     <RunStatus status={a.status} />
-                                    <button className={`${button.secondary} ${button.small} ml-auto`}>
+                                    {askReserve && (
+                                        <label className="ml-auto flex items-center gap-2 text-xs font-medium text-amber-800">
+                                            <input
+                                                type="checkbox"
+                                                name="allowPastReserve"
+                                                className="size-4 rounded border-zinc-300 accent-amber-600"
+                                            />
+                                            Allow past the 50% reserve
+                                        </label>
+                                    )}
+                                    <button className={`${button.secondary} ${button.small} ${askReserve ? "" : "ml-auto"}`}>
                                         <Icon name="refresh" className="size-3.5" />
                                         Re-run this aspect
                                     </button>

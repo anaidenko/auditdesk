@@ -1,5 +1,5 @@
 import type { ToolVersions } from "../scanners/types";
-import type { Evidence, References, SeverityName } from "../types";
+import type { Evidence, ModelAccess, References, SeverityName } from "../types";
 
 export interface ReportFinding {
     label: string;
@@ -26,6 +26,8 @@ export interface ReportData {
     repositories: { name: string; branch: string; sha: string }[];
     aspects: { title: string; status: string; note: string | null; coverage: { item: string; title: string; status: string }[] }[];
     servedModels: string[];
+    /** The accesses of the runs whose calls are in the report: which terms the client's code went under. */
+    modelAccess: ModelAccess[];
     toolVersions: ToolVersions | null;
     findings: ReportFinding[];
     questions: ReportFinding[];

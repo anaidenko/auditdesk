@@ -3,8 +3,10 @@
 import { useActionState } from "react";
 
 import { type FormState, addRepository, startRun } from "@/app/actions";
+import { ACCESS_LABEL } from "@/app/model-access";
 import { FormError, Icon, button, input, label } from "@/app/ui";
 import { DEFAULT_EFFORT, DEFAULT_MODEL } from "@/engine/agent/request";
+import type { ModelAccess } from "@/engine/types";
 
 export function AddRepositoryForm({ projectId }: { projectId: string }) {
     const [state, action, pending] = useActionState<FormState, FormData>(addRepository.bind(null, projectId), { error: null });
@@ -25,7 +27,18 @@ export function AddRepositoryForm({ projectId }: { projectId: string }) {
     );
 }
 
-export function StartRunForm({ projectId, defaults }: { projectId: string; defaults: { usd: number; tokens: number } }) {
+export function StartRunForm({
+    projectId,
+    access,
+    defaults,
+    planUsage
+}: {
+    projectId: string;
+    access: ModelAccess;
+    defaults: { usd: number; tokens: number };
+    /** Claude plan only: the last 5-hour reading, and whether it is past the reserve. */
+    planUsage: { line: string; overReserve: boolean } | null;
+}) {
     const [state, action, pending] = useActionState<FormState, FormData>(startRun.bind(null, projectId), { error: null });
     return (
         <form action={action} className="space-y-4">
@@ -35,23 +48,35 @@ export function StartRunForm({ projectId, defaults }: { projectId: string; defau
                     <input name="budgetUsd" type="number" step="0.5" min="0.5" defaultValue={defaults.usd} className={`${input} mt-1.5`} />
                 </label>
                 <label className={label}>
-                    Cap, tokens
+                    Cap, thousand tokens
                     <input
-                        name="budgetTokens"
+                        name="budgetKTokens"
                         type="number"
-                        step="10000"
-                        min="20000"
-                        defaultValue={defaults.tokens}
+                        step="10"
+                        min="20"
+                        defaultValue={defaults.tokens / 1000}
                         className={`${input} mt-1.5`}
                     />
                 </label>
             </div>
+            {planUsage && (
+                <div className="space-y-2 text-xs text-zinc-600">
+                    <p data-testid="plan-usage">{planUsage.line}</p>
+                    {(planUsage.overReserve || state.askReserve) && (
+                        <label className="flex items-center gap-2 font-medium text-amber-800">
+                            <input type="checkbox" name="allowPastReserve" className="size-4 rounded border-zinc-300 accent-amber-600" />
+                            Allow past the 50% reserve
+                        </label>
+                    )}
+                </div>
+            )}
             <button disabled={pending} className={`${button.primary} w-full`}>
                 <Icon name="play" />
                 Start run
             </button>
             <p className="text-xs text-zinc-500">
-                Security aspect · {DEFAULT_MODEL} · effort {DEFAULT_EFFORT}. The cap is checked between calls.
+                Security aspect · {ACCESS_LABEL[access]} · {DEFAULT_MODEL} · effort {DEFAULT_EFFORT}. The cap is checked between calls
+                {access === "claude_plan" ? ", in API-equivalent dollars" : ""}.
             </p>
             {state.error && <FormError>{state.error}</FormError>}
         </form>

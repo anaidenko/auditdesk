@@ -95,7 +95,8 @@ describe("budget", () => {
     });
 
     it("refuses a budget whose share falls under the task-budget minimum", () => {
-        expect(validateBudget({ usd: 10, tokens: 60_000 }, 4)).toMatch(/20,000/);
+        expect(validateBudget({ usd: 10, tokens: 60_000 }, 4)).toMatch(/20 thousand/);
+        expect(validateBudget({ usd: 10, tokens: 60_000 }, 4)).toMatch(/raise the cap to 80 thousand/i);
         expect(validateBudget({ usd: 10, tokens: 80_000 }, 4)).toBeNull();
     });
 

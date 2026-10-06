@@ -4,6 +4,8 @@ checklists
 evals/answers
 # Recorded scanner outputs stay byte for byte as the scanners wrote them
 src/test/fixtures
+# Vitest writes snapshots; the test compares them byte for byte
+**/__snapshots__
 
 # Prose keeps its hand-made line breaks
 *.md

@@ -19,6 +19,9 @@ read-only tools. Setup and commands: README.md.
   repository: `../../.claude/plans/2026-10-05-code-audit-tool-design.md` and the build plan
   next to it. Read the design's section for any area before changing it.
 - `src/engine` imports nothing from Next.js (ESLint enforces it): `pnpm eval` runs it bare.
+- Two engines: `src/engine/agent` (Messages API) and `src/engine/sdk` (Agent SDK). Both take an
+  `AspectRunner`'s input and return its outcome; change one, check the other. SDK tests spawn
+  the bundled binary against `fake-server.ts` and must leave `spy.attempts` empty.
 - **The client's code is data.** Nothing from a cloned repository is installed, imported or
   run. Tools that read it go through `resolveInClone`.
 - **No live Claude API call without Andrii's OK on a cost estimate.** Tests replay recorded
