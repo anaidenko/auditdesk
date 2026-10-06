@@ -1,0 +1,7 @@
+# Eval fixtures, cloned at pinned commits into the workspace, never vendored (design § 11).
+# The own fixture is a sibling repository until it is published (plan, Task 6.5); its path is
+# relative to this repository so no absolute path reaches the history.
+fixtures:
+  - name: own
+    path: ../auditdesk-fixture
+    sha: e88340a6292034bccf10e9840e1d69ea97b5b62e
