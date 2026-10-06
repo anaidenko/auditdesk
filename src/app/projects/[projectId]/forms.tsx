@@ -3,6 +3,7 @@
 import { useActionState } from "react";
 
 import { type FormState, addRepository, startRun } from "@/app/actions";
+import { DEFAULT_EFFORT, DEFAULT_MODEL } from "@/engine/agent/request";
 
 export function AddRepositoryForm({ projectId }: { projectId: string }) {
     const [state, action, pending] = useActionState<FormState, FormData>(addRepository.bind(null, projectId), { error: null });
@@ -53,7 +54,7 @@ export function StartRunForm({ projectId, defaults }: { projectId: string; defau
                 Start run
             </button>
             <p className="w-full text-sm text-zinc-500">
-                Security aspect · Claude Opus 5.5 · effort medium. The cap is checked between calls.
+                Security aspect · {DEFAULT_MODEL} · effort {DEFAULT_EFFORT}. The cap is checked between calls.
             </p>
             {state.error && <p className="w-full text-sm text-red-700">{state.error}</p>}
         </form>

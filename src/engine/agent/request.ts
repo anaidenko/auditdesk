@@ -4,6 +4,11 @@ import type { makeTools } from "./tools";
 
 export type Effort = "low" | "medium" | "high" | "xhigh" | "max";
 
+// Sonnet 5.5, not Sonnet 5: Sonnet 5 takes no task budget.
+export const DEFAULT_MODEL = "claude-sonnet-5-5";
+// The docs' starting point for well-specified multistep tool use on Sonnet 5.5, one below its default.
+export const DEFAULT_EFFORT: Effort = "medium";
+
 export const BETAS = ["server-side-fallback-2026-07-01", "task-budgets-2026-03-13", "thinking-display-updates-2026-08-18"];
 
 // Thinking counts toward max_tokens; 64K is the skill's figure for long agentic turns, and needs streaming.

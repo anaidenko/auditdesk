@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import { message, usage } from "@/engine/replay";
 
+import { DEFAULT_MODEL } from "./agent/request";
 import { exhausted, shareFor, validateBudget } from "./budget";
 import { priceMessage } from "./prices";
 
@@ -63,6 +64,23 @@ describe("priceMessage", () => {
             })
         });
         expect(priceMessage("claude-opus-5-5", m).costUsd).toBeCloseTo(5 + 8, 6);
+    });
+
+    it("prices the default model and Sonnet 5, where its cyber and frontier_llm declines fall back", () => {
+        const call = (model: string) =>
+            message({
+                content: [],
+                stop_reason: "end_turn",
+                model,
+                usage: usage({
+                    input_tokens: 1_000_000,
+                    output_tokens: 1_000_000,
+                    cache_read_input_tokens: 1_000_000,
+                    cache_creation_input_tokens: 1_000_000
+                })
+            });
+        expect(priceMessage(DEFAULT_MODEL, call(DEFAULT_MODEL)).costUsd).toBeCloseTo(2 + 10 + 0.2 + 2.5, 6);
+        expect(priceMessage(DEFAULT_MODEL, call("claude-sonnet-5")).costUsd).toBeCloseTo(2 + 10 + 0.2 + 2.5, 6);
     });
 
     it("returns no cost for a model without a price row", () => {

@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 
+import { DEFAULT_EFFORT, DEFAULT_MODEL } from "@/engine/agent/request";
 import { workspaceDir } from "@/engine/config";
 import { deleteProjectClones } from "@/engine/workspace";
 import { prisma } from "@/server/db";
@@ -10,9 +11,6 @@ import { parseProjectForm, parseRepositoryForm, parseRunForm } from "@/server/fo
 import { ActiveRunError, enqueueRun, requestStop } from "@/server/jobs";
 
 export type FormState = { error: string | null };
-
-const DEFAULT_MODEL = "claude-opus-5-5";
-const DEFAULT_EFFORT = "medium";
 
 export async function createProject(_prev: FormState, fd: FormData): Promise<FormState> {
     const parsed = parseProjectForm(fd);
