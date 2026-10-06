@@ -62,6 +62,7 @@ export default async function RunPage({
                 {(run.startedAt ?? run.createdAt).toISOString().slice(0, 16).replace("T", " ")} UTC
             </PageHeader>
             {notice === "busy" && <Alert>Another run of this project is queued or running; re-run this aspect when it ends.</Alert>}
+            {notice === "access" && <Alert>This run used another model access than the project uses now; start a new run.</Alert>}
             {/* A re-run adds a job: the new key starts a fresh stream, where the old one had ended on "done". */}
             <RunProgress key={run._count.jobs} runId={run.id} />
             {run.status !== "queued" && run.status !== "running" && (

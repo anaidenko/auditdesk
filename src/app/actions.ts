@@ -5,8 +5,9 @@ import { redirect } from "next/navigation";
 
 import { DEFAULT_EFFORT, DEFAULT_MODEL } from "@/engine/agent/request";
 import { workspaceDir } from "@/engine/config";
+import { credentialStatus } from "@/engine/credentials";
 import { prisma } from "@/server/db";
-import { parseProjectForm, parseRepositoryForm, parseRunForm } from "@/server/forms";
+import { parseModelAccess, parseProjectForm, parseRepositoryForm, parseRunForm } from "@/server/forms";
 import { ActiveRunError, enqueueRun, requestStop } from "@/server/jobs";
 import { deleteProject as removeProject } from "@/server/projects";
 
@@ -32,9 +33,23 @@ export async function setConsent(projectId: string, fd: FormData): Promise<void>
     revalidatePath(`/projects/${projectId}`);
 }
 
+export async function setModelAccess(projectId: string, fd: FormData): Promise<void> {
+    const parsed = parseModelAccess(fd);
+    if (!parsed.ok) return;
+    await prisma.project.update({ where: { id: projectId }, data: { modelAccess: parsed.value } });
+    revalidatePath(`/projects/${projectId}`);
+}
+
 export async function startRun(projectId: string, _prev: FormState, fd: FormData): Promise<FormState> {
     const project = await prisma.project.findUniqueOrThrow({ where: { id: projectId }, include: { repositories: true } });
     if (!project.aiConsentAt) return { error: "Record the client's AI consent first." };
+    if ((await credentialStatus(project.modelAccess)).source === "none")
+        return {
+            error:
+                project.modelAccess === "claude_plan"
+                    ? "No Claude plan token: add it in Settings or .env.local."
+                    : "No API key: add it in Settings or .env.local."
+        };
     if (!project.repositories.length) return { error: "Add a repository first." };
     const aspects = ["security"];
     const parsed = parseRunForm(fd, project.repositories.length * aspects.length);

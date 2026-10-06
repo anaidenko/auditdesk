@@ -6,7 +6,7 @@ import { redirect } from "next/navigation";
 import type { FormState } from "@/app/actions";
 import type { SeverityName } from "@/engine/types";
 import { prisma } from "@/server/db";
-import { ActiveRunError, enqueueRerun } from "@/server/jobs";
+import { AccessChangedError, ActiveRunError, enqueueRerun } from "@/server/jobs";
 import { accept, edit, exclude, merge, reject } from "@/server/review";
 
 async function listPath(id: string) {
@@ -77,8 +77,9 @@ export async function rerunAspect(runId: string, repositoryId: string, aspect: s
     try {
         await enqueueRerun(runId, repositoryId, aspect);
     } catch (e) {
-        if (!(e instanceof ActiveRunError)) throw e;
-        notice = "?notice=busy";
+        if (e instanceof ActiveRunError) notice = "?notice=busy";
+        else if (e instanceof AccessChangedError) notice = "?notice=access";
+        else throw e;
     }
     redirect(`/runs/${runId}${notice}`);
 }

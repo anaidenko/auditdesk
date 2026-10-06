@@ -1,5 +1,5 @@
 import { compareFindings } from "../findings";
-import { SEVERITIES } from "../types";
+import { type ModelAccess, SEVERITIES } from "../types";
 
 import type { ReportData, ReportFinding } from "./types";
 
@@ -30,6 +30,12 @@ export function escapeHtml(s: string): string {
 }
 
 const e = escapeHtml;
+
+// The client's report says which terms their code went under (plan, Decision for Andrii 3).
+const ACCESS_TEXT: Record<ModelAccess, string> = {
+    api_key: "the Claude API, under Anthropic's Commercial Terms",
+    claude_plan: "a Claude subscription through the Claude Agent SDK, under Anthropic's Consumer Terms"
+};
 
 function finding(f: ReportFinding): string {
     const meta = [f.repository, f.aspect, f.checklistItem, f.effort && `effort ${f.effort}${f.effortHours ? ` (${f.effortHours} h)` : ""}`]
@@ -104,6 +110,7 @@ ${a.note ? `<p>${e(a.note)}</p>` : ""}
 ${aspects}
 <p>The client's code was read, not installed, built or run: no dependency install, no type-check, no project lint.</p>
 <p>Models that served calls: ${e(d.servedModels.join(", ") || "none")}.</p>
+<p>Model access: ${d.modelAccess.map(a => ACCESS_TEXT[a]).join("; ") || "none"}.</p>
 ${tools}
 <p>Budgets are checked between model calls; a call in progress may exceed its share by its own cost.</p>
 

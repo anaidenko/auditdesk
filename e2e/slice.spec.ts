@@ -33,6 +33,33 @@ test("a run from project to downloaded report", async ({ page }) => {
     const html = await report.text();
     expect(html).toContain(`id="${label}"`);
     expect(html).not.toContain("Generic API Key"); // gitleaks' finding was not accepted, so it stays out
+    // New projects default to Claude plan: the main flow ran the SDK engine against the fake server.
+    expect(html).toContain("through the Claude Agent SDK");
+});
+
+test("an API key saved in Settings runs an audit, and no page shows the key", async ({ page }) => {
+    const key = "sk-ant-e2e-0000000000000000wxyz";
+    await page.goto("/settings");
+    await page.getByLabel("API key value").fill(key);
+    await page.getByRole("button", { name: "Save" }).click();
+    await expect(page.getByTestId("status-api_key")).toHaveText("saved · …wxyz");
+    expect(await page.content()).not.toContain(key);
+
+    await newProject(page, "On a key");
+    await page.getByLabel("API key", { exact: true }).check();
+    await page.getByRole("button", { name: "Apply" }).click();
+    await expect(page.getByTestId("credential-status")).toHaveText("API key: saved · …wxyz");
+    expect(await page.content()).not.toContain(key);
+    await page.getByLabel(/client agreed/).check();
+    await page.getByRole("button", { name: "Save" }).click();
+    await page.getByRole("button", { name: "Start run" }).click();
+    await expect(page.getByTestId("run-status")).toHaveText("done", { timeout: 60_000 });
+});
+
+test("the model access tooltip says what was approved", async ({ page }) => {
+    await newProject(page, "Tooltip");
+    await page.getByLabel("About model access").click();
+    await expect(page.getByRole("tooltip")).toContainText("Choose the API key when a client's NDA requires commercial terms");
 });
 
 async function finishedRun(page: Page, name: string) {

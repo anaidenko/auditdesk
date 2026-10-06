@@ -29,6 +29,7 @@ const data = (over: Partial<ReportData> = {}): ReportData => ({
     repositories: [{ name: "app", branch: "main", sha: "0123456789abcdef" }],
     aspects: [{ title: "Security", status: "done", note: null, coverage: [{ item: "SEC-04", title: "Injection", status: "examined" }] }],
     servedModels: ["claude-opus-5-5", "claude-opus-4-8"],
+    modelAccess: ["api_key"],
     toolVersions: null,
     findings: [finding({ label: "F-002", severity: "low" }), finding({ label: "F-001", severity: "critical" })],
     questions: [],
@@ -83,5 +84,10 @@ describe("renderReport", () => {
 
     it("carries the disclaimer", () => {
         expect(renderReport(data())).toMatch(/does not certify/);
+    });
+
+    it("names the model access, and its terms, in Scope and method", () => {
+        const html = renderReport({ ...data(), modelAccess: ["claude_plan"] });
+        expect(html).toContain("Model access: a Claude subscription through the Claude Agent SDK, under Anthropic's Consumer Terms.");
     });
 });

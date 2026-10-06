@@ -11,11 +11,14 @@ export function shareFor(budget: { usd: number; tokens: number }, agents: number
     return { usd: budget.usd / agents, tokens: Math.floor(budget.tokens / agents) };
 }
 
+// The run form takes the cap in thousands (Andrii, 2026-10-06), so the refusal speaks that unit.
+const k = (n: number) => (n / 1000).toLocaleString("en-US");
+
 export function validateBudget(budget: { usd: number; tokens: number }, agents: number): string | null {
     if (!(budget.usd > 0)) return "Set a dollar cap above zero.";
     const share = shareFor(budget, agents);
     if (share.tokens < MIN_TASK_BUDGET)
-        return `Each of the ${agents} agents would get ${share.tokens.toLocaleString("en-US")} tokens; the API needs at least 20,000. Raise the token cap to ${(MIN_TASK_BUDGET * agents).toLocaleString("en-US")} or more.`;
+        return `Each of the ${agents} agents would get ${k(share.tokens)} thousand tokens; the API needs at least ${k(MIN_TASK_BUDGET)} thousand. Raise the cap to ${k(MIN_TASK_BUDGET * agents)} thousand or more.`;
     return null;
 }
 

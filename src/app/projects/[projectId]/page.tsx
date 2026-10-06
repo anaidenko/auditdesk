@@ -3,8 +3,10 @@ import { notFound } from "next/navigation";
 
 import { deleteProject, setConsent } from "@/app/actions";
 import { Badge, Card, Icon, PageHeader, RunStatus, button } from "@/app/ui";
+import { credentialStatus } from "@/engine/credentials";
 import { getProject } from "@/server/queries";
 
+import { ModelAccessCard } from "./ModelAccess";
 import { AddRepositoryForm, StartRunForm } from "./forms";
 
 export const dynamic = "force-dynamic";
@@ -61,6 +63,12 @@ export default async function ProjectPage({ params }: { params: Promise<{ projec
                         <AddRepositoryForm projectId={project.id} />
                     </Card>
 
+                    <ModelAccessCard
+                        projectId={project.id}
+                        access={project.modelAccess}
+                        status={await credentialStatus(project.modelAccess)}
+                    />
+
                     <Card
                         as="section"
                         title="Client's AI consent"
@@ -74,7 +82,7 @@ export default async function ProjectPage({ params }: { params: Promise<{ projec
                                     defaultChecked={!!project.aiConsentAt}
                                     className="mt-0.5 size-4 rounded border-zinc-300 accent-indigo-600"
                                 />
-                                The client agreed that their code may be sent to the Claude API for this audit.
+                                The client agreed that their code may be sent to Claude (Anthropic) for this audit.
                             </label>
                             <button className={`${button.secondary} ${button.small}`}>Save</button>
                             {project.aiConsentAt ? (
@@ -92,7 +100,7 @@ export default async function ProjectPage({ params }: { params: Promise<{ projec
 
                 <div className="space-y-6 lg:col-span-2">
                     <Card as="section" title="Runs" description="Scanners, the repository map, then one agent per aspect.">
-                        <StartRunForm projectId={project.id} defaults={defaults} />
+                        <StartRunForm projectId={project.id} access={project.modelAccess} defaults={defaults} />
                         {project.runs.length > 0 && (
                             <ul className="mt-5 space-y-1 border-t border-zinc-100 pt-4">
                                 {project.runs.map(r => (
