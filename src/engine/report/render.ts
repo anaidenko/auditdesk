@@ -369,6 +369,13 @@ ${aspects}
 <li>Model access: ${d.modelAccess.map(a => ACCESS_TEXT[a]).join("; ") || "none"}.</li>
 ${tools}
 <li>Budgets are checked between model calls; a call in progress may exceed its share by its own cost.</li>
+${
+    d.costUsd === null
+        ? ""
+        : d.modelAccess.length === 1 && d.modelAccess[0] === "claude_plan"
+          ? `<li>API-equivalent cost of the model calls: $${d.costUsd.toFixed(2)}; the Claude plan bills nothing for them.</li>`
+          : `<li>Cost of the model calls: $${d.costUsd.toFixed(2)}.</li>`
+}
 ${d.repositories
     .filter(r => r.notCovered.length)
     .map(

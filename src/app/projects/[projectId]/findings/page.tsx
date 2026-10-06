@@ -2,6 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 
 import { ActionForm } from "@/app/ActionForm";
+import { ReportExport } from "@/app/ReportExport";
 import { acceptAction, excludeAction, rejectAction } from "@/app/review-actions";
 import { Badge, FindingStatus, Icon, PageHeader, SeverityBadge, button, field, input } from "@/app/ui";
 import { ASPECTS, aspectTitle } from "@/engine/aspects";
@@ -44,12 +45,7 @@ export default async function FindingsPage({
                     </Link>
                 }
                 title="Findings"
-                actions={
-                    <a href={`/projects/${projectId}/report`} className={button.secondary}>
-                        <Icon name="download" />
-                        Download report
-                    </a>
-                }
+                actions={<ReportExport projectId={projectId} />}
             >
                 <span className="flex flex-wrap gap-1.5">
                     {counts.map(c => (

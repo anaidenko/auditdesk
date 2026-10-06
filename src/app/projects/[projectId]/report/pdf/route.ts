@@ -8,7 +8,7 @@ export const dynamic = "force-dynamic";
 export async function GET(request: Request, { params }: { params: Promise<{ projectId: string }> }) {
     if (request.headers.get("sec-fetch-site") === "cross-site") return new Response("Cross-site request refused", { status: 403 });
     const { projectId } = await params;
-    const data = await loadReportData(projectId);
+    const data = await loadReportData(projectId, { includeCost: new URL(request.url).searchParams.get("cost") === "1" });
     const pdf = await renderPdf(renderReport(data), { footer: `Code audit: ${data.projectName} · ${data.generatedAt}` });
     const name = reportFileName(data, "pdf");
     await keepReportCopy(projectId, name, pdf);

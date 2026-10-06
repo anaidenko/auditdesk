@@ -28,7 +28,8 @@ function repoName(source: string): string {
               .join("/");
 }
 
-export async function loadReportData(projectId: string): Promise<ReportData> {
+/** `includeCost`: Andrii ticked the cost at export (design § 8); otherwise the report states none. */
+export async function loadReportData(projectId: string, o: { includeCost?: boolean } = {}): Promise<ReportData> {
     const project = await prisma.project.findUniqueOrThrow({
         where: { id: projectId },
         include: { repositories: { orderBy: { createdAt: "asc" } } }
@@ -127,7 +128,7 @@ export async function loadReportData(projectId: string): Promise<ReportData> {
         toolVersions: (scanned?.toolVersions as ToolVersions | null) ?? null,
         findings: rows.filter(r => r.kind === "finding").map(toReport),
         questions: rows.filter(r => r.kind === "question").map(toReport),
-        costUsd: calls.some(c => c.costUsd === null) ? null : calls.reduce((s, c) => s + Number(c.costUsd), 0)
+        costUsd: !o.includeCost || calls.some(c => c.costUsd === null) ? null : calls.reduce((s, c) => s + Number(c.costUsd), 0)
     };
 }
 

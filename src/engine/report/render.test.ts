@@ -317,6 +317,14 @@ describe("renderReport", () => {
         expect(html).toMatch(/hashchange/);
     });
 
+    it("states the model calls' cost only when the export asks for it", () => {
+        expect(renderReport(data({ costUsd: null }))).not.toMatch(/cost of the model calls/i);
+        expect(renderReport(data({ costUsd: 1.234, modelAccess: ["api_key"] }))).toContain("<li>Cost of the model calls: $1.23.</li>");
+        expect(renderReport(data({ costUsd: 1.234, modelAccess: ["claude_plan"] }))).toContain(
+            "<li>API-equivalent cost of the model calls: $1.23; the Claude plan bills nothing for them.</li>"
+        );
+    });
+
     it("gathers the findings tagged ai-built under Signs of AI-generated code", () => {
         const html = renderReport(
             data({

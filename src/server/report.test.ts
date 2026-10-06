@@ -163,6 +163,14 @@ describe("references in the report", () => {
     });
 });
 
+describe("the cost in the report", () => {
+    it("carries the cost only when the export asks for it", async () => {
+        const { project } = await projectWithRepo();
+        expect((await loadReportData(project.id)).costUsd).toBeNull();
+        expect((await loadReportData(project.id, { includeCost: true })).costUsd).toBe(0);
+    });
+});
+
 describe("the report's file name", () => {
     it("joins the project's name and the date with one hyphen, whatever the name ends with", () => {
         const d = { projectName: "naidenko.dev (own site)", generatedAt: "2026-10-06" } as ReportData;
