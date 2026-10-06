@@ -73,20 +73,29 @@ export function locatePackage(text: string, name: string, version: string): { st
     const lines = text.split(/\r?\n/);
     const n = escape(name);
     const v = escape(version);
-    const pnpm = new RegExp(`^\\s+['"]?/?${n}@${v}(?:\\(.*\\))?['"]?:`);
-    const npmKey = new RegExp(`^\\s*"(?:[^"]*/)?(?:node_modules/)?${n}"\\s*:\\s*\\{`);
+    // v6 to v9 key a package `name@version`, with a leading slash in v6 and a peer suffix in v9; v5 keys it `/name/version`.
+    const pnpm = new RegExp(`^\\s+(?:['"]?/?${n}@${v}(?:\\(.*\\))?['"]?|/${n}/${v}(?:_[^:]*)?):`);
+    const npmKey = new RegExp(`^\\s*"(?:[^"]*node_modules/)?${n}"\\s*:\\s*\\{`);
     const npmVersion = new RegExp(`^\\s*"version"\\s*:\\s*"${v}"`);
-    const yarnHeader = new RegExp(`^"?${n}@`);
     const yarnVersion = new RegExp(`^\\s+version:?\\s+"?${v}"?\\s*$`);
+    // A yarn header lists specifiers, the first of which may be an alias: "a-cjs@npm:a@^1", "a@^1":
+    const yarnHeader = (line: string) =>
+        !/^\s/.test(line) &&
+        line
+            .replace(/:\s*$/, "")
+            .split(/,\s*/)
+            .some(spec => spec.replace(/^"|"$/g, "").startsWith(`${name}@`));
+    // pnpm lists patches and importers before `packages:`; a package's own entry is under it.
+    const pnpmFrom = lines.findIndex(l => /^packages:\s*$/.test(l));
     const range = (start: number, end: number) => ({ startLine: start + 1, endLine: Math.min(end, start + MAX_ENTRY_LINES - 1) + 1 });
     for (let i = 0; i < lines.length; i++) {
-        if (pnpm.test(lines[i])) return range(i, yamlBlock(lines, i));
+        if (i > pnpmFrom && pnpm.test(lines[i])) return range(i, yamlBlock(lines, i));
         if (npmKey.test(lines[i])) {
             const end = jsonBlock(lines, i);
             const child = indent(lines[i + 1] ?? "");
             if (lines.slice(i + 1, end).some(l => indent(l) === child && npmVersion.test(l))) return range(i, end);
         }
-        if (yarnHeader.test(lines[i])) {
+        if (yarnHeader(lines[i])) {
             const end = yamlBlock(lines, i);
             if (lines.slice(i + 1, end + 1).some(l => yarnVersion.test(l))) return range(i, end);
         }
