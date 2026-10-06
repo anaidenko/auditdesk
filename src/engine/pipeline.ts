@@ -197,7 +197,8 @@ export async function runAudit(input: AuditInput, deps: AuditDeps): Promise<{ st
                         checklist,
                         findingIndex: await sink.findingIndex(repo.id),
                         budgetTokens: share.tokens,
-                        aiBuilt: input.brief?.aiBuilt
+                        aiBuilt: input.brief?.aiBuilt,
+                        runAspects: input.aspects.map(aspectTitle)
                     })
                 })
                 .catch(async (e: Error) => {

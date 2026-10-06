@@ -77,6 +77,17 @@ describe("detectStack", () => {
         expect(suggestAspects(s)).toEqual(["tenancy"]);
     });
 
+    it("takes a store or shop key for a tenant, as on a storefront platform", async () => {
+        const root = await makeRepo({
+            "package.json": pkg({ "@prisma/client": "6.8.2" }),
+            "prisma/schema.prisma": "model Store {\n  id String @id\n}\nmodel Product {\n  storeId String\n}\n",
+            "src/index.ts": "\n"
+        });
+        const s = await detectStack(root);
+        expect(s.tenancyHints).toEqual(["model Store (prisma/schema.prisma)", "storeId (prisma/schema.prisma)"]);
+        expect(suggestAspects(s)).toEqual(["tenancy"]);
+    });
+
     it("does not take an authentication library's account model for tenancy", async () => {
         const root = await makeRepo({
             "package.json": pkg({ "next-auth": "^4.24.0" }),

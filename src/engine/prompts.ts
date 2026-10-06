@@ -33,12 +33,20 @@ export function prefixBlocks(o: { stackProfile: string; repoMap: string; brief: 
     ];
 }
 
-export function aspectMessage(o: { checklist: Checklist; findingIndex: string[]; budgetTokens: number; aiBuilt?: boolean }): string {
+export function aspectMessage(o: {
+    checklist: Checklist;
+    findingIndex: string[];
+    budgetTokens: number;
+    aiBuilt?: boolean;
+    /** The run's aspects by title: the checklists hand topics to another aspect only when it runs. */
+    runAspects?: string[];
+}): string {
     return [
         `# Aspect: ${o.checklist.title}`,
         o.checklist.text.replace(/^# .+\n/, ""),
         // After the cache breakpoint, so the mode never changes the shared prefix.
         ...(o.aiBuilt ? ['The auditor marked the code as largely AI-built: the items marked "(AI-built)" are on this checklist.'] : []),
+        ...(o.runAspects?.length ? [`Aspects in this run: ${o.runAspects.join(", ")}.`] : []),
         "# Findings already filed for this repository",
         o.findingIndex.length ? o.findingIndex.join("\n") : "None yet.",
         "# Your budget",
