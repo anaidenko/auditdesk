@@ -1,4 +1,10 @@
-import { type HookCallback, type Options, type PostToolBatchHookInput, query } from "@anthropic-ai/claude-agent-sdk";
+import {
+    type HookCallback,
+    type Options,
+    type PostToolBatchHookInput,
+    type PostToolUseFailureHookInput,
+    query
+} from "@anthropic-ai/claude-agent-sdk";
 import type { BetaMessage, BetaRawMessageDeltaEvent, BetaUsage } from "@anthropic-ai/sdk/resources/beta/messages/messages";
 import { mkdir } from "node:fs/promises";
 import { join } from "node:path";
@@ -15,7 +21,7 @@ import type { CallRecord, ModelAccess } from "../types";
 import { InputQueue } from "./input";
 import { sdkEnv, sdkOptions } from "./options";
 import { Responses } from "./responses";
-import { SERVER, makeSdkServer } from "./tools";
+import { SERVER, makeSdkServer, sdkToolName } from "./tools";
 
 export interface SdkRunnerConfig {
     access: ModelAccess;
@@ -76,7 +82,11 @@ export async function runAspectSdk(cfg: SdkRunnerConfig, o: AspectInput): Promis
     let apiError: string | null = null;
     let reopen = false;
     let nudged = false;
-    let failedInBatch = 0;
+    // The calls of this turn that failed, by tool-use id: our handler's errors, and inputs the MCP server rejected before it.
+    const failedInBatch = new Set<string>();
+    const failed = (name: string, id: string | undefined) => {
+        if (name !== "finish_aspect" && name !== sdkToolName("finish_aspect")) failedInBatch.add(id ?? `unknown ${failedInBatch.size}`);
+    };
 
     // The sink's writes, in stream order. The loop below never awaits, so it keeps pace with the
     // stream and a hook that yields once sees every message the CLI sent before calling it.
@@ -107,11 +117,11 @@ export async function runAspectSdk(cfg: SdkRunnerConfig, o: AspectInput): Promis
         const reasons = await Promise.all((input as PostToolBatchHookInput).tool_calls.map(c => responses.stopReasonOf(c.tool_use_id)));
         await tick();
         await writes;
-        const failed = failedInBatch;
-        failedInBatch = 0;
+        const failedCalls = failedInBatch.size;
+        failedInBatch.clear();
         if (ctx.state.fatal || writeError) return { continue: false, stopReason: "A tool failed internally." };
         // finish_aspect before a call that failed: the model fixes the call and finishes again (run-aspect.ts).
-        if (ctx.state.finished && failed) {
+        if (ctx.state.finished && failedCalls) {
             ctx.state.finished = null;
             reopen = true;
         }
@@ -136,14 +146,14 @@ export async function runAspectSdk(cfg: SdkRunnerConfig, o: AspectInput): Promis
     };
 
     const { server, names } = makeSdkServer(ctx, {
-        onToolError: name => void (name !== "finish_aspect" && failedInBatch++),
+        onToolError: failed,
         gate: async (name, id) => {
             if (!id) return "Not run: the call carried no tool-use id.";
             const reason = await responses.stopReasonOf(id);
             if (reason === "refusal") return "Not run: the response that made this call was declined.";
             if (reason !== "tool_use") return `Not run: the response that made this call ended with ${reason ?? "an error"}.`;
             // The calls before it in this turn have run (a writing call runs alone, Task E.1): one failed, so it reopens.
-            return name === "finish_aspect" && failedInBatch ? REOPEN : null;
+            return name === "finish_aspect" && failedInBatch.size ? REOPEN : null;
         }
     });
     const input = new InputQueue();
@@ -168,7 +178,20 @@ export async function runAspectSdk(cfg: SdkRunnerConfig, o: AspectInput): Promis
                     baseUrl: cfg.baseUrl,
                     extra: cfg.extraEnv
                 }),
-                hooks: { PostToolBatch: [{ hooks: [afterBatch] }] },
+                hooks: {
+                    PostToolBatch: [{ hooks: [afterBatch] }],
+                    PostToolUseFailure: [
+                        {
+                            hooks: [
+                                async input => {
+                                    const f = input as PostToolUseFailureHookInput;
+                                    if (!f.is_interrupt) failed(f.tool_name, f.tool_use_id);
+                                    return {};
+                                }
+                            ]
+                        }
+                    ]
+                },
                 stderr: s => void stderr.push(s)
             }),
             ...cfg.override

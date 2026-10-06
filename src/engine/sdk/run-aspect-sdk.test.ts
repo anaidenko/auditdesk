@@ -157,6 +157,27 @@ describe("runAspectSdk", { timeout: 60_000 }, () => {
         expect(sink.findings).toHaveLength(1);
     });
 
+    // The review's Important 2: the MCP server rejects an input that fails the schema before our handler runs.
+    it("reopens finish_aspect when a call beside it failed its input schema", async () => {
+        const both = message({
+            content: [
+                { type: "tool_use", id: "toolu_invalid", name: "report_finding", input: finding({ severity: "severe" }), caller: null },
+                {
+                    type: "tool_use",
+                    id: "toolu_fin_invalid",
+                    name: "finish_aspect",
+                    input: { summary: "Done.", coverage: [] },
+                    caller: null
+                }
+            ],
+            stop_reason: "tool_use"
+        } as never);
+        const { h, sink, run } = await setup([both, tool("report_finding", finding()), finish()]);
+        expect((await run()).status).toBe("done");
+        expect(h.fake.requests.map((_, i) => body(h, i)).some(b => b.includes(REOPEN))).toBe(true);
+        expect(sink.findings).toHaveLength(1);
+    });
+
     it("stops on its budget share after the turn's tools ran, keeping the finding filed in it", async () => {
         const { h, sink, run } = await setup([tool("report_finding", finding()), finish()], {
             share: { usd: 0.000001, tokens: 1_000_000 }

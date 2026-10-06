@@ -17,7 +17,7 @@ const END_TURN = { "claude/endTurn": true };
 export function makeSdkServer(
     ctx: AgentContext,
     o: {
-        onToolError?: (name: string) => void;
+        onToolError?: (name: string, toolUseId: string | undefined) => void;
         /** Asked before a tool that writes runs: null runs it, a text is returned to the model instead. */
         gate?: (name: string, toolUseId: string | undefined) => Promise<string | null>;
     } = {}
@@ -29,13 +29,14 @@ export function makeSdkServer(
             s.description,
             s.inputSchema.shape,
             async (args, extra) => {
-                const refused = s.readOnly ? null : await o.gate?.(s.name, toolUseId(extra));
+                const id = toolUseId(extra);
+                const refused = s.readOnly ? null : await o.gate?.(s.name, id);
                 if (refused) return { content: [{ type: "text" as const, text: refused }], isError: true };
                 try {
                     const text = await s.run(args as never);
                     return { content: [{ type: "text" as const, text }], ...(s.name === "finish_aspect" ? { _meta: END_TURN } : {}) };
                 } catch (e) {
-                    o.onToolError?.(s.name);
+                    o.onToolError?.(s.name, id);
                     // guard() already turned any other error into a ToolError and recorded it as fatal.
                     const text = e instanceof ToolError ? e.message : "Internal error in the tool; the run is stopping.";
                     return { content: [{ type: "text" as const, text }], isError: true };
