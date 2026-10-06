@@ -43,4 +43,28 @@ describe("checklists", () => {
         expect(await built("dependencies")).toEqual(["DEP-09"]);
         expect(await built("quality")).toEqual(["QUA-08"]);
     });
+
+    it("cuts an AI-built item whole, though its body holds a heading-like line in a code block", () => {
+        const md = [
+            "# Security",
+            "",
+            "## SEC-01 Authentication",
+            "",
+            "A.",
+            "",
+            "## SEC-02 Missing checks (AI-built)",
+            "",
+            "```ts",
+            "## TODO add auth",
+            "```",
+            "",
+            "## SEC-03 Sessions",
+            "",
+            "C."
+        ].join("\n");
+        const off = forMode(parseChecklist("security", md), false);
+        expect(off.items.map(i => i.id)).toEqual(["SEC-01", "SEC-03"]);
+        expect(off.text).not.toMatch(/TODO|```/);
+        expect(off.text).toContain("C.");
+    });
 });

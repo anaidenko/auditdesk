@@ -254,6 +254,24 @@ describe("the cached prefix", () => {
         expect(on.firstMessage).toMatch(/SEC-16/);
     });
 
+    it("never changes the shared prefix with the AI-built mode, and tells the agent in its own message", async () => {
+        const run = async (aiBuilt: boolean) => {
+            const { inputs, runAspect } = capturing();
+            await audit(
+                new TestSink(),
+                await makeSampleRepo(),
+                await mkdtemp(join(tmpdir(), "ws-")),
+                { brief: { product: "p", concerns: null, outOfScope: null, aiBuilt } },
+                runAspect
+            );
+            return inputs[0];
+        };
+        const [off, on] = [await run(false), await run(true)];
+        expect(JSON.stringify(on.system)).toBe(JSON.stringify(off.system));
+        expect(on.firstMessage).toMatch(/largely AI-built/);
+        expect(off.firstMessage).not.toMatch(/AI-built/);
+    });
+
     it("leaves the shared prefix as it was when the AI-built mode is off and no brief is written", async () => {
         const prefix = async (over: Partial<AuditInput>) => {
             const { inputs, runAspect } = capturing();

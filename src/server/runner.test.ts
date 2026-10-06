@@ -72,18 +72,20 @@ describe("runner", () => {
         });
         await enqueueRun(project.id, runOptions);
         const systems: string[] = [];
+        const messages: string[] = [];
         const base = await deps();
         await processJob((await claimJob())!, sink => ({
             ...base(sink),
             runAspect: async o => {
                 systems.push(o.system.map(b => b.text).join("\n"));
+                messages.push(o.firstMessage);
                 return { status: "done", note: null, summary: "ok", coverage: [] };
             }
         }));
         expect(systems[0]).toContain("A school calculator.");
         expect(systems[0]).toContain("Express 4, confirmed.");
         expect(systems[0]).toContain("How to run this repository: npm start");
-        expect(systems[0]).toMatch(/largely AI-built/);
+        expect(messages[0]).toMatch(/largely AI-built/);
     });
 
     it("skips a job another claimer has locked, instead of waiting for it or taking it too", async () => {

@@ -193,7 +193,12 @@ export async function runAudit(input: AuditInput, deps: AuditDeps): Promise<{ st
                         state: { finished: null, reported: [], fatal: null }
                     },
                     system,
-                    firstMessage: aspectMessage({ checklist, findingIndex: await sink.findingIndex(repo.id), budgetTokens: share.tokens })
+                    firstMessage: aspectMessage({
+                        checklist,
+                        findingIndex: await sink.findingIndex(repo.id),
+                        budgetTokens: share.tokens,
+                        aiBuilt: input.brief?.aiBuilt
+                    })
                 })
                 .catch(async (e: Error) => {
                     // Recorded before the run fails, or the agent would show "running" forever.

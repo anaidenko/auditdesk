@@ -277,4 +277,16 @@ describe("runAspect", () => {
         expect(outcome.coverage.every(c => c.status === "examined")).toBe(true);
         expect(outcome.coverage).toHaveLength(checklist.items.length);
     });
+
+    it("drops an ai-built tag the model puts on an item that is not marked AI-built", async () => {
+        const checklist = parseChecklist("security", "# Security\n\n## SEC-01 Authentication\n\n## SEC-02 Missing checks (AI-built)\n");
+        const { sink, run } = await setup(
+            [tool("report_finding", finding({ checklist_item: "SEC-01", tags: ["ai-built", "auth"] })), finish()],
+            {
+                checklist
+            }
+        );
+        await run();
+        expect(sink.findings[0].tags).toEqual(["auth"]);
+    });
 });

@@ -37,7 +37,14 @@ export async function loadChecklist(aspect: string, dir = "checklists"): Promise
  */
 export function forMode(c: Checklist, aiBuilt: boolean): Checklist {
     if (aiBuilt || !c.items.some(i => i.aiBuilt)) return c;
-    const sections = c.text.split(/^(?=## )/m);
-    const kept = sections.filter(sec => !AI_BUILT.test(sec.match(/^## .+$/m)?.[0] ?? "")).join("");
-    return { ...c, items: c.items.filter(i => !i.aiBuilt), text: kept.trim() };
+    // Cut from each item's own heading to the next one, never at a "## " line inside fenced code.
+    const kept: string[] = [];
+    let fenced = false;
+    let dropping = false;
+    for (const line of c.text.split("\n")) {
+        if (/^\s*(```|~~~)/.test(line)) fenced = !fenced;
+        if (!fenced && /^## [A-Z]{3}-\d{2} /.test(line)) dropping = AI_BUILT.test(line);
+        if (!dropping) kept.push(line);
+    }
+    return { ...c, items: c.items.filter(i => !i.aiBuilt), text: kept.join("\n").trim() };
 }
