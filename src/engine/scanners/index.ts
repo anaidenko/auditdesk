@@ -26,6 +26,22 @@ function checked(tool: ScannerTool, r: ScannerOutput): ScannerOutput {
     return r;
 }
 
+/** gitleaks alone, on the app's own configuration: what the masker needs before any text reaches the model (design § 6). */
+export async function runGitleaks(o: { clonePath: string; runner: ScannerRunner; configDir: string }): Promise<GitleaksLeak[]> {
+    await mkdir(o.configDir, { recursive: true });
+    await writeFile(join(o.configDir, "gitleaks.toml"), GITLEAKS_CONFIG);
+    await writeFile(join(o.configDir, "osv-scanner.toml"), OSV_CONFIG);
+    return parseGitleaks(
+        checked(
+            "gitleaks",
+            await o.runner.run("gitleaks", gitleaksArgs(), [
+                { host: o.clonePath, container: "/repo" },
+                { host: o.configDir, container: "/cfg" }
+            ])
+        ).stdout
+    );
+}
+
 /** gitleaks runs first: no text may reach the model before the masker knows the secrets (design § 6). */
 export async function runScanners(o: {
     clonePath: string;
@@ -35,18 +51,7 @@ export async function runScanners(o: {
     /** Holds the app's gitleaks config, mounted at /cfg. */
     configDir: string;
 }): Promise<ScanResults> {
-    await mkdir(o.configDir, { recursive: true });
-    await writeFile(join(o.configDir, "gitleaks.toml"), GITLEAKS_CONFIG);
-    await writeFile(join(o.configDir, "osv-scanner.toml"), OSV_CONFIG);
-    const leaks = parseGitleaks(
-        checked(
-            "gitleaks",
-            await o.runner.run("gitleaks", gitleaksArgs(), [
-                { host: o.clonePath, container: "/repo" },
-                { host: o.configDir, container: "/cfg" }
-            ])
-        ).stdout
-    );
+    const leaks = await runGitleaks(o);
     const osvQueriedAt = new Date().toISOString();
     const osvRun = checked(
         "osv",

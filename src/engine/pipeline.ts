@@ -10,7 +10,7 @@ import { Masker } from "./masker";
 import { type Brief, aspectMessage, briefText, prefixBlocks } from "./prompts";
 import { buildRepoMap } from "./repomap";
 import { normaliseGitleaks } from "./scanners/gitleaks";
-import { leakInTree, leakMasks, runScanners } from "./scanners/index";
+import { type ScanResults, leakInTree, leakMasks, runGitleaks, runScanners } from "./scanners/index";
 import { normaliseOsv, osvEvidence } from "./scanners/osv";
 import { normaliseSemgrep } from "./scanners/semgrep";
 import type { Ruleset, ScannerRunner, ToolVersions } from "./scanners/types";
@@ -64,10 +64,17 @@ export async function runAudit(input: AuditInput, deps: AuditDeps): Promise<{ st
     const agentsInRun = input.repositories.length * input.aspects.length;
     const fullShare = shareFor(input.budget, agentsInRun);
 
-    for (const repo of input.repositories) {
-        if (input.only && input.only.repositoryId !== repo.id) continue;
-        if (await sink.stopRequested()) return { stopped: true };
+    const runDir = join(deps.workspaceDir, input.projectId, "runs", input.runId);
+    const rulesDir = join(runDir, "rules");
 
+    // Every repository is cloned and scanned before any agent starts: the brief reaches every agent,
+    // so it is masked with the secrets gitleaks found in all of them (design § 6). A re-run of one
+    // repository runs gitleaks alone on the others.
+    const scanned: { repo: AuditInput["repositories"][number]; clonePath: string; scan: ScanResults }[] = [];
+    const masks: { value: string; rule: string }[] = [];
+    for (const repo of input.repositories) {
+        if (await sink.stopRequested()) return { stopped: true };
+        const target = !input.only || input.only.repositoryId === repo.id;
         await sink.progress(`Cloning ${repo.source} at ${repo.branch}…`);
         const { sha, clonePath } = await cloneRepository({
             source: repo.source,
@@ -77,11 +84,14 @@ export async function runAudit(input: AuditInput, deps: AuditDeps): Promise<{ st
             projectId: input.projectId,
             repositoryId: repo.id
         });
+        if (!target) {
+            await sink.progress("Running gitleaks, so this repository's secrets stay out of the brief…");
+            const leaks = await runGitleaks({ clonePath, runner: deps.scanners, configDir: join(runDir, "gitleaks") });
+            masks.push(...(await leakMasks(clonePath, leaks)));
+            continue;
+        }
         await sink.repositoryCloned(repo.id, sha, clonePath);
-
         await sink.progress("Running gitleaks, osv-scanner and Semgrep…");
-        const runDir = join(deps.workspaceDir, input.projectId, "runs", input.runId);
-        const rulesDir = join(runDir, "rules");
         const scan = await runScanners({
             clonePath,
             runner: deps.scanners,
@@ -90,7 +100,12 @@ export async function runAudit(input: AuditInput, deps: AuditDeps): Promise<{ st
             configDir: join(runDir, "gitleaks")
         });
         await sink.toolVersions(scan.versions);
-        const masker = new Masker(await leakMasks(clonePath, scan.leaks));
+        masks.push(...(await leakMasks(clonePath, scan.leaks)));
+        scanned.push({ repo, clonePath, scan });
+    }
+    const masker = new Masker(masks);
+
+    for (const { repo, clonePath, scan } of scanned) {
         const inTree = new Set<string>();
         for (const leak of scan.leaks) if (await leakInTree(clonePath, leak)) inTree.add(`${leak.File}:${leak.StartLine}:${leak.Commit}`);
         const known = await sink.knownFingerprints(repo.id);

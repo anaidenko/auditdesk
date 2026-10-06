@@ -9,8 +9,9 @@ import { SAMPLE_KEY, makeSampleRepo } from "@/test/sample-repo";
 
 import { type AspectInput, type AspectRunner, apiAspectRunner } from "./agent/run-aspect";
 import { MemorySink } from "./memory-sink";
-import { type AuditInput, type PipelineSink, runAudit } from "./pipeline";
+import { type AuditDeps, type AuditInput, type PipelineSink, runAudit } from "./pipeline";
 import { REPLAY_RULESETS, replayRunner } from "./scanners/replay";
+import type { ScannerRunner } from "./scanners/types";
 import type { StackProfile } from "./stack";
 
 class TestSink extends MemorySink implements PipelineSink {
@@ -38,7 +39,14 @@ const finish = () =>
         stop_reason: "tool_use"
     } as never);
 
-async function audit(sink: TestSink, source: string, workspaceDir: string, over: Partial<AuditInput> = {}, runAspect?: AspectRunner) {
+async function audit(
+    sink: TestSink,
+    source: string,
+    workspaceDir: string,
+    over: Partial<AuditInput> = {},
+    runAspect?: AspectRunner,
+    deps: Partial<AuditDeps> = {}
+) {
     return runAudit(
         {
             runId: "run",
@@ -56,7 +64,8 @@ async function audit(sink: TestSink, source: string, workspaceDir: string, over:
             scanners: replayRunner("src/test/fixtures/scanners"),
             fetchRulesets: async () => REPLAY_RULESETS,
             workspaceDir,
-            checklistsDir: "checklists"
+            checklistsDir: "checklists",
+            ...deps
         }
     );
 }
@@ -252,5 +261,67 @@ describe("the cached prefix", () => {
             return JSON.stringify(inputs[0].system);
         };
         expect(await prefix({ brief: { product: null, concerns: null, outOfScope: null, aiBuilt: false } })).toBe(await prefix({}));
+    });
+
+    it("masks the brief with the secrets of every repository, before any agent starts", async () => {
+        const recorded = replayRunner("src/test/fixtures/scanners");
+        // gitleaks finds the key only in web; api's agents run first and must not see it in the brief.
+        const onlyWeb: ScannerRunner = {
+            ...recorded,
+            run: async (tool, args, mounts) =>
+                tool === "gitleaks" && !mounts.some(m => m.host.includes("/web@"))
+                    ? { stdout: "[]", stderr: "", exitCode: 0 }
+                    : recorded.run(tool, args, mounts)
+        };
+        const { inputs, runAspect } = capturing();
+        const [api, web] = [await makeSampleRepo(), await makeSampleRepo()];
+        await audit(
+            new TestSink(),
+            api,
+            await mkdtemp(join(tmpdir(), "ws-")),
+            {
+                brief: { product: null, concerns: `The key ${SAMPLE_KEY} leaked once.`, outOfScope: null, aiBuilt: false },
+                repositories: [
+                    { id: "api", source: api, branch: "main" },
+                    { id: "web", source: web, branch: "main" }
+                ]
+            },
+            runAspect,
+            { scanners: onlyWeb }
+        );
+        expect(inputs.map(i => i.ctx.repositoryId)).toEqual(["api", "web"]);
+        for (const i of inputs) expect(prefixText(i), i.ctx.repositoryId).not.toContain(SAMPLE_KEY);
+    });
+
+    it("re-runs one repository's aspect after gitleaks alone on the others, and files nothing for them", async () => {
+        const recorded = replayRunner("src/test/fixtures/scanners");
+        const calls: string[] = [];
+        const counting: ScannerRunner = {
+            ...recorded,
+            run: async (tool, args, mounts) => {
+                calls.push(`${tool}:${mounts[0].host.includes("/web@") ? "web" : "api"}`);
+                return recorded.run(tool, args, mounts);
+            }
+        };
+        const sink = new TestSink();
+        const { inputs, runAspect } = capturing();
+        const [api, web] = [await makeSampleRepo(), await makeSampleRepo()];
+        await audit(
+            sink,
+            api,
+            await mkdtemp(join(tmpdir(), "ws-")),
+            {
+                repositories: [
+                    { id: "api", source: api, branch: "main" },
+                    { id: "web", source: web, branch: "main" }
+                ],
+                only: { repositoryId: "web", aspect: "security" }
+            },
+            runAspect,
+            { scanners: counting }
+        );
+        expect(calls).toEqual(["gitleaks:api", "gitleaks:web", "osv:web", "semgrep:web"]);
+        expect(inputs.map(i => `${i.ctx.repositoryId}:${i.ctx.aspect}`)).toEqual(["web:security"]);
+        expect(sink.findings.every(f => f.repositoryId === "web")).toBe(true);
     });
 });
