@@ -6,16 +6,20 @@ abandoned or deprecated package only from what the repository shows or what is w
 documented (`request`, deprecated since 2020); when you are unsure, file a question.
 
 Severity: grade a vulnerable package by what reaches production. A package the server or the
-browser bundle runs takes its advisory's severity; one used only at build time, in tests or in
-local tooling is at most low. An abandoned package is medium when it handles users' input
-(parsing, authentication, uploads), low otherwise. An install script, a dependency fetched from a
-git URL or a tarball, or a lock file out of step with its manifest is medium.
+browser bundle runs takes its advisory's severity, unless the vulnerable function is never
+reached (show why); one used only at build time, in tests or in local tooling is at most low.
+An abandoned package is medium when it handles users' input (parsing, authentication, uploads),
+low otherwise. The project's own install scripts that fetch or run remote code, a little-known
+package with an install script, a dependency fetched from a git URL or a tarball, or a lock file
+out of step with its manifest is medium; the native builds of widely used packages (esbuild,
+Prisma, sharp) are info at most.
 
 ## DEP-01 Known vulnerabilities
 
-The scanner's dependency findings are filed. For each, check whether the package ships: a
-`dependencies` entry that server or client code imports, or a package reached only through
-tooling (the bundler, the test runner, a framework's dev server, `devDependencies`). When the
+The scanner's dependency findings are filed. For each, check whether the package ships: one
+that server or client code imports ships, whichever manifest field lists it (a bundled front end
+ships what it imports, `devDependencies` included); one reached only through tooling (the
+bundler, the test runner, a framework's dev server) does not. When the
 scanner's severity overstates the risk because the package does not ship, report one low
 finding that names the scanner findings by ID and shows why (the manifest entry, the chain that
 pulls the package in), so the auditor can lower them. When it understates the risk (the
@@ -25,20 +29,23 @@ vulnerable function is called with users' input), report that with the call site
 
 A lock file is committed for the package manager in use, and only one package manager is in
 use (no `package-lock.json` beside `pnpm-lock.yaml` or `yarn.lock`). The lock file agrees with
-the manifest. CI installs from it (`npm ci`, `pnpm install --frozen-lockfile`,
-`yarn install --immutable`).
+the manifest, and its `resolved` URLs point at the expected registry over HTTPS. CI installs
+from it: `npm ci` rather than `npm install`; pnpm freezes the lock file on CI by default, so
+only an explicit `--no-frozen-lockfile` is a finding.
 
 ## DEP-03 Version ranges and sources
 
-`*`, `latest`, `>=` or `x` ranges on production dependencies; dependencies from git, GitHub,
-tarball URLs or `file:` paths; `overrides` or `resolutions` that pin a vulnerable version or hide
-a conflict without a note.
+Ranges that accept any version (`*`, `latest`, an open `>=`) on production dependencies, which
+matter most where no lock file is committed or enforced; dependencies from git, GitHub, tarball
+URLs or `file:` paths; `overrides` or `resolutions` that pin a vulnerable version or hide a
+conflict without a note.
 
 ## DEP-04 Abandoned and deprecated packages
 
 Packages deprecated by their authors (`request`, `node-sass`, `tslint`, `protractor`), libraries
-the framework replaced (`@angular/http`, Cordova plugins in a Capacitor app), and packages far
-behind their current major with no upgrade path in sight. Name the evidence for each.
+the framework replaced (`@angular/http`; in a Capacitor app, Cordova plugins that an official
+Capacitor plugin replaces or that are unmaintained), and packages far behind their current major
+with no upgrade path in sight. Name the evidence for each.
 
 ## DEP-05 Runtime and framework versions
 
@@ -48,8 +55,9 @@ TypeScript and the build tools in step with the framework.
 
 ## DEP-06 Install scripts and native code
 
-`preinstall`, `install` and `postinstall` scripts in the project's own manifests, packages known
-to run install scripts, native add-ons built with node-gyp, binaries downloaded at install time.
+`preinstall`, `install`, `postinstall` and `prepare` scripts in the project's own manifests,
+above all those that download or run remote code; little-known packages that run install
+scripts; native add-ons built with node-gyp; binaries downloaded at install time.
 
 ## DEP-07 Registry configuration
 

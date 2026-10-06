@@ -4,11 +4,11 @@ What it takes to run the product safely. Much of it lives outside the code (host
 dashboards, alerts, runbooks): file what the code cannot show as a question (kind "question"),
 never as a finding, and say what answer would settle it.
 
-Severity: critical when a failure would go unnoticed and lose data or money. High when an
-outage is likely and nobody would see it (no error tracking, no health check behind a load
-balancer, in-memory state behind several instances). Medium for gaps that slow detection or
-recovery (logs without request IDs, no graceful shutdown, no timeouts on outbound calls). Low
-for hygiene.
+Severity: critical when data or money is being lost unnoticed now. High when an outage is
+likely and nobody would see it in time (no health check behind a load balancer, in-memory state
+behind several instances). Medium for gaps that slow detection or recovery (no error tracking,
+logs without request IDs, no graceful shutdown, no timeouts on outbound calls). Low for
+hygiene.
 
 ## PRD-01 Configuration and secrets
 
@@ -48,8 +48,8 @@ written to the same server, a script that never ran).
 ## PRD-07 Scaling and resource limits
 
 State kept in memory that breaks with a second instance (sessions, rate-limit counters, caches,
-scheduled jobs), uploads written to local disk, memory-heavy work in the request path, no limits
-on page size or request body size.
+scheduled jobs), uploads written to local disk, memory-heavy work in the request path, no limit
+on the request body size. Pagination belongs to DAT-03.
 
 ## PRD-08 Mobile and client releases
 

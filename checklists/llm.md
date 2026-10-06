@@ -1,14 +1,16 @@
 # LLM integrations
 
 When the code calls a language model (the Anthropic, OpenAI or Gemini SDKs, the Vercel AI SDK,
-LangChain, or plain HTTP to such an API). Prompt injection that reaches tools or data is filed
-here, with its security consequences spelled out; Security does not repeat it.
+LangChain, or plain HTTP to such an API). While this aspect runs, prompt injection that reaches
+tools or data is filed here, with its security consequences spelled out, and Security does not
+repeat it.
 
-Severity: critical when untrusted content can make the model act with the user's or the app's
-privileges (call tools that write or send, read another user's data) or leak a secret. High
-when model output reaches the database, HTML, a query or code execution unvalidated, or when
-anyone can make the app spend without limit. Medium for missing limits, retries and fallbacks.
-Low for gaps in logging and evaluation.
+Severity: critical when anyone, without signing in, can make the model act with the app's or
+another user's privileges (call tools that write or send, read other users' data), leak a
+secret, or spend without limit. High when it takes an account or a crafted document to do so,
+or when model output reaches the database, HTML, a query or code execution unvalidated. Medium
+for missing limits, retries and fallbacks behind authentication. Low for gaps in logging and
+evaluation.
 
 ## LLM-01 Prompt injection
 

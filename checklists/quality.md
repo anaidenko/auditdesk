@@ -4,10 +4,10 @@ Tests are read, not run, and no coverage is measured. Report which modules carry
 risk and whether tests check them, and code-level patterns that cause bugs. Style and naming
 are out of scope; what a linter would catch is a finding only when the project runs no linter.
 
-Severity: high when a module that handles money, authentication or users' data has logic a
-test would catch going wrong and no test checks it. Medium for duplicated logic that has
-already drifted, type checking switched off where data enters, tests that cannot fail. Low for
-dead code, missing tooling and small inconsistencies.
+Severity: high only with a concrete defect that a test would have caught, in code that handles
+money, authentication or users' data. Medium for such code with no tests, duplicated logic that
+has already drifted, type checking switched off where data enters, tests that cannot fail. Low
+for dead code, missing tooling and small inconsistencies.
 
 ## QUA-01 Type safety
 
@@ -45,5 +45,6 @@ Pipelines), pre-commit hooks.
 
 ## QUA-07 Error-prone patterns
 
-Floating promises, `==`, mutation of shared objects or props, dates computed in local time,
-floating-point money, the result of `find` or a lookup used without a null check.
+`==`, mutation of shared objects or props, dates computed in local time, money computed in
+floating point, the result of `find` or a lookup used without a null check. Floating promises
+belong to ARC-03, and how money is stored to DAT-01.

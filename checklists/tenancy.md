@@ -4,11 +4,11 @@ When records belong to tenants (organisation, account, workspace or team IDs on 
 or a database per customer). This aspect owns tenant isolation; Security's SEC-03 covers
 authorization within one tenant.
 
-Severity: critical when one tenant can read or change another tenant's data now, through a
-route any signed-in user can call. High when isolation depends on something that will fail (a
-filter each query must remember, a cache key without the tenant). Medium for gaps that need an
-insider or unusual state. Low for defence in depth (no second layer such as row-level
-security).
+Severity: critical when anyone who can sign up, or any user of another tenant, can read or
+change a tenant's data now. High when it needs modest preconditions (a staff role, an ID that
+has to be learnt first), or when isolation depends on something that will fail (a filter each
+query must remember, a cache key without the tenant). Medium for gaps that need an insider or
+unusual state. Low for defence in depth (no second layer such as row-level security).
 
 ## TEN-01 The tenant model
 

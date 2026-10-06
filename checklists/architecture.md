@@ -5,10 +5,11 @@ files that show each issue. Do not report a preference for another architecture:
 makes a change break something elsewhere, a class of bug the structure invites, or work the
 structure makes slow, with the file that shows it.
 
-Severity: critical or high only when the structure causes harm now: errors swallowed so that
-failures go unseen and data is lost, configuration that can point production at the wrong
-resources. Most findings here are medium (a change in one place breaks another; the structure
-invites a class of bug) or low (it slows the team down).
+Severity: high when the structure causes harm under ordinary conditions (errors swallowed so
+that failures go unseen and data or money is lost, configuration that can point production at
+the wrong resources), critical when that is happening now. Most findings here are medium (a
+change in one place breaks another; the structure invites a class of bug) or low (it slows the
+team down).
 
 ## ARC-01 Layering and boundaries
 
@@ -31,15 +32,17 @@ React or global `ErrorHandler` in Angular, no handler for unhandled rejections i
 
 ## ARC-04 Configuration
 
-Environment variables read all over the code instead of one module that validates them at
-start-up; behaviour that branches on `NODE_ENV` or the host name; Angular `environment.ts`
-files that drift apart; defaults that point at production.
+Environment variables read all over the code instead of in one module (whether they are
+validated at start-up belongs to PRD-01); behaviour that branches on `NODE_ENV` or the host
+name; Angular `environment.ts` files that drift apart; defaults that point at production.
 
 ## ARC-05 State and data flow
 
 Server data copied into global client stores and invalidated by hand; state duplicated between
-components; subscriptions and effects that are never cleaned up (RxJS without `takeUntil` or
-`async` pipe, `useEffect` without a cleanup); derived data stored instead of computed.
+components; long-lived subscriptions that are never ended (a store, router or socket stream
+without `takeUntilDestroyed`, `DestroyRef` or the `async` pipe; an `HttpClient` request
+completes by itself); `useEffect` calls that subscribe, listen or start timers without a
+cleanup; derived data stored instead of computed.
 
 ## ARC-06 Long work and side effects
 

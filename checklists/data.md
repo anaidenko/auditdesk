@@ -4,11 +4,12 @@ From the code alone: schema files, migrations, ORM models and the queries. No da
 connected, so what depends on production data (row counts, real query plans, the size of a
 table) becomes a question. SQL injection belongs to Security (SEC-04).
 
-Severity: critical when data can be lost or corrupted now (a destructive migration with no way
-back, money written without a transaction). High for integrity holes that ordinary traffic will
-hit (no unique constraint where duplicates break the product, a race on a balance or on stock).
-Medium for performance traps that grow with the data (no index on a foreign key or a frequent
-filter, an N+1 in a list endpoint). Low for hygiene.
+Severity: critical when ordinary use loses or corrupts data now (a destructive migration with no
+way back, a race on balances or stock that everyday traffic hits). High when it takes a failure
+partway or modest concurrency (money or stock written in several steps outside a transaction,
+no unique constraint where duplicates break the product). Medium for performance traps that grow
+with the data (no index on a foreign key or a frequent filter, an N+1 in a list endpoint). Low
+for hygiene.
 
 ## DAT-01 Schema and constraints
 
