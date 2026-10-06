@@ -10,6 +10,17 @@ export interface FixtureSpec {
     path?: string;
     url?: string;
     sha: string;
+    /** What an eval run audits: "all" or a list of aspect keys. */
+    aspects?: "all" | string[];
+    aiBuilt?: boolean;
+}
+
+export interface KeyLocation {
+    file: string;
+    startLine: number;
+    endLine: number;
+    /** Text the location's first line holds, so a shifted fixture fails its test. */
+    anchor: string;
 }
 
 export interface KeyEntry {
@@ -20,11 +31,14 @@ export interface KeyEntry {
     kind: "finding" | "absence" | "question";
     severity: SeverityName | null;
     title: string;
+    /** Items another aspect may own when the run leaves this entry's aspect out. */
+    alsoItems?: string[];
     file?: string;
     startLine?: number;
     endLine?: number;
-    /** Text the entry's first line holds, so a shifted fixture fails its test. */
     anchor?: string;
+    /** Other places the same defect shows; a finding citing any of them matches. */
+    also?: KeyLocation[];
 }
 
 export interface AnswerKey {
