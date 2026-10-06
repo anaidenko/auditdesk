@@ -16,3 +16,9 @@ pnpm db:deploy
 pnpm dev
 git config core.hooksPath .githooks
 ```
+
+## Live check
+
+`pnpm tsx scripts/smoke.mts` sends two small requests with the agent's exact request shape and
+prints each response's model, stop reason and usage. It needs `ANTHROPIC_API_KEY` in
+`.env.local` and costs a few cents.
