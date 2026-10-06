@@ -9,8 +9,8 @@ Local only: binds 127.0.0.1, no login.
 ## Setup
 
 ```bash
-pnpm install
 cp .env.example .env.local
+pnpm install
 pnpm db:up
 pnpm db:deploy
 pnpm dev
