@@ -125,4 +125,12 @@ describe("review", () => {
         expect((await listFindings(project.id)).map(f => f.label)).toEqual(["F-002", "F-001"]);
         expect((await listFindings(project.id, { q: "search" })).map(f => f.label)).toEqual(["F-002"]);
     });
+
+    it("filters by aspect, and ignores an aspect it does not know", async () => {
+        const { project, repo } = await projectWithRepo();
+        await createFinding(project.id, null, sampleFinding(repo.id, { title: "SQL" }));
+        await createFinding(project.id, null, sampleFinding(repo.id, { title: "No tests", aspect: "quality", checklistItem: "QUA-02" }));
+        expect((await listFindings(project.id, { aspect: "quality" })).map(f => f.title)).toEqual(["No tests"]);
+        expect(await listFindings(project.id, { aspect: "bogus" })).toHaveLength(2);
+    });
 });

@@ -6,6 +6,7 @@ import { type FormState, addRepository, startRun } from "@/app/actions";
 import { ACCESS_LABEL } from "@/app/model-access";
 import { FormError, Icon, button, input, label } from "@/app/ui";
 import { DEFAULT_EFFORT, DEFAULT_MODEL } from "@/engine/agent/request";
+import { ASPECTS } from "@/engine/aspects";
 import type { ModelAccess } from "@/engine/types";
 
 export function AddRepositoryForm({ projectId }: { projectId: string }) {
@@ -31,17 +32,41 @@ export function StartRunForm({
     projectId,
     access,
     defaults,
+    chosen,
     planUsage
 }: {
     projectId: string;
     access: ModelAccess;
     defaults: { usd: number; tokens: number };
+    /** The aspects the project's last run audited; the form starts from them. */
+    chosen: string[];
     /** Claude plan only: the last 5-hour reading, and whether it is past the reserve. */
     planUsage: { line: string; overReserve: boolean } | null;
 }) {
     const [state, action, pending] = useActionState<FormState, FormData>(startRun.bind(null, projectId), { error: null });
     return (
         <form action={action} className="space-y-4">
+            <fieldset>
+                <legend className={label}>Aspects</legend>
+                <div className="mt-1.5 grid gap-x-4 gap-y-2 sm:grid-cols-2">
+                    {ASPECTS.map(a => (
+                        <label key={a.key} className="flex items-start gap-2 text-sm text-zinc-700">
+                            <input
+                                type="checkbox"
+                                name="aspects"
+                                value={a.key}
+                                defaultChecked={a.key === "security" || chosen.includes(a.key)}
+                                disabled={a.key === "security"}
+                                className="mt-0.5 size-4 rounded border-zinc-300 accent-indigo-600"
+                            />
+                            <span>
+                                {a.title}
+                                {"when" in a && <span className="block text-xs text-zinc-500">when {a.when}</span>}
+                            </span>
+                        </label>
+                    ))}
+                </div>
+            </fieldset>
             <div className="grid grid-cols-2 gap-3">
                 <label className={label}>
                     Cap, USD
@@ -75,8 +100,8 @@ export function StartRunForm({
                 Start run
             </button>
             <p className="text-xs text-zinc-500">
-                Security aspect · {ACCESS_LABEL[access]} · {DEFAULT_MODEL} · effort {DEFAULT_EFFORT}. The cap is checked between calls
-                {access === "claude_plan" ? ", in API-equivalent dollars" : ""}.
+                Security is always on · {ACCESS_LABEL[access]} · {DEFAULT_MODEL} · effort {DEFAULT_EFFORT}. The cap is split equally between
+                the aspects and repositories, and checked between calls{access === "claude_plan" ? ", in API-equivalent dollars" : ""}.
             </p>
             {state.error && <FormError>{state.error}</FormError>}
         </form>

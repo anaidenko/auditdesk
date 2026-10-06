@@ -4,6 +4,7 @@ import { notFound } from "next/navigation";
 import { ActionForm } from "@/app/ActionForm";
 import { acceptAction, excludeAction, rejectAction } from "@/app/review-actions";
 import { Badge, FindingStatus, Icon, PageHeader, SeverityBadge, button, field, input } from "@/app/ui";
+import { ASPECTS, aspectTitle } from "@/engine/aspects";
 import { prisma } from "@/server/db";
 import { listFindings } from "@/server/review";
 
@@ -25,13 +26,13 @@ export default async function FindingsPage({
     searchParams
 }: {
     params: Promise<{ projectId: string }>;
-    searchParams: Promise<{ q?: string; status?: string }>;
+    searchParams: Promise<{ q?: string; status?: string; aspect?: string }>;
 }) {
     const { projectId } = await params;
-    const { q, status } = await searchParams;
+    const { q, status, aspect } = await searchParams;
     const project = await prisma.project.findUnique({ where: { id: projectId } });
     if (!project) notFound();
-    const findings = await listFindings(projectId, { q: q || undefined, status: status || undefined });
+    const findings = await listFindings(projectId, { q: q || undefined, status: status || undefined, aspect: aspect || undefined });
     const counts = await prisma.finding.groupBy({ by: ["status"], where: { projectId }, _count: { _all: true } });
 
     return (
@@ -77,6 +78,14 @@ export default async function FindingsPage({
                         <option key={s}>{s}</option>
                     ))}
                 </select>
+                <select name="aspect" defaultValue={aspect ?? ""} className={`${field} w-64`} aria-label="Aspect">
+                    <option value="">every aspect</option>
+                    {ASPECTS.map(a => (
+                        <option key={a.key} value={a.key}>
+                            {a.title}
+                        </option>
+                    ))}
+                </select>
                 <button className={button.secondary}>Filter</button>
             </form>
 
@@ -89,7 +98,7 @@ export default async function FindingsPage({
                                 <span className="font-mono text-xs text-zinc-500">{f.label}</span>
                                 <span className="min-w-0 flex-1 text-sm font-medium text-zinc-900">{f.title}</span>
                                 <span className="hidden items-center gap-1.5 md:flex">
-                                    <Badge tone="slate">{f.aspect}</Badge>
+                                    <Badge tone="slate">{aspectTitle(f.aspect)}</Badge>
                                     <Badge tone="slate">{f.source}</Badge>
                                 </span>
                                 <FindingStatus status={f.status} />

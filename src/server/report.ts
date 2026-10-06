@@ -2,6 +2,7 @@ import { mkdir, writeFile } from "node:fs/promises";
 import { basename, join } from "node:path";
 import "server-only";
 
+import { ASPECTS, aspectTitle } from "@/engine/aspects";
 import { loadChecklist } from "@/engine/checklists";
 import { workspaceDir } from "@/engine/config";
 import { findingLabel } from "@/engine/findings";
@@ -35,7 +36,7 @@ export async function loadReportData(projectId: string): Promise<ReportData> {
     const toReport = (r: (typeof rows)[number]): ReportFinding => ({
         label: findingLabel(r.number),
         severity: r.severity as SeverityName | null,
-        aspect: r.aspect,
+        aspect: aspectTitle(r.aspect),
         checklistItem: r.checklistItem,
         title: r.title,
         likelihood: r.likelihood,
@@ -55,7 +56,15 @@ export async function loadReportData(projectId: string): Promise<ReportData> {
         where: { run: { projectId }, status: { notIn: ["pending", "running"] } },
         orderBy: { createdAt: "desc" }
     });
-    const latestAgents = [...new Map(finished.map(a => [`${a.repositoryId}:${a.aspect}`, a] as const).reverse()).values()].reverse();
+    const order = (a: { repositoryId: string; aspect: string }) => [
+        project.repositories.findIndex(r => r.id === a.repositoryId),
+        ASPECTS.findIndex(x => x.key === a.aspect) + 1 || ASPECTS.length + 1
+    ];
+    const latestAgents = [...new Map(finished.map(a => [`${a.repositoryId}:${a.aspect}`, a] as const).reverse()).values()].sort((x, y) => {
+        const [rx, ax] = order(x);
+        const [ry, ay] = order(y);
+        return rx - ry || ax - ay;
+    });
     const scanned = await prisma.run.findFirst({
         where: { projectId, toolVersions: { not: Prisma.DbNull } },
         orderBy: { createdAt: "desc" },

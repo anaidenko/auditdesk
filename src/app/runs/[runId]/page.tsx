@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 
 import { rerunAspect } from "@/app/review-actions";
 import { Alert, Card, Icon, PageHeader, RunStatus, button } from "@/app/ui";
+import { aspectTitle } from "@/engine/aspects";
 import { overReserve, readPlanUsage } from "@/engine/plan-usage";
 import { prisma } from "@/server/db";
 
@@ -87,7 +88,7 @@ export default async function RunPage({
                                     action={rerunAspect.bind(null, run.id, a.repositoryId, a.aspect)}
                                     className="flex flex-wrap items-center gap-3 py-2.5 text-sm"
                                 >
-                                    <span className="font-medium capitalize">{a.aspect}</span>
+                                    <span className="font-medium">{aspectTitle(a.aspect)}</span>
                                     <span className="font-mono text-xs text-zinc-500">{repoName.get(a.repositoryId)}</span>
                                     <RunStatus status={a.status} />
                                     {askReserve && (

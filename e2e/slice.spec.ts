@@ -43,6 +43,34 @@ test("a run from project to downloaded report", async ({ page }) => {
     expect(html).toContain("through the Claude Agent SDK");
 });
 
+test("a run over two aspects files findings under both, and the report covers both", async ({ page }) => {
+    await newProject(page, "Two aspects");
+    await page.getByLabel(/client agreed/).check();
+    await page.getByRole("button", { name: "Save" }).click();
+    await expect(page.getByRole("checkbox", { name: "Security" })).toBeChecked();
+    await expect(page.getByRole("checkbox", { name: "Security" })).toBeDisabled();
+    await page.getByRole("checkbox", { name: "Code quality and tests" }).check();
+    await page.getByRole("button", { name: "Start run" }).click();
+    await expect(page.getByTestId("run-status")).toHaveText("done", { timeout: 90_000 });
+
+    await page.getByRole("link", { name: "Review the findings" }).click();
+    for (const title of ["User input reaches eval", "No tests for the server"]) {
+        const finding = page.locator("details", { hasText: title });
+        await finding.locator("summary").click();
+        await finding.getByRole("button", { name: "Accept" }).click();
+        await expect(finding).toContainText("accepted");
+    }
+    const html = await (await page.request.get(page.url().replace(/\/findings.*$/, "/report"))).text();
+    expect(html).toContain("Code quality and tests (");
+    expect(html).toContain("QUA-02");
+    expect(html).toContain("No tests for the server");
+
+    // The next run's form starts from this run's aspects.
+    await page.goto(page.url().replace(/\/findings.*$/, ""));
+    await expect(page.getByRole("checkbox", { name: "Code quality and tests" })).toBeChecked();
+    await expect(page.getByRole("checkbox", { name: "Architecture and structure" })).not.toBeChecked();
+});
+
 test("an API key saved in Settings runs an audit, and no page shows the key", async ({ page }) => {
     const key = "sk-ant-e2e-0000000000000000wxyz";
     await page.goto("/settings");

@@ -34,11 +34,31 @@ describe("forms", () => {
         });
     });
 
-    it("reads the token cap in thousands", () => {
+    it("reads the token cap in thousands, and runs security alone when nothing else is ticked", () => {
         expect(parseRunForm(fd({ budgetUsd: "10", budgetKTokens: "400" }), 1)).toEqual({
             ok: true,
-            value: { budgetUsd: 10, budgetTokens: 400_000 }
+            value: { budgetUsd: 10, budgetTokens: 400_000, aspects: ["security"] }
         });
+    });
+
+    it("runs the ticked aspects in the catalogue's order, security always first", () => {
+        const f = fd({ budgetUsd: "10", budgetKTokens: "400" });
+        f.append("aspects", "quality");
+        f.append("aspects", "dependencies");
+        expect(parseRunForm(f, 1)).toMatchObject({ ok: true, value: { aspects: ["security", "dependencies", "quality"] } });
+    });
+
+    it("refuses an aspect outside the catalogue", () => {
+        const f = fd({ budgetUsd: "10", budgetKTokens: "400" });
+        f.append("aspects", "performance");
+        expect(parseRunForm(f, 1)).toEqual({ ok: false, error: "Unknown aspect: performance." });
+    });
+
+    it("splits the token cap over every repository and aspect before checking the minimum", () => {
+        const f = fd({ budgetUsd: "10", budgetKTokens: "100" });
+        for (const a of ["dependencies", "architecture", "data", "quality", "production"]) f.append("aspects", a);
+        expect(parseRunForm(f, 1)).toMatchObject({ ok: false, error: expect.stringMatching(/20 thousand/) });
+        expect(parseRunForm(fd({ budgetUsd: "10", budgetKTokens: "100" }), 1)).toMatchObject({ ok: true });
     });
 });
 

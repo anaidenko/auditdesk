@@ -58,8 +58,7 @@ export async function startRun(projectId: string, _prev: FormState, fd: FormData
     const refusal = project.modelAccess === "claude_plan" ? reserveRefusal(await readPlanUsage(), allowPastReserve) : null;
     if (refusal) return { error: `${refusal} Tick "Allow past the 50% reserve" to start anyway.`, askReserve: true };
     if (!project.repositories.length) return { error: "Add a repository first." };
-    const aspects = ["security"];
-    const parsed = parseRunForm(fd, project.repositories.length * aspects.length);
+    const parsed = parseRunForm(fd, project.repositories.length);
     if (!parsed.ok) return { error: parsed.error };
     let runId: string;
     try {
@@ -67,7 +66,6 @@ export async function startRun(projectId: string, _prev: FormState, fd: FormData
             model: DEFAULT_MODEL,
             effort: DEFAULT_EFFORT,
             modelAccess: project.modelAccess,
-            aspects,
             allowPastReserve,
             ...parsed.value
         });
