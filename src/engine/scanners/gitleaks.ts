@@ -1,3 +1,5 @@
+import { createHash } from "node:crypto";
+
 import { fingerprint } from "../findings";
 import type { Masker } from "../masker";
 import type { NewFinding } from "../types";
@@ -53,7 +55,12 @@ export function normaliseGitleaks(
             references: { cwe: "CWE-798" },
             tags: [],
             source: "scanner",
-            fingerprint: fingerprint({ ...base, evidence: [{ ...evidence[0], snippet: leak.RuleID }] })
+            // A hash of the secret, never the secret: three keys in one .env are three findings to rotate.
+            fingerprint: fingerprint({ ...base, evidence: [{ ...evidence[0], snippet: `${leak.RuleID}:${secretHash(leak.Secret)}` }] })
         } satisfies NewFinding;
     });
+}
+
+function secretHash(secret: string): string {
+    return createHash("sha256").update(secret).digest("hex").slice(0, 16);
 }

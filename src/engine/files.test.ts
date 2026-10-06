@@ -27,6 +27,10 @@ describe("listFiles", () => {
         expect(out).not.toContain("node_modules");
     });
 
+    it("answers a file path with a tool error the model can act on", async () => {
+        await expect(listFiles(root, { dir: "src/app.ts" })).rejects.toThrow(/is a file; use read_file/);
+    });
+
     it("lists a symlink without following it", async () => {
         expect(await listFiles(root)).toMatch(/etc-link -> symlink, not followed/);
     });
@@ -60,6 +64,14 @@ describe("readFileRange", () => {
 });
 
 describe("grepFiles", () => {
+    it("stops a slow pattern at a deadline for the whole search, not only per file", async () => {
+        const dir = await mkdtemp(join(tmpdir(), "redos-"));
+        for (const n of [1, 2, 3]) await writeFile(join(dir, `${n}.txt`), `${"a".repeat(24)}b\n`);
+        const started = Date.now();
+        await expect(grepFiles(dir, "^(a+)+$", { timeoutMs: 2000, totalMs: 300 })).rejects.toThrow(/took too long/);
+        expect(Date.now() - started).toBeLessThan(900);
+    });
+
     it("refuses a pattern that backtracks catastrophically, instead of blocking the app", async () => {
         const dir = await mkdtemp(join(tmpdir(), "redos-"));
         await writeFile(join(dir, "a.txt"), `${"a".repeat(25)}b\n`);

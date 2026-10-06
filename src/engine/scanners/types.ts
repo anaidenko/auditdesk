@@ -40,6 +40,8 @@ export interface GitleaksLeak {
     Secret: string;
     Commit: string;
     Date: string;
+    /** `decoded:base64` and the like when gitleaks found the secret inside an encoded string. */
+    Tags?: string[];
 }
 
 export interface OsvPackage {

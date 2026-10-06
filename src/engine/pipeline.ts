@@ -10,7 +10,7 @@ import { Masker } from "./masker";
 import { aspectMessage, prefixBlocks } from "./prompts";
 import { buildRepoMap } from "./repomap";
 import { normaliseGitleaks } from "./scanners/gitleaks";
-import { leakInTree, runScanners } from "./scanners/index";
+import { leakInTree, leakMasks, runScanners } from "./scanners/index";
 import { normaliseOsv } from "./scanners/osv";
 import { normaliseSemgrep } from "./scanners/semgrep";
 import type { Ruleset, ScannerRunner, ToolVersions } from "./scanners/types";
@@ -72,7 +72,7 @@ export async function runAudit(input: AuditInput, deps: AuditDeps): Promise<{ st
         const rulesDir = join(runDir, "rules");
         const scan = await runScanners({ clonePath, runner: deps.scanners, rulesets: await deps.fetchRulesets(rulesDir), rulesDir });
         await sink.toolVersions(scan.versions);
-        const masker = new Masker(scan.leaks.map(l => ({ value: l.Secret, rule: l.RuleID })));
+        const masker = new Masker(await leakMasks(clonePath, scan.leaks));
         const inTree = new Set<string>();
         for (const leak of scan.leaks) if (await leakInTree(clonePath, leak)) inTree.add(`${leak.File}:${leak.StartLine}:${leak.Commit}`);
         const known = await sink.knownFingerprints(repo.id);
@@ -133,6 +133,12 @@ export async function runAudit(input: AuditInput, deps: AuditDeps): Promise<{ st
                 },
                 system,
                 firstMessage: aspectMessage({ checklist, findingIndex: await sink.findingIndex(repo.id), budgetTokens: share.tokens })
+            }).catch(async (e: Error) => {
+                // Recorded before the run fails, or the agent would show "running" forever.
+                await sink
+                    .finishAgent(agentRunId, { status: "failed", note: `Error: ${e.message}`, summary: null, coverage: [] })
+                    .catch(() => {});
+                throw e;
             });
             await sink.finishAgent(agentRunId, outcome);
             await sink.progress(

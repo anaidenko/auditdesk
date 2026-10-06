@@ -37,9 +37,13 @@ const finding = (over: object = {}) => ({
 });
 const finish = (coverage = [{ item: "SEC-04", status: "examined" }]) => tool("finish_aspect", { summary: "Done.", coverage });
 
-async function setup(responses: BetaMessage[], o: { share?: { usd: number; tokens: number }; secrets?: string[] } = {}) {
+async function setup(
+    responses: BetaMessage[],
+    o: { share?: { usd: number; tokens: number }; secrets?: string[]; files?: Record<string, string> } = {}
+) {
     const clonePath = await makeRepo({
-        "src/db.js": `const key = "${SAMPLE_KEY}";\ndb.query("SELECT * FROM u WHERE id=" + req.query.id);\n`
+        "src/db.js": `const key = "${SAMPLE_KEY}";\ndb.query("SELECT * FROM u WHERE id=" + req.query.id);\n`,
+        ...o.files
     });
     const sink = new MemorySink();
     const { fetch, requests } = replayFetch(responses);
@@ -108,12 +112,92 @@ describe("runAspect", () => {
         expect(sink.findings).toHaveLength(1);
     });
 
+    it("files a question without a severity, whatever the model sent", async () => {
+        const { sink, run } = await setup([
+            tool("report_finding", finding({ kind: "question", severity: "high", evidence: [] })),
+            finish()
+        ]);
+        await run();
+        expect(sink.findings[0]).toMatchObject({ kind: "question", severity: null });
+    });
+
+    it("asks for finish_aspect once only, and ends partial when the model still does not call it", async () => {
+        const { requests, run } = await setup([text("I looked around."), text("Still looking.")]);
+        expect(await run()).toMatchObject({ status: "partial", note: expect.stringMatching(/without reporting coverage/) });
+        expect(requests).toHaveLength(2);
+    });
+
     it("masks secrets in tool results before they enter the conversation", async () => {
         const { requests, run } = await setup([tool("read_file", { path: "src/db.js", start_line: 1, end_line: 2 }), finish()], {
             secrets: [SAMPLE_KEY]
         });
         await run();
         expect(JSON.stringify(requests[1].body)).not.toContain(SAMPLE_KEY);
+    });
+
+    it("masks a secret that a cut line or a grep excerpt would split", async () => {
+        const minified = `${"x".repeat(1995)}${SAMPLE_KEY};\n${"y".repeat(290)}${SAMPLE_KEY};\n`;
+        const { requests, run } = await setup(
+            [
+                tool("read_file", { path: "dist/app.min.js", start_line: 1, end_line: 1 }),
+                tool("grep", { pattern: "y{290}", glob: "" }),
+                finish()
+            ],
+            { secrets: [SAMPLE_KEY], files: { "dist/app.min.js": minified } }
+        );
+        await run();
+        const sent = JSON.stringify(requests.slice(1).map(r => r.body.messages));
+        expect(sent).not.toContain(SAMPLE_KEY.slice(0, 5));
+    });
+
+    it("reopens the aspect when a call beside finish_aspect failed, so the model can fix it", async () => {
+        const both = message({
+            content: [
+                {
+                    type: "tool_use",
+                    id: "toolu_bad",
+                    name: "report_finding",
+                    input: finding({ evidence: [{ file: "src/db.js", start_line: 1, end_line: 9 }] }),
+                    caller: null
+                },
+                {
+                    type: "tool_use",
+                    id: "toolu_fin",
+                    name: "finish_aspect",
+                    input: { summary: "Done.", coverage: [{ item: "SEC-04", status: "examined" }] },
+                    caller: null
+                }
+            ],
+            stop_reason: "tool_use"
+        } as never);
+        const { sink, requests, run } = await setup([both, tool("report_finding", finding()), finish()]);
+        expect((await run()).status).toBe("done");
+        expect(sink.findings).toHaveLength(1);
+        expect(requests).toHaveLength(3);
+        const results = JSON.stringify((requests[1].body.messages as { content: unknown }[]).at(-1));
+        expect(results).toMatch(/not a valid range/);
+        expect(results).toMatch(/Not finished: another call in this turn failed/);
+    });
+
+    it("neither runs nor echoes the declined model's calls before a fallback", async () => {
+        const rescued = message({
+            content: [
+                { type: "thinking", thinking: "Declined note.", signature: "sig-declined" },
+                { type: "tool_use", id: "toolu_declined", name: "report_finding", input: finding(), caller: null },
+                { type: "fallback", from: { model: "claude-sonnet-5-5" }, to: { model: "claude-sonnet-5" } },
+                { type: "tool_use", id: "toolu_rescued", name: "list_files", input: { dir: ".", glob: "" }, caller: null }
+            ],
+            stop_reason: "tool_use"
+        } as never);
+        const { sink, requests, run } = await setup([rescued, finish()]);
+        await run();
+        expect(sink.findings).toHaveLength(0);
+        const echoed = JSON.stringify(
+            (requests[1].body.messages as { role: string; content: unknown }[]).filter(m => m.role === "assistant")
+        );
+        expect(echoed).not.toContain("toolu_declined");
+        expect(echoed).not.toContain("sig-declined");
+        expect(echoed).toContain("toolu_rescued");
     });
 
     it("marks the aspect declined after a refusal the fallback did not rescue, and runs none of its tools", async () => {

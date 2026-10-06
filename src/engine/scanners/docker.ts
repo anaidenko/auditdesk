@@ -8,9 +8,14 @@ export const IMAGES: Record<ScannerTool, string> = {
     semgrep: "semgrep/semgrep:1.179.0"
 };
 
+// Semgrep on a large repository runs for minutes; past this a scanner is stuck, and Stop cannot reach it.
+const SCANNER_TIMEOUT_MS = 45 * 60 * 1000;
+
 function exec(cmd: string, args: string[]): Promise<{ stdout: string; stderr: string; exitCode: number }> {
     return new Promise(resolve => {
-        execFile(cmd, args, { maxBuffer: 256 * 1024 * 1024 }, (error, stdout, stderr) => {
+        execFile(cmd, args, { maxBuffer: 256 * 1024 * 1024, timeout: SCANNER_TIMEOUT_MS }, (error, stdout, stderr) => {
+            // Exit 1 means "vulnerabilities found" to osv-scanner, so a killed scanner gets 124, as timeout(1) reports.
+            if (error && (error as { killed?: boolean }).killed) return resolve({ stdout, stderr: `${stderr}\ntimed out`, exitCode: 124 });
             const code =
                 error && typeof (error as NodeJS.ErrnoException).code === "number"
                     ? Number((error as NodeJS.ErrnoException).code)

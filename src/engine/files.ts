@@ -1,4 +1,4 @@
-import { readFile } from "node:fs/promises";
+import { readFile, stat } from "node:fs/promises";
 import { join } from "node:path";
 import { Script, createContext } from "node:vm";
 
@@ -11,7 +11,8 @@ export const LIMITS = {
     grepMatches: 200,
     grepLineChars: 300,
     grepFileBytes: 1_000_000,
-    grepFileMs: 2000
+    grepFileMs: 2000,
+    grepTotalMs: 10_000
 };
 
 // The pattern comes from the model, and the app is one process: a regex that backtracks without
@@ -24,7 +25,12 @@ function isBinary(buf: Buffer): boolean {
 }
 
 export async function listFiles(root: string, o: { dir?: string; glob?: string; limit?: number } = {}): Promise<string> {
-    const base = o.dir && o.dir !== "." ? (await resolveInClone(root, o.dir)).rel : "";
+    let base = "";
+    if (o.dir && o.dir !== ".") {
+        const { abs, rel } = await resolveInClone(root, o.dir);
+        if (!(await stat(abs)).isDirectory()) throw new ToolError(`${rel} is a file; use read_file.`);
+        base = rel;
+    }
     const match = o.glob ? globToRegExp(o.glob) : null;
     const limit = o.limit ?? LIMITS.listEntries;
     const lines: string[] = [];
@@ -42,7 +48,10 @@ export async function listFiles(root: string, o: { dir?: string; glob?: string; 
     return lines.join("\n") || "No files.";
 }
 
-export async function readFileRange(root: string, path: string, startLine: number, endLine: number): Promise<string> {
+/** Masks each whole line before anything cuts it: a secret split by a cut would no longer match its value. */
+export type LineMask = (line: string) => string;
+
+export async function readFileRange(root: string, path: string, startLine: number, endLine: number, mask?: LineMask): Promise<string> {
     const { abs, rel } = await resolveInClone(root, path);
     const buf = await readFile(abs).catch(() => {
         throw new ToolError(`${path} is a directory or unreadable; use list_files.`);
@@ -51,14 +60,19 @@ export async function readFileRange(root: string, path: string, startLine: numbe
     const all = buf.toString("utf8").split(/\r?\n/);
     const start = Math.max(1, Math.min(startLine, all.length));
     const end = Math.min(all.length, Math.max(start, endLine), start + LIMITS.readLines - 1);
-    const body = all.slice(start - 1, end).map((line, i) => {
+    const body = all.slice(start - 1, end).map((raw, i) => {
+        const line = mask ? mask(raw) : raw;
         const shown = line.length > LIMITS.lineChars ? `${line.slice(0, LIMITS.lineChars)} … [line cut: ${line.length} characters]` : line;
         return `${start + i}| ${shown}`;
     });
     return [`${rel}, lines ${start}-${end} of ${all.length}`, ...body].join("\n");
 }
 
-export async function grepFiles(root: string, pattern: string, o: { glob?: string; timeoutMs?: number } = {}): Promise<string> {
+export async function grepFiles(
+    root: string,
+    pattern: string,
+    o: { glob?: string; timeoutMs?: number; totalMs?: number; mask?: LineMask } = {}
+): Promise<string> {
     let re: RegExp;
     try {
         re = new RegExp(pattern);
@@ -67,6 +81,7 @@ export async function grepFiles(root: string, pattern: string, o: { glob?: strin
     }
     const match = o.glob ? globToRegExp(o.glob) : null;
     const sandbox = createContext({ re, lines: [] as string[], hits: [] as number[] });
+    const deadline = Date.now() + (o.totalMs ?? LIMITS.grepTotalMs);
     const hits: string[] = [];
     let tooBig = 0;
     let more = 0;
@@ -78,10 +93,13 @@ export async function grepFiles(root: string, pattern: string, o: { glob?: strin
         }
         const buf = await readFile(join(root, entry.rel));
         if (isBinary(buf)) continue;
-        const lines = buf.toString("utf8").split(/\r?\n/);
+        const raw = buf.toString("utf8").split(/\r?\n/);
+        const lines = o.mask ? raw.map(o.mask) : raw;
         sandbox.lines = lines;
         try {
-            MATCH_LINES.runInContext(sandbox, { timeout: o.timeoutMs ?? LIMITS.grepFileMs });
+            const left = deadline - Date.now();
+            if (left <= 0) throw Object.assign(new Error("deadline"), { code: "ERR_SCRIPT_EXECUTION_TIMEOUT" });
+            MATCH_LINES.runInContext(sandbox, { timeout: Math.min(o.timeoutMs ?? LIMITS.grepFileMs, left) });
         } catch (e) {
             if ((e as NodeJS.ErrnoException).code !== "ERR_SCRIPT_EXECUTION_TIMEOUT") throw e;
             throw new ToolError(`The pattern took too long on ${entry.rel}; simplify it (nested quantifiers such as (a+)+ backtrack).`);

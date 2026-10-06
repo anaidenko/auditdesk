@@ -18,6 +18,16 @@ const files = {
 };
 
 describe("buildRepoMap", () => {
+    it("reads a package.json that starts with a BOM, and lists one that is not JSON instead of failing", async () => {
+        const root = await makeRepo({
+            "package.json": "\uFEFF" + JSON.stringify({ scripts: { start: "node index.js" } }),
+            "templates/app/package.json": '{ "name": "{{name}}", }'
+        });
+        const map = await buildRepoMap(root, new Masker([]));
+        expect(map).toContain("package.json script start: node index.js");
+        expect(map).toContain("templates/app/package.json: not valid JSON");
+    });
+
     it("lists entry points, routes, data schema, environment variables and tests", async () => {
         const root = await makeRepo(files);
         const map = await buildRepoMap(root, new Masker([]));

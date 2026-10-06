@@ -105,7 +105,9 @@ export function makeTools(ctx: AgentContext) {
                 name: "read_file",
                 description: "Read a line range of a file, with line numbers. At most 400 lines per call.",
                 inputSchema: z.strictObject({ path: z.string(), start_line: z.number().int(), end_line: z.number().int() }),
-                run: guard(ctx, async ({ path, start_line, end_line }) => readFileRange(ctx.clonePath, path, start_line, end_line))
+                run: guard(ctx, async ({ path, start_line, end_line }) =>
+                    readFileRange(ctx.clonePath, path, start_line, end_line, line => ctx.masker.mask(line))
+                )
             })
         ),
         strict(
@@ -116,7 +118,9 @@ export function makeTools(ctx: AgentContext) {
                     pattern: z.string(),
                     glob: z.string().describe("Limits the files searched, or an empty string.")
                 }),
-                run: guard(ctx, async ({ pattern, glob }) => grepFiles(ctx.clonePath, pattern, { glob: glob || undefined }))
+                run: guard(ctx, async ({ pattern, glob }) =>
+                    grepFiles(ctx.clonePath, pattern, { glob: glob || undefined, mask: line => ctx.masker.mask(line) })
+                )
             })
         ),
         strict(
@@ -183,7 +187,7 @@ async function reportFinding(ctx: AgentContext, input: z.infer<typeof findingInp
         agentRunId: ctx.agentRunId,
         kind: input.kind,
         title: input.title,
-        severity: input.severity === "none" ? null : input.severity,
+        severity: input.kind === "question" || input.severity === "none" ? null : input.severity,
         likelihood: input.likelihood || null,
         impact: input.impact || null,
         summary: input.summary,

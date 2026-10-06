@@ -1,5 +1,5 @@
 import Anthropic from "@anthropic-ai/sdk";
-import type { BetaMessage, BetaTextBlockParam } from "@anthropic-ai/sdk/resources/beta/messages/messages";
+import type { BetaContentBlock, BetaMessage, BetaTextBlockParam } from "@anthropic-ai/sdk/resources/beta/messages/messages";
 
 import { exhausted } from "../budget";
 import { priceMessage } from "../prices";
@@ -66,6 +66,7 @@ export async function runAspect(o: {
                     stopReason: msg.stop_reason,
                     refusalCategory: msg.stop_details?.category ?? null
                 });
+                dropDeclinedPartial(msg.content);
                 for (const b of msg.content)
                     if (b.type === "thinking" && b.thinking.trim()) await ctx.sink.progress(`${ctx.aspect}: ${b.thinking.trim()}`);
 
@@ -77,7 +78,10 @@ export async function runAspect(o: {
                 if (msg.stop_reason === "max_tokens") return end("partial", "A turn hit max_tokens; its tool calls were not run.");
 
                 // Run this turn's tools now, so a finding filed in the last turn is kept when we stop below.
-                if (msg.content.some(b => b.type === "tool_use")) await runner.generateToolResponse();
+                if (msg.content.some(b => b.type === "tool_use")) {
+                    const results = await runner.generateToolResponse();
+                    if (ctx.state.finished && results && reopenAfterFailedSibling(msg, results)) ctx.state.finished = null;
+                }
                 if (ctx.state.fatal) throw ctx.state.fatal;
                 if (ctx.state.finished) return end("done", null);
                 if (await ctx.sink.stopRequested()) return end("stopped", "Stopped by the auditor.");
@@ -99,4 +103,37 @@ export async function runAspect(o: {
         messages = [...(runner.params.messages as typeof messages), { role: "user", content: NUDGE }];
     }
     return end("partial", "Finished without reporting coverage.");
+}
+
+/**
+ * After a mid-output fallback, the declined model's thinking and tool calls before the last
+ * `fallback` block are neither run nor sent back (claude-api skill, refusal section: "Echoing
+ * fallback turns back"). The runner runs and echoes this same array, so it is edited in place.
+ */
+export function dropDeclinedPartial(content: BetaContentBlock[]): void {
+    const boundary = content.findLastIndex(b => b.type === "fallback");
+    if (boundary < 0) return;
+    const kept = content.filter((b, i) => i >= boundary || b.type === "text");
+    content.splice(0, content.length, ...kept);
+}
+
+/**
+ * finish_aspect beside a call that failed would end the aspect before the model saw the error,
+ * and the failed finding would be lost. Its result becomes an error instead, so the model fixes
+ * the call and finishes again. The runner sends this same results message, so it is edited in place.
+ */
+function reopenAfterFailedSibling(msg: BetaMessage, results: { content: unknown }): boolean {
+    const finishIds = new Set(
+        msg.content.filter(b => b.type === "tool_use" && b.name === "finish_aspect").map(b => (b as { id: string }).id)
+    );
+    const blocks = Array.isArray(results.content)
+        ? (results.content as { tool_use_id: string; is_error?: boolean; content: unknown }[])
+        : [];
+    if (!blocks.some(r => r.is_error && !finishIds.has(r.tool_use_id))) return false;
+    for (const r of blocks)
+        if (finishIds.has(r.tool_use_id)) {
+            r.content = "Not finished: another call in this turn failed. Fix it, then call finish_aspect again.";
+            r.is_error = true;
+        }
+    return true;
 }

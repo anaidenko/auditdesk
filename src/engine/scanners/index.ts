@@ -1,6 +1,8 @@
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 
+import { git } from "../git";
+
 import { IMAGES } from "./docker";
 import { gitleaksArgs, parseGitleaks } from "./gitleaks";
 import { osvArgs, parseOsv } from "./osv";
@@ -54,8 +56,36 @@ export async function runScanners(o: {
     return { leaks, osv, semgrep, versions: { images, rulesets: o.rulesets.map(({ file: _f, ...r }) => r), osvQueriedAt } };
 }
 
+const decoded = (leak: GitleaksLeak) => leak.Tags?.some(t => t.startsWith("decoded:")) ?? false;
+
+/**
+ * The lines a leak sits on, as committed. For a secret gitleaks found by decoding base64, hex or
+ * a URL encoding, `Secret` holds the decoded text, which the file never contains: only these raw
+ * lines show up in what the agent reads. gitleaks' columns for such hits are not exact, so the
+ * whole lines are masked.
+ */
+async function rawLines(clonePath: string, leak: GitleaksLeak): Promise<string[]> {
+    const text = await git(["show", `${leak.Commit}:${leak.File}`], clonePath).catch(() => "");
+    return text
+        .split(/\r?\n/)
+        .slice(leak.StartLine - 1, leak.EndLine)
+        .filter(line => line.trim());
+}
+
+/** What the masker replaces for these leaks: each secret by value, and the encoded lines of decoded ones. */
+export async function leakMasks(clonePath: string, leaks: GitleaksLeak[]): Promise<{ value: string; rule: string }[]> {
+    const out: { value: string; rule: string }[] = [];
+    for (const leak of leaks) {
+        out.push({ value: leak.Secret, rule: leak.RuleID });
+        if (decoded(leak)) for (const line of await rawLines(clonePath, leak)) out.push({ value: line, rule: leak.RuleID });
+    }
+    return out;
+}
+
 /** Whether a leak's secret is still in the checked-out file, or only in history. */
 export async function leakInTree(clonePath: string, leak: GitleaksLeak): Promise<boolean> {
     const text = await readFile(join(clonePath, leak.File), "utf8").catch(() => "");
-    return text.includes(leak.Secret);
+    if (!decoded(leak)) return text.includes(leak.Secret);
+    const lines = await rawLines(clonePath, leak);
+    return lines.length > 0 && lines.every(line => text.includes(line));
 }

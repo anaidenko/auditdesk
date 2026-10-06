@@ -22,7 +22,14 @@ export async function buildRepoMap(root: string, masker: Masker, o: { maxChars?:
     const tests: string[] = [];
 
     for (const f of files.filter(f => f.rel.endsWith("package.json"))) {
-        const pkg = JSON.parse((await read(f.rel)) || "{}");
+        let pkg: { main?: string; scripts?: Record<string, string> };
+        try {
+            pkg = JSON.parse((await read(f.rel)).replace(/^\uFEFF/, "") || "{}");
+        } catch {
+            // Templates and broken files are the client's to fix, not a reason to stop the audit.
+            entry.push(`${f.rel}: not valid JSON`);
+            continue;
+        }
         if (pkg.main) entry.push(`${f.rel} main: ${pkg.main}`);
         for (const [name, cmd] of Object.entries(pkg.scripts ?? {})) entry.push(`${f.rel} script ${name}: ${cmd}`);
     }

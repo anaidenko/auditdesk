@@ -23,6 +23,13 @@ describe("gitleaks", () => {
         expect(JSON.stringify(f)).not.toContain(SAMPLE_KEY);
     });
 
+    it("files each distinct secret of one rule in one file, so every one gets rotated", () => {
+        const three = ["a1", "b2", "c3"].map(k => ({ ...leaks[0], Secret: `${k}${"0".repeat(30)}`, StartLine: k.charCodeAt(0) }));
+        const prints = normaliseGitleaks(three, { repositoryId: "r", masker, inTree: () => true }).map(f => f.fingerprint);
+        expect(new Set(prints).size).toBe(3);
+        expect(prints.join()).not.toContain("0".repeat(30));
+    });
+
     it("rates a secret found only in history one level lower and says so", () => {
         const [f] = normaliseGitleaks(leaks, { repositoryId: "r", masker, inTree: () => false });
         expect(f.severity).toBe("high");

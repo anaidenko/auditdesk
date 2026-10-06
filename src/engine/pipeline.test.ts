@@ -73,6 +73,15 @@ describe("runAudit", () => {
         expect(sink.findings.filter(f => f.source === "scanner").length).toBe(first);
     });
 
+    it("marks the agent failed when it throws, so it never stays running", async () => {
+        const sink = new TestSink();
+        sink.recordCall = async () => {
+            throw new Error("database gone");
+        };
+        await expect(audit(sink, await makeSampleRepo(), await mkdtemp(join(tmpdir(), "ws-")))).rejects.toThrow(/database gone/);
+        expect(sink.agents).toEqual([{ id: "agent-1", aspect: "security", status: "failed" }]);
+    });
+
     it("starts no agent once Stop has been pressed", async () => {
         const sink = new TestSink();
         sink.stop = true;

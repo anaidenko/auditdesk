@@ -29,6 +29,16 @@ export async function resolveInClone(root: string, path: string): Promise<{ abs:
 }
 
 export function globToRegExp(glob: string): RegExp {
+    const source = globSource(glob);
+    try {
+        // A glob without a slash matches the file name anywhere, as most tools do.
+        return new RegExp(glob.includes("/") ? `^${source}$` : `(?:^|/)${source}$`);
+    } catch (e) {
+        throw new ToolError(`Invalid glob ${glob}: ${(e as Error).message}`);
+    }
+}
+
+function globSource(glob: string): string {
     let re = "";
     for (let i = 0; i < glob.length; i++) {
         const c = glob[i];
@@ -37,18 +47,17 @@ export function globToRegExp(glob: string): RegExp {
             i += glob[i + 2] === "/" ? 2 : 1;
         } else if (c === "*") re += "[^/]*";
         else if (c === "?") re += "[^/]";
-        else if (c === "{") {
+        else if (c === "{" && glob.indexOf("}", i) > i) {
             const end = glob.indexOf("}", i);
             re += `(?:${glob
                 .slice(i + 1, end)
                 .split(",")
-                .map(escape)
+                .map(globSource)
                 .join("|")})`;
             i = end;
         } else re += escape(c);
     }
-    // A glob without a slash matches the file name anywhere, as most tools do.
-    return new RegExp(glob.includes("/") ? `^${re}$` : `(?:^|/)${re}$`);
+    return re;
 }
 
 function escape(s: string): string {

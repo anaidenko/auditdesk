@@ -51,6 +51,15 @@ describe("resolveInClone", () => {
 });
 
 describe("globToRegExp", () => {
+    it("reads a brace with no closing brace as a literal", () => {
+        expect(globToRegExp("*.{ts,tsx").test("a.{ts,tsx")).toBe(true);
+    });
+
+    it("expands wildcards inside braces", () => {
+        expect(globToRegExp("{*.ts,*.js}").test("src/a.ts")).toBe(true);
+        expect(globToRegExp("{*.ts,*.js}").test("src/a.css")).toBe(false);
+    });
+
     it.each([
         ["**/*.ts", "src/a/b.ts", true],
         ["**/*.ts", "b.ts", true],
