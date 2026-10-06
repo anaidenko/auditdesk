@@ -141,6 +141,45 @@ describe("renderReport", () => {
         expect(renderReport(data())).not.toContain('class="repo"');
     });
 
+    it("links a finding's references as relevant to standards, never as compliance with them", () => {
+        const html = renderReport(
+            data({
+                findings: [
+                    finding({
+                        refs: {
+                            top10: {
+                                label: "A01:2025 Broken Access Control",
+                                url: "https://owasp.org/Top10/2025/A01_2025-Broken_Access_Control/"
+                            },
+                            cwe: { label: "CWE-862", url: "https://cwe.mitre.org/data/definitions/862.html" },
+                            asvs: [
+                                {
+                                    label: "ASVS 5.0.0 V8.3 Operation Level Authorization",
+                                    url: "https://github.com/OWASP/ASVS/blob/v5.0.0/5.0/en/0x17-V8-Authorization.md"
+                                }
+                            ],
+                            cheatsheets: [
+                                {
+                                    label: "Authorization Cheat Sheet",
+                                    url: "https://cheatsheetseries.owasp.org/cheatsheets/Authorization_Cheat_Sheet.html"
+                                }
+                            ],
+                            advisories: [],
+                            nist: null
+                        }
+                    })
+                ]
+            })
+        );
+        const card = between(html, 'id="F-001"', "</details>");
+        expect(card).toMatch(
+            /Relevant to: <a href="https:\/\/owasp\.org\/Top10\/2025\/A01_2025-Broken_Access_Control\/">A01:2025 Broken Access Control<\/a>/
+        );
+        expect(card).toContain('<a href="https://cwe.mitre.org/data/definitions/862.html">CWE-862</a>');
+        expect(card).toContain("Authorization Cheat Sheet</a>");
+        expect(html).not.toMatch(/complian/i);
+    });
+
     it("gathers the findings tagged ai-built under Signs of AI-generated code", () => {
         const html = renderReport(
             data({

@@ -1,4 +1,5 @@
 import { compareFindings } from "../findings";
+import type { Ref } from "../references";
 import { type ModelAccess, SEVERITIES } from "../types";
 
 import type { ReportData, ReportFinding } from "./types";
@@ -118,7 +119,24 @@ function finding(f: ReportFinding): string {
     const meta = [f.repository, f.aspect, f.checklistItem, f.effort && `effort ${f.effort}${f.effortHours ? ` (${f.effortHours} h)` : ""}`]
         .filter(Boolean)
         .join(" · ");
-    const refs = [f.references.cwe, ...(f.references.advisories ?? [])].filter(Boolean).join(", ");
+    const link = (r: Ref) => `<a href="${e(r.url)}">${e(r.label)}</a>`;
+    const R = f.refs;
+    const refs = R
+        ? [
+              (R.top10 || R.asvs.length) &&
+                  `Relevant to: ${[R.top10, ...R.asvs]
+                      .filter((r): r is Ref => !!r)
+                      .map(link)
+                      .join("; ")}.`,
+              R.cwe && `Weakness: ${link(R.cwe)}.`,
+              R.advisories.length && `Advisories: ${R.advisories.map(link).join(", ")}.`,
+              (R.cheatsheets.length || R.nist) &&
+                  `Further reading: ${[...R.cheatsheets, R.nist]
+                      .filter((r): r is Ref => !!r)
+                      .map(link)
+                      .join("; ")}.`
+          ].filter(Boolean)
+        : [[f.references.cwe, ...(f.references.advisories ?? [])].filter(Boolean).join(", ")].filter(Boolean).map(e);
     const pair =
         f.likelihood || f.impact
             ? `<div class="pair${f.likelihood && f.impact ? "" : " one"}">${f.likelihood ? `<div><h4>Likelihood</h4><p>${e(f.likelihood)}</p></div>` : ""}${f.impact ? `<div><h4>Impact</h4><p>${e(f.impact)}</p></div>` : ""}</div>`
@@ -133,7 +151,7 @@ ${pair}
 <p class="prose">${e(f.explanation)}</p>
 ${f.evidence.length ? `<h4>Evidence</h4>\n${f.evidence.map(evidence).join("\n")}` : ""}
 <div class="callout"><h4>Recommendation</h4><p class="prose">${e(f.recommendation)}</p></div>
-${refs ? `<p class="refs">References: ${e(refs)}</p>` : ""}
+${refs.length ? `<div class="refs"><h4>References</h4>${refs.map(r => `<p>${r}</p>`).join("")}</div>` : ""}
 </div>
 </details>`;
 }

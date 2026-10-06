@@ -1,0 +1,213 @@
+# OWASP ASVS 5.0.0 sections, read from the v5.0.0 tag of github.com/OWASP/ASVS on 2026-10-07.
+# Requirement IDs are cited as v5.0.0-<chapter>.<section>.<requirement> (the standard's own format).
+sections:
+  - id: V1.1
+    title: "Encoding and Sanitization Architecture"
+    file: 0x10-V1-Encoding-and-Sanitization
+  - id: V1.2
+    title: "Injection Prevention"
+    file: 0x10-V1-Encoding-and-Sanitization
+  - id: V1.3
+    title: "Sanitization"
+    file: 0x10-V1-Encoding-and-Sanitization
+  - id: V1.4
+    title: "Memory, String, and Unmanaged Code"
+    file: 0x10-V1-Encoding-and-Sanitization
+  - id: V1.5
+    title: "Safe Deserialization"
+    file: 0x10-V1-Encoding-and-Sanitization
+  - id: V2.1
+    title: "Validation and Business Logic Documentation"
+    file: 0x11-V2-Validation-and-Business-Logic
+  - id: V2.2
+    title: "Input Validation"
+    file: 0x11-V2-Validation-and-Business-Logic
+  - id: V2.3
+    title: "Business Logic Security"
+    file: 0x11-V2-Validation-and-Business-Logic
+  - id: V2.4
+    title: "Anti-automation"
+    file: 0x11-V2-Validation-and-Business-Logic
+  - id: V3.1
+    title: "Web Frontend Security Documentation"
+    file: 0x12-V3-Web-Frontend-Security
+  - id: V3.2
+    title: "Unintended Content Interpretation"
+    file: 0x12-V3-Web-Frontend-Security
+  - id: V3.3
+    title: "Cookie Setup"
+    file: 0x12-V3-Web-Frontend-Security
+  - id: V3.4
+    title: "Browser Security Mechanism Headers"
+    file: 0x12-V3-Web-Frontend-Security
+  - id: V3.5
+    title: "Browser Origin Separation"
+    file: 0x12-V3-Web-Frontend-Security
+  - id: V3.6
+    title: "External Resource Integrity"
+    file: 0x12-V3-Web-Frontend-Security
+  - id: V3.7
+    title: "Other Browser Security Considerations"
+    file: 0x12-V3-Web-Frontend-Security
+  - id: V4.1
+    title: "Generic Web Service Security"
+    file: 0x13-V4-API-and-Web-Service
+  - id: V4.2
+    title: "HTTP Message Structure Validation"
+    file: 0x13-V4-API-and-Web-Service
+  - id: V4.3
+    title: "GraphQL"
+    file: 0x13-V4-API-and-Web-Service
+  - id: V4.4
+    title: "WebSocket"
+    file: 0x13-V4-API-and-Web-Service
+  - id: V5.1
+    title: "File Handling Documentation"
+    file: 0x14-V5-File-Handling
+  - id: V5.2
+    title: "File Upload and Content"
+    file: 0x14-V5-File-Handling
+  - id: V5.3
+    title: "File Storage"
+    file: 0x14-V5-File-Handling
+  - id: V5.4
+    title: "File Download"
+    file: 0x14-V5-File-Handling
+  - id: V6.1
+    title: "Authentication Documentation"
+    file: 0x15-V6-Authentication
+  - id: V6.2
+    title: "Password Security"
+    file: 0x15-V6-Authentication
+  - id: V6.3
+    title: "General Authentication Security"
+    file: 0x15-V6-Authentication
+  - id: V6.4
+    title: "Authentication Factor Lifecycle and Recovery"
+    file: 0x15-V6-Authentication
+  - id: V6.5
+    title: "General Multi-factor authentication requirements"
+    file: 0x15-V6-Authentication
+  - id: V6.6
+    title: "Out-of-Band authentication mechanisms"
+    file: 0x15-V6-Authentication
+  - id: V6.7
+    title: "Cryptographic authentication mechanism"
+    file: 0x15-V6-Authentication
+  - id: V6.8
+    title: "Authentication with an Identity Provider"
+    file: 0x15-V6-Authentication
+  - id: V7.1
+    title: "Session Management Documentation"
+    file: 0x16-V7-Session-Management
+  - id: V7.2
+    title: "Fundamental Session Management Security"
+    file: 0x16-V7-Session-Management
+  - id: V7.3
+    title: "Session Timeout"
+    file: 0x16-V7-Session-Management
+  - id: V7.4
+    title: "Session Termination"
+    file: 0x16-V7-Session-Management
+  - id: V7.5
+    title: "Defenses Against Session Abuse"
+    file: 0x16-V7-Session-Management
+  - id: V7.6
+    title: "Federated Re-authentication"
+    file: 0x16-V7-Session-Management
+  - id: V8.1
+    title: "Authorization Documentation"
+    file: 0x17-V8-Authorization
+  - id: V8.2
+    title: "General Authorization Design"
+    file: 0x17-V8-Authorization
+  - id: V8.3
+    title: "Operation Level Authorization"
+    file: 0x17-V8-Authorization
+  - id: V8.4
+    title: "Other Authorization Considerations"
+    file: 0x17-V8-Authorization
+  - id: V9.1
+    title: "Token source and integrity"
+    file: 0x18-V9-Self-contained-Tokens
+  - id: V9.2
+    title: "Token content"
+    file: 0x18-V9-Self-contained-Tokens
+  - id: V11.1
+    title: "Cryptographic Inventory and Documentation"
+    file: 0x20-V11-Cryptography
+  - id: V11.2
+    title: "Secure Cryptography Implementation"
+    file: 0x20-V11-Cryptography
+  - id: V11.3
+    title: "Encryption Algorithms"
+    file: 0x20-V11-Cryptography
+  - id: V11.4
+    title: "Hashing and Hash-based Functions"
+    file: 0x20-V11-Cryptography
+  - id: V11.5
+    title: "Random Values"
+    file: 0x20-V11-Cryptography
+  - id: V11.6
+    title: "Public Key Cryptography"
+    file: 0x20-V11-Cryptography
+  - id: V11.7
+    title: "In-Use Data Cryptography"
+    file: 0x20-V11-Cryptography
+  - id: V12.1
+    title: "General TLS Security Guidance"
+    file: 0x21-V12-Secure-Communication
+  - id: V12.2
+    title: "HTTPS Communication with External Facing Services"
+    file: 0x21-V12-Secure-Communication
+  - id: V12.3
+    title: "General Service to Service Communication Security"
+    file: 0x21-V12-Secure-Communication
+  - id: V13.1
+    title: "Configuration Documentation"
+    file: 0x22-V13-Configuration
+  - id: V13.2
+    title: "Backend Communication Configuration"
+    file: 0x22-V13-Configuration
+  - id: V13.3
+    title: "Secret Management"
+    file: 0x22-V13-Configuration
+  - id: V13.4
+    title: "Unintended Information Leakage"
+    file: 0x22-V13-Configuration
+  - id: V14.1
+    title: "Data Protection Documentation"
+    file: 0x23-V14-Data-Protection
+  - id: V14.2
+    title: "General Data Protection"
+    file: 0x23-V14-Data-Protection
+  - id: V14.3
+    title: "Client-side Data Protection"
+    file: 0x23-V14-Data-Protection
+  - id: V15.1
+    title: "Secure Coding and Architecture Documentation"
+    file: 0x24-V15-Secure-Coding-and-Architecture
+  - id: V15.2
+    title: "Security Architecture and Dependencies"
+    file: 0x24-V15-Secure-Coding-and-Architecture
+  - id: V15.3
+    title: "Defensive Coding"
+    file: 0x24-V15-Secure-Coding-and-Architecture
+  - id: V15.4
+    title: "Safe Concurrency"
+    file: 0x24-V15-Secure-Coding-and-Architecture
+  - id: V16.1
+    title: "Security Logging Documentation"
+    file: 0x25-V16-Security-Logging-and-Error-Handling
+  - id: V16.2
+    title: "General Logging"
+    file: 0x25-V16-Security-Logging-and-Error-Handling
+  - id: V16.3
+    title: "Security Events"
+    file: 0x25-V16-Security-Logging-and-Error-Handling
+  - id: V16.4
+    title: "Log Protection"
+    file: 0x25-V16-Security-Logging-and-Error-Handling
+  - id: V16.5
+    title: "Error Handling"
+    file: 0x25-V16-Security-Logging-and-Error-Handling
