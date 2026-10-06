@@ -35,6 +35,8 @@ section{margin-top:3rem}
 .toc ol{margin:0;padding-left:1.2rem}.toc>ol>li{margin:.45rem 0;font-weight:600}
 .toc ul{list-style:none;padding:0;margin:.4rem 0 .7rem;font-weight:400;font-size:.9rem}
 .toc ul li{display:flex;gap:.6rem;align-items:baseline;margin:.25rem 0;break-inside:avoid}
+.toc .toc-repo{margin:.6rem 0 0;font-size:.9rem}
+h3.repo{margin:1.8rem 0 .8rem;padding-bottom:.35rem;border-bottom:1px solid var(--line);break-after:avoid}
 .badge{flex-shrink:0;display:inline-block;font-size:.68rem;font-weight:700;letter-spacing:.06em;text-transform:uppercase;padding:.12rem .5rem;border-radius:999px;white-space:nowrap;vertical-align:.1em}
 ${["critical", "high", "medium", "low", "info", "question"].map(s => `.${s}{color:var(--${s});background:var(--${s}-bg)}.tile.${s}{border-color:var(--${s}-bg)}`).join("")}
 .risks{list-style:none;padding:0;margin:.5rem 0}.risks li{display:flex;gap:.7rem;align-items:baseline;padding:.5rem 0;border-bottom:1px solid var(--line)}
@@ -147,6 +149,17 @@ export function renderReport(d: ReportData): string {
             : "";
     // The cover names a single repository; a column repeating it only wraps.
     const manyRepos = d.repositories.length > 1;
+    // With several repositories the findings run per repository, in the cover's order (design § 10).
+    const names = [...new Set([...d.repositories.map(r => r.name), ...findings.map(f => f.repository)])];
+    const ids = new Map<string, string>();
+    for (const n of names) {
+        const base = `repo-${n.replace(/[^A-Za-z0-9._-]+/g, "-")}`;
+        ids.set(n, [...ids.values()].includes(base) ? `${base}-${ids.size + 1}` : base);
+    }
+    const groups = manyRepos
+        ? names.map(n => ({ name: n, list: findings.filter(f => f.repository === n) })).filter(g => g.list.length)
+        : [];
+    const repoHead = (n: string) => `<h3 class="repo" id="${e(ids.get(n)!)}">${e(n)}</h3>`;
 
     const tiles = SEVERITIES.map(s => `<div class="tile ${s}${count(s) ? "" : " zero"}"><b>${count(s)}</b><span>${s}</span></div>`).join(
         ""
@@ -216,7 +229,11 @@ ${d.questions.map(finding).join("\n")}</section>`
 <nav class="toc"><h2>Contents</h2><ol>
 <li><a href="#summary">Summary</a></li>
 <li><a href="#scope">Scope and method</a></li>
-<li><a href="#findings">Findings</a>${tocItems(findings)}</li>
+<li><a href="#findings">Findings</a>${
+        manyRepos
+            ? groups.map(g => `<p class="toc-repo"><a href="#${e(ids.get(g.name)!)}">${e(g.name)}</a></p>${tocItems(g.list)}`).join("")
+            : tocItems(findings)
+    }</li>
 ${d.questions.length ? `<li><a href="#questions">Open questions</a>${tocItems(d.questions)}</li>` : ""}
 <li><a href="#disclaimer">Disclaimer</a></li>
 </ol></nav>
@@ -241,7 +258,7 @@ ${tools}
 
 <section id="findings"><h2>Findings</h2>
 ${findings.length ? `<table><thead><tr><th>ID</th><th>Severity</th><th>Title</th><th>Aspect</th>${manyRepos ? "<th>Repository</th>" : ""}<th>Effort</th></tr></thead><tbody>${rows}</tbody></table>` : `<p class="muted">No findings were accepted for this report.</p>`}
-${findings.map(finding).join("\n")}
+${manyRepos ? groups.map(g => `${repoHead(g.name)}\n${g.list.map(finding).join("\n")}`).join("\n") : findings.map(finding).join("\n")}
 </section>
 ${questions}
 

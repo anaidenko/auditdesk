@@ -115,6 +115,32 @@ describe("renderReport", () => {
         expect(html).toMatch(/\.pair\.one\{grid-template-columns:1fr\}/);
     });
 
+    it("gives each repository its own run of findings, in the cover's order, and lists them so in the contents", () => {
+        const html = renderReport(
+            data({
+                repositories: [
+                    { name: "web", branch: "main", sha: "0123456789abcdef" },
+                    { name: "api", branch: "main", sha: "fedcba9876543210" }
+                ],
+                findings: [
+                    finding({ label: "F-001", severity: "critical", repository: "api", title: "Open admin route" }),
+                    finding({ label: "F-002", severity: "low", repository: "web", title: "Verbose errors" })
+                ]
+            })
+        );
+        const body = html.slice(html.indexOf('<section id="findings">'));
+        expect(body.indexOf('<h3 class="repo" id="repo-web">web</h3>')).toBeGreaterThan(0);
+        expect(body.indexOf('id="F-002"')).toBeLessThan(body.indexOf('<h3 class="repo" id="repo-api">api</h3>'));
+        expect(body.indexOf('<h3 class="repo" id="repo-api">api</h3>')).toBeLessThan(body.indexOf('id="F-001"'));
+        const toc = between(html, '<nav class="toc">', "</nav>");
+        expect(toc.indexOf("F-002")).toBeLessThan(toc.indexOf("F-001"));
+        expect(toc).toContain('<a href="#repo-api">api</a>');
+    });
+
+    it("adds no repository headings for a single repository", () => {
+        expect(renderReport(data())).not.toContain('class="repo"');
+    });
+
     // The cover names a single repository; a column repeating it wrapped in the PDF (R.3).
     it("shows the repository column only when the audit spans more than one repository", () => {
         const head = (html: string) => between(html, "<thead>", "</thead>");

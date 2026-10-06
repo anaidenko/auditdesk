@@ -199,4 +199,31 @@ describe("the cached prefix", () => {
         expect(inputs.map(i => i.ctx.aspect)).toEqual(["security", "quality"]);
         expect(JSON.stringify(inputs[1].system)).toBe(JSON.stringify(inputs[0].system));
     });
+
+    it("runs every aspect of every repository, splitting the budget evenly between them", async () => {
+        const sink = new TestSink();
+        const { inputs, runAspect } = capturing();
+        const [web, api] = [await makeSampleRepo(), await makeSampleRepo()];
+        await audit(
+            sink,
+            web,
+            await mkdtemp(join(tmpdir(), "ws-")),
+            {
+                aspects: ["security", "quality"],
+                repositories: [
+                    { id: "web", source: web, branch: "main" },
+                    { id: "api", source: api, branch: "main" }
+                ]
+            },
+            runAspect
+        );
+        expect(inputs.map(i => `${i.ctx.repositoryId}:${i.ctx.aspect}`)).toEqual([
+            "web:security",
+            "web:quality",
+            "api:security",
+            "api:quality"
+        ]);
+        expect(inputs.map(i => i.share.tokens)).toEqual([100_000, 100_000, 100_000, 100_000]);
+        expect(inputs.map(i => i.share.usd)).toEqual([2.5, 2.5, 2.5, 2.5]);
+    });
 });
