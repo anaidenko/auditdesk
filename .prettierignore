@@ -1,0 +1,7 @@
+src/generated
+pnpm-lock.yaml
+checklists
+evals/answers
+
+# Prose keeps its hand-made line breaks
+*.md

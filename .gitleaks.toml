@@ -1,0 +1,6 @@
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Recorded scanner output and its sample repository hold planted test secrets"
+paths = ['''src/test/fixtures/scanners/''']

@@ -1,0 +1,17 @@
+node_modules/
+.next/
+out/
+build/
+coverage/
+playwright-report/
+test-results/
+src/generated/
+.env*.local
+.env
+*.tsbuildinfo
+next-env.d.ts
+.DS_Store
+
+# Machine-local Claude Code state (hook metrics, local settings)
+.claude/local/
+.claude/settings.local.json
