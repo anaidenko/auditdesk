@@ -1,7 +1,7 @@
 import "server-only";
 
 import { type StackProfile, detectStack } from "@/engine/stack";
-import { cloneRepository, deleteProjectClones } from "@/engine/workspace";
+import { deleteProjectClones, withScratchClone } from "@/engine/workspace";
 import type { Prisma } from "@/generated/prisma/client";
 import { prisma } from "@/server/db";
 import { ActiveRunError } from "@/server/jobs";
@@ -18,14 +18,13 @@ export async function deleteProject(projectId: string, workspaceDir: string): Pr
 }
 
 /**
- * Clones the branch as it is now and detects its stack, so Andrii can confirm it before the first
- * run. The audited commit is left alone: only a run records one.
+ * Detects the branch's stack as it is now, from a clone of its own, so Andrii can confirm it before
+ * the first run. The audited commit and the run's clones are left alone.
  */
 export async function detectRepositoryStack(projectId: string, repositoryId: string, workspaceDir: string): Promise<StackProfile> {
     if (await hasActiveRun(projectId)) throw new ActiveRunError();
     const repo = await prisma.repository.findFirstOrThrow({ where: { id: repositoryId, projectId } });
-    const { clonePath } = await cloneRepository({ source: repo.source, branch: repo.branch, workspaceDir, projectId, repositoryId });
-    const profile = await detectStack(clonePath);
+    const profile = await withScratchClone({ source: repo.source, branch: repo.branch, workspaceDir, projectId }, detectStack);
     await prisma.repository.update({ where: { id: repositoryId }, data: { stack: profile as unknown as Prisma.InputJsonObject } });
     return profile;
 }

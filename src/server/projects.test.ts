@@ -1,5 +1,5 @@
 import { existsSync } from "node:fs";
-import { mkdir, mkdtemp } from "node:fs/promises";
+import { mkdir, mkdtemp, readdir } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { beforeEach, describe, expect, it } from "vitest";
@@ -52,6 +52,7 @@ describe("a repository's stack and instructions", () => {
         const after = await prisma.repository.findUniqueOrThrow({ where: { id: repo.id } });
         expect(after.stack).toEqual(profile);
         expect(after.commitSha).toBeNull();
+        expect(await readdir(join(ws, project.id))).toEqual([]);
     });
 
     it("refuses to detect while a run is queued or running", async () => {
