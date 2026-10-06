@@ -45,4 +45,28 @@ describe("the run's event stream", () => {
         // Before the fix: "TypeError: Invalid state: Controller is already closed".
         expect(rejections).toEqual([]);
     });
+
+    it("leaves no LISTEN connection behind when the client goes before the stream is set up", async () => {
+        const { project } = await projectWithRepo();
+        const run = await prisma.run.create({
+            data: { projectId: project.id, model: "m", effort: "low", aspects: ["security"], budgetUsd: 1, budgetTokens: 20000 }
+        });
+        const listening = async () =>
+            Number(
+                (
+                    await prisma.$queryRaw<
+                        { n: bigint }[]
+                    >`SELECT count(*) AS n FROM pg_stat_activity WHERE query = ${`LISTEN ${RUN_CHANNEL}`}`
+                )[0].n
+            );
+        const before = await listening();
+        const client = new AbortController();
+        client.abort();
+        const res = await GET(new Request(`http://127.0.0.1/runs/${run.id}/events`, { signal: client.signal }), {
+            params: Promise.resolve({ runId: run.id })
+        });
+        await res.body?.cancel().catch(() => {});
+        await pause(500);
+        expect(await listening()).toBe(before);
+    });
 });

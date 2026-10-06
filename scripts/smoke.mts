@@ -10,6 +10,7 @@ import { parseChecklist } from "../src/engine/checklists";
 import { Masker } from "../src/engine/masker";
 import { MemorySink } from "../src/engine/memory-sink";
 import { createClient } from "../src/engine/model";
+import { priceMessage } from "../src/engine/prices";
 import { prefixBlocks } from "../src/engine/prompts";
 
 nextEnv.loadEnvConfig(process.cwd());
@@ -46,6 +47,10 @@ for (const attempt of [1, 2]) {
     // Through the tool runner, as the agent sends it; max_iterations 1 makes it a single request.
     for await (const stream of client.beta.messages.toolRunner(params)) {
         const msg = await stream.finalMessage();
-        console.log(attempt, msg.model, msg.stop_reason, JSON.stringify(msg.usage));
+        const priced = priceMessage(DEFAULT_MODEL, msg);
+        console.log(attempt, msg.model, msg.stop_reason, priced.costUsd, JSON.stringify(msg.usage));
+        // A dated model ID or a fallback target missing from prices.ts would make every run stop after one call.
+        if (priced.costUsd === null)
+            throw new Error(`No price row for the served model ${priced.servedModel}; add it to src/engine/prices.ts.`);
     }
 }

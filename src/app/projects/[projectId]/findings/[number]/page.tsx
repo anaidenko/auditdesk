@@ -1,5 +1,6 @@
 import { notFound } from "next/navigation";
 
+import { ActionForm } from "@/app/ActionForm";
 import { editAction, mergeAction } from "@/app/review-actions";
 import { findingLabel } from "@/engine/findings";
 import { SEVERITIES } from "@/engine/types";
@@ -19,7 +20,7 @@ export default async function FindingPage({ params }: { params: Promise<{ projec
             <h1 className="text-2xl font-semibold">
                 {findingLabel(f.number)} · {f.status}
             </h1>
-            <form action={editAction.bind(null, f.id)} className="space-y-4 text-sm">
+            <ActionForm action={editAction.bind(null, f.id)} className="space-y-4 text-sm">
                 <label className="block">
                     Title
                     <input name="title" defaultValue={f.title} required className={field} />
@@ -56,18 +57,27 @@ export default async function FindingPage({ params }: { params: Promise<{ projec
                 {(["summary", "explanation", "recommendation", "note"] as const).map(k => (
                     <label key={k} className="block capitalize">
                         {k}
-                        <textarea name={k} defaultValue={f[k] ?? ""} rows={k === "explanation" ? 8 : 3} className={field} />
+                        <textarea
+                            name={k}
+                            defaultValue={f[k] ?? ""}
+                            rows={k === "explanation" ? 8 : 3}
+                            required={k !== "note"}
+                            className={field}
+                        />
                     </label>
                 ))}
-                <button className="rounded bg-zinc-900 px-4 py-2 text-white">Save as edited</button>
-            </form>
-            <form action={mergeAction.bind(null, f.id)} className="flex items-end gap-3 text-sm">
+                <button className="rounded bg-zinc-900 px-4 py-2 text-white">Save</button>
+                <p className="text-zinc-500">
+                    An unreviewed or accepted finding becomes edited and goes into the report; a rejected or excluded one keeps its status.
+                </p>
+            </ActionForm>
+            <ActionForm action={mergeAction.bind(null, f.id)} className="flex flex-wrap items-end gap-3 text-sm">
                 <label>
                     Merge into
                     <input name="target" placeholder="F-012" required className={field} />
                 </label>
                 <button className="rounded border border-zinc-900 px-4 py-2">Merge</button>
-            </form>
+            </ActionForm>
         </div>
     );
 }

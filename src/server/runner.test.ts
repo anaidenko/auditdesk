@@ -1,10 +1,11 @@
 import Anthropic from "@anthropic-ai/sdk";
-import { mkdtemp } from "node:fs/promises";
+import { mkdtemp, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Client } from "pg";
 import { beforeEach, describe, expect, it } from "vitest";
 
+import { git } from "@/engine/git";
 import { message, replayFetch } from "@/engine/replay";
 import { REPLAY_RULESETS, replayRunner } from "@/engine/scanners/replay";
 import { prisma } from "@/server/db";
@@ -106,13 +107,40 @@ describe("runner", () => {
         expect(Number(rerun.usdShare)).toBeLessThanOrEqual(0.5);
     });
 
+    it("re-runs an aspect at the commit its own run audited, not the repository's latest", async () => {
+        const source = await makeSampleRepo();
+        const { project, repo } = await projectWithRepo(source);
+        const first = await enqueueRun(project.id, runOptions);
+        await processJob((await claimJob())!, await deps());
+        const audited = (await prisma.repository.findUniqueOrThrow({ where: { id: repo.id } })).commitSha;
+
+        await writeFile(join(source, "src/later.js"), "module.exports = 1;\n");
+        await git(["add", "src/later.js"], source);
+        await git(["-c", "user.name=T", "-c", "user.email=t@example.com", "commit", "-q", "-m", "later"], source);
+        await enqueueRun(project.id, runOptions);
+        await processJob((await claimJob())!, await deps());
+        expect((await prisma.repository.findUniqueOrThrow({ where: { id: repo.id } })).commitSha).not.toBe(audited);
+
+        await enqueueRerun(first, repo.id, "security");
+        await processJob((await claimJob())!, await deps());
+        expect((await prisma.repository.findUniqueOrThrow({ where: { id: repo.id } })).commitSha).toBe(audited);
+    });
+
     it("queues a re-run once, however many times its button is pressed", async () => {
         const { project, repo } = await projectWithRepo(await makeSampleRepo());
         const runId = await enqueueRun(project.id, runOptions);
         await processJob((await claimJob())!, await deps());
-        await enqueueRerun(runId, repo.id, "security");
-        await expect(enqueueRerun(runId, repo.id, "security")).rejects.toBeInstanceOf(ActiveRunError);
+        expect(await enqueueRerun(runId, repo.id, "security")).toBe("queued");
+        expect(await enqueueRerun(runId, repo.id, "security")).toBe("already queued");
         expect(await prisma.job.count({ where: { runId, status: "queued" } })).toBe(1);
+    });
+
+    it("refuses a re-run while another run of the project is queued, and says so", async () => {
+        const { project, repo } = await projectWithRepo(await makeSampleRepo());
+        const first = await enqueueRun(project.id, runOptions);
+        await processJob((await claimJob())!, await deps());
+        await enqueueRun(project.id, runOptions);
+        await expect(enqueueRerun(first, repo.id, "security")).rejects.toBeInstanceOf(ActiveRunError);
     });
 
     it("refuses to run without the client's AI consent", async () => {
@@ -148,7 +176,13 @@ describe("runner", () => {
 
 describe("runLoop", () => {
     const job = (id: string) => ({ id, runId: id, aspect: null, repositoryId: null });
-    const loop = (o: { sweep?: () => Promise<unknown>; jobs: string[]; process: (id: string) => Promise<void>; claims?: string[] }) => {
+    const loop = (o: {
+        sweep?: () => Promise<unknown>;
+        jobs: string[];
+        process: (id: string) => Promise<void>;
+        claims?: string[];
+        markFailed?: (id: string) => Promise<unknown>;
+    }) => {
         const queue = [...o.jobs];
         let claimed = 0;
         return runLoop({
@@ -160,6 +194,7 @@ describe("runLoop", () => {
                 return id ? job(id) : null;
             },
             processJob: j => o.process(j.id),
+            markFailed: j => (o.markFailed ? o.markFailed(j.id) : Promise.resolve()),
             sleep: async () => {},
             log: () => {},
             pollMs: 0,
@@ -177,6 +212,25 @@ describe("runLoop", () => {
                 done.push(id);
             }
         });
+        expect(done).toEqual(["b"]);
+    });
+
+    it("marks a job that failed to record itself as failed once the database answers, so its project is not blocked", async () => {
+        const marked: string[] = [];
+        let refusals = 1;
+        const done: string[] = [];
+        await loop({
+            jobs: ["a", "b"],
+            process: async id => {
+                if (id === "a") throw new Error("connection lost");
+                done.push(id);
+            },
+            markFailed: async id => {
+                if (refusals-- > 0) throw new Error("ECONNREFUSED");
+                marked.push(id);
+            }
+        });
+        expect(marked).toEqual(["a"]);
         expect(done).toEqual(["b"]);
     });
 

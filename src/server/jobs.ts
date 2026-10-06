@@ -26,16 +26,21 @@ export async function enqueueRun(
     }
 }
 
-export async function enqueueRerun(runId: string, repositoryId: string, aspect: string): Promise<void> {
+/** "already queued" is a second press; another active run in the project throws ActiveRunError. */
+export async function enqueueRerun(runId: string, repositoryId: string, aspect: string): Promise<"queued" | "already queued"> {
     try {
-        await prisma.$transaction(async tx => {
+        return await prisma.$transaction(async tx => {
             // Only a finished run is re-queued: a second press would otherwise queue a second, paid job.
             const { count } = await tx.run.updateMany({
                 where: { id: runId, status: { notIn: ["queued", "running"] } },
                 data: { status: "queued", stopRequested: false, finishedAt: null }
             });
-            if (!count) throw new ActiveRunError();
+            if (!count) {
+                await tx.run.findUniqueOrThrow({ where: { id: runId } });
+                return "already queued";
+            }
             await tx.job.create({ data: { runId, repositoryId, aspect } });
+            return "queued";
         });
     } catch (e) {
         if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === "P2002") throw new ActiveRunError();

@@ -20,7 +20,16 @@ export interface EditableFields {
     note?: string | null;
 }
 
+/** A merged or superseded finding has left the review; acting on it would bring a duplicate back. */
+async function reviewable(id: string) {
+    const f = await prisma.finding.findUniqueOrThrow({ where: { id } });
+    if (f.status === "merged" || f.status === "superseded")
+        throw new Error(`${findingLabel(f.number)} was ${f.status}; review the finding that replaced it.`);
+    return f;
+}
+
 export async function accept(id: string) {
+    await reviewable(id);
     await prisma.finding.update({ where: { id }, data: { status: "accepted" } });
 }
 
@@ -36,9 +45,11 @@ const REQUIRED = ["title", "summary", "explanation", "recommendation"] as const;
 
 export async function edit(id: string, fields: EditableFields) {
     for (const k of REQUIRED) if (k in fields && !fields[k]?.trim()) throw new Error(`The ${k} cannot be empty.`);
-    const f = await prisma.finding.findUniqueOrThrow({ where: { id } });
+    const f = await reviewable(id);
     if (f.kind === "question" && fields.severity) throw new Error("A question carries no severity.");
-    await prisma.finding.update({ where: { id }, data: { ...fields, status: "edited" } });
+    // A rejected or excluded finding stays out of the report when its text or note changes.
+    const status = f.status === "rejected" || f.status === "excluded" ? f.status : "edited";
+    await prisma.finding.update({ where: { id }, data: { ...fields, status } });
 }
 
 export async function merge(sourceId: string, targetLabel: string) {
@@ -50,13 +61,19 @@ export async function merge(sourceId: string, targetLabel: string) {
     if (target.status === "merged") throw new Error(`${targetLabel} was itself merged; merge into the finding it went to.`);
     if (target.status === "rejected" || target.status === "excluded" || target.status === "superseded")
         throw new Error(`${targetLabel} is ${target.status}; merge into a finding that stays in the review.`);
-    await prisma.$transaction([
-        prisma.finding.update({
+    await prisma.$transaction(async tx => {
+        // Conditional, so a second press (or a stale page) cannot add the evidence twice.
+        const { count } = await tx.finding.updateMany({
+            where: { id: source.id, status: { notIn: ["merged", "superseded"] } },
+            data: { status: "merged", mergedIntoId: target.id }
+        });
+        if (!count) throw new Error(`${findingLabel(source.number)} was already merged or superseded.`);
+        const fresh = await tx.finding.findUniqueOrThrow({ where: { id: target.id } });
+        await tx.finding.update({
             where: { id: target.id },
-            data: { evidence: [...(target.evidence as unknown as Evidence[]), ...(source.evidence as unknown as Evidence[])] as object[] }
-        }),
-        prisma.finding.update({ where: { id: source.id }, data: { status: "merged", mergedIntoId: target.id } })
-    ]);
+            data: { evidence: [...(fresh.evidence as unknown as Evidence[]), ...(source.evidence as unknown as Evidence[])] as object[] }
+        });
+    });
 }
 
 export async function listFindings(projectId: string, o: { status?: string; q?: string } = {}) {

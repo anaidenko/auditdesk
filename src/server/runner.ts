@@ -55,7 +55,8 @@ export async function processJob(job: Job, deps: (sink: PrismaSink) => AuditDeps
                     id: r.id,
                     source: r.source,
                     branch: r.branch,
-                    sha: job.aspect ? r.commitSha : null
+                    // A re-run audits the commit its own run audited; runs from before `commits` fall back to the latest clone.
+                    sha: job.aspect ? ((run.commits as Record<string, string> | null)?.[r.id] ?? r.commitSha) : null
                 })),
                 aspects: run.aspects,
                 only: job.aspect && job.repositoryId ? { repositoryId: job.repositoryId, aspect: job.aspect } : undefined
@@ -72,6 +73,8 @@ export interface LoopDeps {
     markInterrupted: () => Promise<unknown>;
     claimJob: () => Promise<Job | null>;
     processJob: (job: Job) => Promise<void>;
+    /** Records a job that could not record its own end, so its run does not stay active. */
+    markFailed: (job: Job, error: unknown) => Promise<unknown>;
     sleep: (ms: number) => Promise<unknown>;
     log: (message: string, error: unknown) => void;
     pollMs: number;
@@ -104,8 +107,32 @@ export async function runLoop(d: LoopDeps): Promise<void> {
             await d.processJob(job);
         } catch (e) {
             d.log(`Job ${job.id} ended with an error the run could not record.`, e);
+            // Until this succeeds the run counts as active, and its project could start no other run.
+            for (;;) {
+                try {
+                    await d.markFailed(job, e);
+                    break;
+                } catch (again) {
+                    d.log(`Job ${job.id} could not be marked failed yet; retrying.`, again);
+                    await d.sleep(d.pollMs);
+                }
+            }
         }
     }
+}
+
+async function markFailed(job: Job, error: unknown): Promise<void> {
+    const message = `The run could not record its end: ${(error as Error).message}`;
+    await prisma.$transaction([
+        prisma.job.updateMany({
+            where: { id: job.id, status: "running" },
+            data: { status: "failed", error: message, finishedAt: new Date() }
+        }),
+        prisma.run.updateMany({
+            where: { id: job.runId, status: { in: ["queued", "running"] } },
+            data: { status: "failed", error: message, finishedAt: new Date() }
+        })
+    ]);
 }
 
 const g = globalThis as unknown as { auditdeskRunner?: boolean };
@@ -118,6 +145,7 @@ export function startRunner(pollMs = 2000): void {
         markInterrupted,
         claimJob,
         processJob: job => processJob(job),
+        markFailed,
         sleep,
         log: (message, error) => console.error(`[runner] ${message}`, error),
         pollMs

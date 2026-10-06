@@ -99,6 +99,8 @@ model Run {
   budgetTokens  Int
   stopRequested Boolean    @default(false)
   toolVersions  Json?
+  /// Repository ID to the commit this run audited: a re-run returns to it (design § 9).
+  commits       Json?
   error         String?
   createdAt     DateTime   @default(now())
   startedAt     DateTime?

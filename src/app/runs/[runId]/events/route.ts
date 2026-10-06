@@ -39,9 +39,16 @@ export async function GET(request: Request, { params }: { params: Promise<{ runI
                     })
                     // A failed read ends this stream; the page reconnects and re-reads the run.
                     .catch(() => close()));
-            stopListening = await listen(id => id === runId && void push());
-            timer = setInterval(push, 5000);
+            // Registered before the await: a client that leaves while LISTEN is being set up must still close it.
             request.signal.addEventListener("abort", () => void close());
+            const stop = await listen(id => id === runId && void push());
+            if (closed || request.signal.aborted) {
+                await stop();
+                await close();
+                return;
+            }
+            stopListening = stop;
+            timer = setInterval(push, 5000);
             await push();
         },
         async cancel() {

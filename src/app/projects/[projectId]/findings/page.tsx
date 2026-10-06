@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 
+import { ActionForm } from "@/app/ActionForm";
 import { acceptAction, excludeAction, rejectAction } from "@/app/review-actions";
 import { prisma } from "@/server/db";
 import { listFindings } from "@/server/review";
@@ -71,10 +72,10 @@ export default async function FindingsPage({
                                 <p>Recommendation: {f.recommendation}</p>
                                 {f.statusReason && <p className="text-zinc-500">Reason: {f.statusReason}</p>}
                                 <div className="flex flex-wrap gap-3">
-                                    <form action={acceptAction.bind(null, f.id)}>
+                                    <ActionForm action={acceptAction.bind(null, f.id)}>
                                         <button className="rounded bg-emerald-700 px-3 py-1 text-white">Accept</button>
-                                    </form>
-                                    <form action={excludeAction.bind(null, f.id)} className="flex gap-2">
+                                    </ActionForm>
+                                    <ActionForm action={excludeAction.bind(null, f.id)} className="flex flex-wrap gap-2">
                                         <input
                                             name="reason"
                                             required
@@ -82,8 +83,8 @@ export default async function FindingsPage({
                                             className="rounded border border-zinc-300 px-2"
                                         />
                                         <button className="rounded border border-zinc-400 px-3 py-1">Exclude</button>
-                                    </form>
-                                    <form action={rejectAction.bind(null, f.id)} className="flex gap-2">
+                                    </ActionForm>
+                                    <ActionForm action={rejectAction.bind(null, f.id)} className="flex flex-wrap gap-2">
                                         <input
                                             name="reason"
                                             required
@@ -91,7 +92,7 @@ export default async function FindingsPage({
                                             className="rounded border border-zinc-300 px-2"
                                         />
                                         <button className="rounded border border-red-700 px-3 py-1 text-red-700">Reject</button>
-                                    </form>
+                                    </ActionForm>
                                     <Link href={`/projects/${projectId}/findings/${f.number}`} className="self-center underline">
                                         Edit or merge
                                     </Link>

@@ -7,6 +7,7 @@ import { stopRun } from "@/app/actions";
 import type { RunSnapshot } from "@/server/queries";
 
 import { clockTime } from "./clock";
+import { mergeEvents } from "./events";
 
 export function RunProgress({ runId }: { runId: string }) {
     const [snap, setSnap] = useState<Omit<RunSnapshot, "events"> | null>(null);
@@ -17,7 +18,7 @@ export function RunProgress({ runId }: { runId: string }) {
         source.onmessage = e => {
             const next = JSON.parse(e.data) as RunSnapshot;
             setSnap(next);
-            setEvents(prev => [...prev, ...next.events]);
+            setEvents(prev => mergeEvents(prev, next.events));
             if (next.terminal) {
                 source.close();
                 // The page around this component (the re-run buttons) is rendered by the server.
