@@ -5,7 +5,7 @@ import { Masker } from "../masker";
 import { MemorySink } from "../memory-sink";
 import { prefixBlocks } from "../prompts";
 
-import { agentParams } from "./request";
+import { DEFAULT_EFFORT, DEFAULT_MODEL, agentParams } from "./request";
 import { makeTools } from "./tools";
 
 function paramsFor(aspect: string, prefix: string) {
@@ -33,6 +33,10 @@ function paramsFor(aspect: string, prefix: string) {
 }
 
 describe("agentParams", () => {
+    it("defaults to the cheapest setting: Sonnet 5.5 at low effort", () => {
+        expect({ model: DEFAULT_MODEL, effort: DEFAULT_EFFORT }).toEqual({ model: "claude-sonnet-5-5", effort: "low" });
+    });
+
     it("sends a byte-identical tools-and-system prefix for every aspect", () => {
         const strip = (p: ReturnType<typeof paramsFor>) =>
             JSON.stringify({ tools: p.tools.map(({ run: _r, ...t }) => t), system: p.system });
