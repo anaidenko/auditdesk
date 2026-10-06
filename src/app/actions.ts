@@ -41,7 +41,13 @@ export async function startRun(projectId: string, _prev: FormState, fd: FormData
     if (!parsed.ok) return { error: parsed.error };
     let runId: string;
     try {
-        runId = await enqueueRun(projectId, { model: DEFAULT_MODEL, effort: DEFAULT_EFFORT, aspects, ...parsed.value });
+        runId = await enqueueRun(projectId, {
+            model: DEFAULT_MODEL,
+            effort: DEFAULT_EFFORT,
+            modelAccess: project.modelAccess,
+            aspects,
+            ...parsed.value
+        });
     } catch (e) {
         if (e instanceof ActiveRunError) return { error: e.message };
         throw e;

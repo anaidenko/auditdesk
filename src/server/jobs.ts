@@ -1,5 +1,6 @@
 import "server-only";
 
+import type { ModelAccess } from "@/engine/types";
 import { Prisma } from "@/generated/prisma/client";
 import { prisma } from "@/server/db";
 import { RUN_CHANNEL } from "@/server/pg";
@@ -10,9 +11,15 @@ export class ActiveRunError extends Error {
     }
 }
 
+export class AccessChangedError extends Error {
+    constructor() {
+        super("This run's model access differs from the project's now; start a new run.");
+    }
+}
+
 export async function enqueueRun(
     projectId: string,
-    o: { model: string; effort: string; aspects: string[]; budgetUsd: number; budgetTokens: number }
+    o: { model: string; effort: string; modelAccess: ModelAccess; aspects: string[]; budgetUsd: number; budgetTokens: number }
 ): Promise<string> {
     try {
         return await prisma.$transaction(async tx => {
@@ -30,6 +37,12 @@ export async function enqueueRun(
 export async function enqueueRerun(runId: string, repositoryId: string, aspect: string): Promise<"queued" | "already queued"> {
     try {
         return await prisma.$transaction(async tx => {
+            const run = await tx.run.findUniqueOrThrow({
+                where: { id: runId },
+                select: { modelAccess: true, project: { select: { modelAccess: true } } }
+            });
+            // A run keeps its access; the project's switch speaks for new runs only (plan, Decision 1).
+            if (run.modelAccess !== run.project.modelAccess) throw new AccessChangedError();
             // Only a finished run is re-queued: a second press would otherwise queue a second, paid job.
             const { count } = await tx.run.updateMany({
                 where: { id: runId, status: { notIn: ["queued", "running"] } },

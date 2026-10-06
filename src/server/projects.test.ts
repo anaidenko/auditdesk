@@ -12,7 +12,14 @@ import { projectWithRepo } from "@/test/factories";
 
 beforeEach(resetDb);
 
-const runOptions = { model: "m", effort: "low", aspects: ["security"], budgetUsd: 1, budgetTokens: 20_000 };
+const runOptions = {
+    model: "m",
+    effort: "low",
+    modelAccess: "claude_plan" as const,
+    aspects: ["security"],
+    budgetUsd: 1,
+    budgetTokens: 20_000
+};
 
 describe("deleteProject", () => {
     it("deletes the project and its clones", async () => {

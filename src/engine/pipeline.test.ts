@@ -7,6 +7,7 @@ import { describe, expect, it } from "vitest";
 import { message, replayFetch } from "@/engine/replay";
 import { makeSampleRepo } from "@/test/sample-repo";
 
+import { apiAspectRunner } from "./agent/run-aspect";
 import { MemorySink } from "./memory-sink";
 import { type PipelineSink, runAudit } from "./pipeline";
 import { REPLAY_RULESETS, replayRunner } from "./scanners/replay";
@@ -45,7 +46,7 @@ async function audit(sink: TestSink, source: string, workspaceDir: string) {
         },
         {
             sink,
-            client: new Anthropic({ apiKey: "t", fetch: replayFetch([finish()]).fetch, maxRetries: 0 }),
+            runAspect: apiAspectRunner(new Anthropic({ apiKey: "t", fetch: replayFetch([finish()]).fetch, maxRetries: 0 })),
             scanners: replayRunner("src/test/fixtures/scanners"),
             fetchRulesets: async () => REPLAY_RULESETS,
             workspaceDir,

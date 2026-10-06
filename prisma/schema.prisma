@@ -63,10 +63,16 @@ enum FindingStatus {
   superseded
 }
 
+enum ModelAccess {
+  claude_plan
+  api_key
+}
+
 model Project {
   id                String       @id @default(uuid())
   name              String
   aiConsentAt       DateTime?
+  modelAccess       ModelAccess  @default(claude_plan)
   nextFindingNumber Int          @default(1)
   createdAt         DateTime     @default(now())
   repositories      Repository[]
@@ -88,21 +94,23 @@ model Repository {
 }
 
 model Run {
-  id            String     @id @default(uuid())
+  id            String      @id @default(uuid())
   projectId     String
-  project       Project    @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  status        RunStatus  @default(queued)
+  project       Project     @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  status        RunStatus   @default(queued)
   model         String
   effort        String
+  /// Fixed at enqueue, like the model: a re-run keeps it (plan, Decision 1).
+  modelAccess   ModelAccess @default(claude_plan)
   aspects       String[]
-  budgetUsd     Decimal    @db.Decimal(10, 4)
+  budgetUsd     Decimal     @db.Decimal(10, 4)
   budgetTokens  Int
-  stopRequested Boolean    @default(false)
+  stopRequested Boolean     @default(false)
   toolVersions  Json?
   /// Repository ID to the commit this run audited: a re-run returns to it (design § 9).
   commits       Json?
   error         String?
-  createdAt     DateTime   @default(now())
+  createdAt     DateTime    @default(now())
   startedAt     DateTime?
   finishedAt    DateTime?
   jobs          Job[]

@@ -3,21 +3,23 @@ import { mkdtemp, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Client } from "pg";
-import { beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { apiAspectRunner } from "@/engine/agent/run-aspect";
 import { git } from "@/engine/git";
 import { message, replayFetch } from "@/engine/replay";
 import { REPLAY_RULESETS, replayRunner } from "@/engine/scanners/replay";
 import { prisma } from "@/server/db";
 import { ActiveRunError, claimJob, enqueueRerun, enqueueRun, markInterrupted } from "@/server/jobs";
 import { listen } from "@/server/pg";
-import { processJob, runLoop } from "@/server/runner";
+import { type Engine, engineFor, processJob, runLoop } from "@/server/runner";
 import type { PrismaSink } from "@/server/sink";
 import { resetDb } from "@/test/db";
 import { projectWithRepo } from "@/test/factories";
 import { makeSampleRepo } from "@/test/sample-repo";
 
 beforeEach(resetDb);
+afterEach(() => vi.unstubAllEnvs());
 
 const finish = () =>
     message({
@@ -29,7 +31,7 @@ async function deps() {
     const ws = await mkdtemp(join(tmpdir(), "ws-"));
     return (sink: PrismaSink) => ({
         sink,
-        client: new Anthropic({ apiKey: "t", fetch: replayFetch([finish()]).fetch, maxRetries: 0 }),
+        runAspect: apiAspectRunner(new Anthropic({ apiKey: "t", fetch: replayFetch([finish()]).fetch, maxRetries: 0 })),
         scanners: replayRunner("src/test/fixtures/scanners"),
         fetchRulesets: async () => REPLAY_RULESETS,
         workspaceDir: ws,
@@ -37,7 +39,15 @@ async function deps() {
     });
 }
 
-const runOptions = { model: "claude-opus-5-5", effort: "medium", aspects: ["security"], budgetUsd: 10, budgetTokens: 400_000 };
+const runOptions = {
+    model: "claude-opus-5-5",
+    effort: "medium",
+    // A new project's default; these tests inject their engine, so the access only meets the re-run check.
+    modelAccess: "claude_plan" as const,
+    aspects: ["security"],
+    budgetUsd: 10,
+    budgetTokens: 400_000
+};
 
 describe("runner", () => {
     it("runs a queued job to the end, filing scanner findings and recording the commit", async () => {
@@ -248,4 +258,40 @@ describe("runLoop", () => {
         });
         expect(calls.slice(0, 4)).toEqual(["sweep", "sweep", "sweep", "claim"]);
     });
+});
+
+const home = async () => vi.stubEnv("AUDITDESK_HOME", await mkdtemp(join(tmpdir(), "auditdesk-home-")));
+
+describe("engineFor", () => {
+    it("picks the SDK engine for a Claude plan run and the API engine for an API key run", async () => {
+        await home();
+        vi.stubEnv("AUDITDESK_REPLAY_MODEL", "");
+        vi.stubEnv("CLAUDE_CODE_OAUTH_TOKEN", "t1");
+        vi.stubEnv("ANTHROPIC_API_KEY", "k1");
+        expect(((await engineFor("claude_plan", "/tmp/r")) as Engine).kind).toBe("sdk");
+        expect(((await engineFor("api_key", "/tmp/r")) as Engine).kind).toBe("api");
+    });
+
+    it("names the missing credential instead of an engine", async () => {
+        await home();
+        vi.stubEnv("AUDITDESK_REPLAY_MODEL", "");
+        vi.stubEnv("CLAUDE_CODE_OAUTH_TOKEN", "");
+        vi.stubEnv("ANTHROPIC_API_KEY", "");
+        await expect(engineFor("claude_plan", "/tmp/r")).resolves.toMatch(/No Claude plan token/);
+        await expect(engineFor("api_key", "/tmp/r")).resolves.toMatch(/No API key/);
+    });
+});
+
+it("fails a Claude plan run that has no token before cloning, and calls nothing", async () => {
+    await home();
+    vi.stubEnv("AUDITDESK_REPLAY_MODEL", "");
+    vi.stubEnv("CLAUDE_CODE_OAUTH_TOKEN", "");
+    const { project, repo } = await projectWithRepo(await makeSampleRepo());
+    const runId = await enqueueRun(project.id, { ...runOptions, modelAccess: "claude_plan" });
+    await processJob((await claimJob())!);
+    const run = await prisma.run.findUniqueOrThrow({ where: { id: runId }, include: { calls: true } });
+    expect(run.status).toBe("failed");
+    expect(run.error).toMatch(/No Claude plan token/);
+    expect(run.calls).toHaveLength(0);
+    expect((await prisma.repository.findUniqueOrThrow({ where: { id: repo.id } })).commitSha).toBeNull();
 });
