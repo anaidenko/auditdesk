@@ -90,17 +90,38 @@ export function messageToSse(m: BetaMessage): string {
 }
 
 /** A fetch that answers each Messages request with the next recorded message, streamed. */
-export function replayFetch(messages: BetaMessage[]): { fetch: typeof fetch; requests: CapturedRequest[] } {
-    const queue = [...messages];
+/** One agent's recorded messages, or one list per aspect, keyed by its checklist's title. */
+export type Recording = BetaMessage[] | Record<string, BetaMessage[]>;
+
+/**
+ * Takes the next recorded message for a request. A keyed recording serves each aspect's agent from
+ * its own list, read from the "# Aspect: <title>" line of the request's first message, so one
+ * replayed run can start several agents.
+ */
+export function recordedQueue(recording: Recording): (body: unknown) => BetaMessage | undefined {
+    if (Array.isArray(recording)) {
+        const queue = [...recording];
+        return () => queue.shift();
+    }
+    const queues = new Map(Object.entries(recording).map(([title, messages]) => [title, [...messages]]));
+    return body => {
+        const first = JSON.stringify((body as { messages?: unknown[] } | null)?.messages?.[0] ?? "");
+        const title = first.match(/# Aspect: ([^\\"]+)/)?.[1];
+        return title === undefined ? undefined : queues.get(title)?.shift();
+    };
+}
+
+export function replayFetch(recording: Recording): { fetch: typeof fetch; requests: CapturedRequest[] } {
+    const next = recordedQueue(recording);
     const requests: CapturedRequest[] = [];
     const fake = async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
         const url = String(input instanceof Request ? input.url : input);
         const headers = Object.fromEntries(new Headers(init?.headers).entries());
         const body = init?.body ? JSON.parse(String(init.body)) : {};
         requests.push({ url, headers, body });
-        const next = queue.shift();
-        if (!next) throw new Error(`replayFetch: no recorded message left for request ${requests.length}`);
-        return new Response(messageToSse(next), {
+        const message = next(body);
+        if (!message) throw new Error(`replayFetch: no recorded message left for request ${requests.length}`);
+        return new Response(messageToSse(message), {
             status: 200,
             headers: { "content-type": "text/event-stream", "request-id": `req_test_${requests.length}` }
         });
