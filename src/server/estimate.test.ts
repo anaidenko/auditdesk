@@ -7,8 +7,14 @@ import { projectWithRepo } from "@/test/factories";
 
 beforeEach(resetDb);
 
-async function agentWithCalls(runId: string, repositoryId: string, status: "done" | "partial" | "failed", costs: (number | null)[]) {
-    const a = await prisma.agentRun.create({ data: { runId, repositoryId, aspect: "security", status, tokenShare: 20_000, usdShare: 1 } });
+async function agentWithCalls(
+    runId: string,
+    repositoryId: string,
+    status: "done" | "partial" | "failed",
+    costs: (number | null)[],
+    usdShare = 1
+) {
+    const a = await prisma.agentRun.create({ data: { runId, repositoryId, aspect: "security", status, tokenShare: 20_000, usdShare } });
     for (const costUsd of costs) {
         await prisma.apiCall.create({
             data: {
@@ -29,7 +35,7 @@ async function agentWithCalls(runId: string, repositoryId: string, status: "done
 }
 
 describe("agentCostStats", () => {
-    it("builds each model's per-agent range from finished agents, leaving out failed and unpriced ones", async () => {
+    it("builds each model and effort's per-agent range from finished agents, leaving out failed and unpriced ones", async () => {
         const { project, repo } = await projectWithRepo();
         const run = await prisma.run.create({
             data: {
@@ -46,7 +52,25 @@ describe("agentCostStats", () => {
         await agentWithCalls(run.id, repo.id, "failed", [5]);
         await agentWithCalls(run.id, repo.id, "done", [0.2, null]);
         const stats = await agentCostStats();
-        expect(stats["claude-sonnet-5-5"]).toEqual({ samples: 2, low: 0.1, high: 0.3 });
-        expect(stats["claude-opus-5-5"]).toEqual({ samples: 0, low: 0.22, high: 2.2 });
+        expect(stats["claude-sonnet-5-5/low"]).toEqual({ samples: 2, capped: 0, low: 0.2, high: 0.6, thin: true });
+        expect(stats["claude-sonnet-5-5/high"]).toBeUndefined();
+        expect(stats["claude-opus-5-5/low"]).toBeUndefined();
+    });
+
+    it("counts an agent whose cost reached its share as capped", async () => {
+        const { project, repo } = await projectWithRepo();
+        const run = await prisma.run.create({
+            data: {
+                projectId: project.id,
+                model: "claude-opus-5-5",
+                effort: "high",
+                aspects: ["security"],
+                budgetUsd: 2,
+                budgetTokens: 400_000
+            }
+        });
+        await agentWithCalls(run.id, repo.id, "partial", [0.26], 0.25);
+        await agentWithCalls(run.id, repo.id, "done", [0.1], 0.25);
+        expect((await agentCostStats())["claude-opus-5-5/high"]).toMatchObject({ samples: 2, capped: 1 });
     });
 });

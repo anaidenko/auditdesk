@@ -224,11 +224,15 @@ test("a run uses the model and effort chosen in the form", async ({ page }) => {
     await expect(page.getByText(/claude-opus-5-5 · effort high/)).toBeVisible();
 });
 
-test("the run form estimates the cost for the agents it would start", async ({ page }) => {
-    await newProject(page, "Estimate");
-    await expect(page.getByTestId("estimate")).toContainText("for 1 agent,");
+test("the run form estimates the cost for the agents, the model and the effort it would start", async ({ page }) => {
+    await finishedRun(page, "Estimate");
+    await page.getByRole("link", { name: "Estimate", exact: true }).click();
+    const estimate = page.getByTestId("estimate");
+    await expect(estimate).toContainText(/for 1 agent, from \d+ past agents? on this model and effort/);
     await page.getByRole("checkbox", { name: "Data model and database" }).check();
-    await expect(page.getByTestId("estimate")).toContainText("for 2 agents,");
+    await expect(estimate).toContainText("for 2 agents,");
+    await page.locator('select[name="effort"]').selectOption("max");
+    await expect(estimate).toContainText(/for 2 agents, from \d+ past agents? on this model at \w+ effort, which may cost less/);
 });
 
 test("the run shows its spend per serving model, and the report states the cost only when asked", async ({ page }) => {

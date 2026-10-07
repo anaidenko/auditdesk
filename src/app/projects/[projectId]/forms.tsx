@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState, useState } from "react";
+import { useActionState, useLayoutEffect, useRef, useState } from "react";
 
 import {
     type BriefValues,
@@ -16,9 +16,9 @@ import {
 } from "@/app/actions";
 import { ACCESS_LABEL } from "@/app/model-access";
 import { Badge, FormError, Icon, button, input, label } from "@/app/ui";
-import { DEFAULT_EFFORT, DEFAULT_MODEL } from "@/engine/agent/request";
+import { DEFAULT_EFFORT, DEFAULT_MODEL, type Effort } from "@/engine/agent/request";
 import { ASPECTS } from "@/engine/aspects";
-import { type CostStats, estimateRun } from "@/engine/estimate";
+import { type CostStats, estimateRun, pickStats } from "@/engine/estimate";
 import { EFFORTS, MODEL_CHOICES } from "@/engine/models";
 import type { ModelAccess } from "@/engine/types";
 
@@ -69,18 +69,34 @@ export function StartRunForm({
     const [live, setLive] = useState({
         aspects: ASPECTS.filter(a => ticked(a.key)).length,
         usd: defaults.usd,
-        model: DEFAULT_MODEL as string
+        model: DEFAULT_MODEL as string,
+        effort: DEFAULT_EFFORT as Effort
     });
+    const form = useRef<HTMLFormElement>(null);
     // Security is disabled, so the form data never holds it.
-    const read = (form: HTMLFormElement) => {
-        const fd = new FormData(form);
-        setLive({ aspects: 1 + fd.getAll("aspects").length, usd: Number(fd.get("budgetUsd")), model: String(fd.get("model")) });
+    const read = (f: HTMLFormElement | null) => {
+        if (!f) return;
+        const fd = new FormData(f);
+        setLive({
+            aspects: 1 + fd.getAll("aspects").length,
+            usd: Number(fd.get("budgetUsd")),
+            model: String(fd.get("model")),
+            effort: String(fd.get("effort")) as Effort
+        });
     };
-    const stats = costStats[live.model];
-    const estimate = stats && repositories ? estimateRun(stats, repositories * live.aspects, live.usd) : null;
+    // A box ticked by a new suggestion, or values a browser restored, change the form without a change event.
+    useLayoutEffect(() => read(form.current), [chosen, suggested, repositories, state]);
+    const picked = pickStats(costStats, live.model, live.effort);
+    const estimate = repositories ? estimateRun(picked.stats, repositories * live.aspects, live.usd, picked.basis) : null;
     return (
         // Remounted with what a refused start held, since React resets a form after its action.
-        <form key={JSON.stringify(state.values ?? null)} action={action} onChange={e => read(e.currentTarget)} className="space-y-4">
+        <form
+            ref={form}
+            key={JSON.stringify(state.values ?? null)}
+            action={action}
+            onChange={e => read(e.currentTarget)}
+            className="space-y-4"
+        >
             <fieldset>
                 <legend className={label}>Aspects</legend>
                 <div className="mt-1.5 grid gap-x-4 gap-y-2 sm:grid-cols-2">
