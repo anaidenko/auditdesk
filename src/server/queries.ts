@@ -1,6 +1,7 @@
 import "server-only";
 
 import { freshTokens } from "@/engine/budget";
+import { limitedReview } from "@/engine/coverage";
 import type { ModelAccess } from "@/engine/types";
 import { prisma } from "@/server/db";
 
@@ -20,7 +21,8 @@ export interface RunSnapshot {
     modelAccess: ModelAccess;
     stopRequested: boolean;
     events: { id: string; level: string; message: string; at: string }[];
-    agents: { id: string; aspect: string; status: string; note: string | null }[];
+    /** `limited`: the agent finished having looked at fewer than half of its checklist (engine/coverage.ts). */
+    agents: { id: string; aspect: string; status: string; note: string | null; limited: boolean }[];
     spendUsd: number;
     unpriced: boolean;
     /** Per model that served calls, a fallback target included (design § 8). */
@@ -85,7 +87,13 @@ export async function runSnapshot(runId: string, afterEventId: bigint): Promise<
         modelAccess: run.modelAccess,
         stopRequested: run.stopRequested,
         events: run.events.map(e => ({ id: e.id.toString(), level: e.level, message: e.message, at: e.createdAt.toISOString() })),
-        agents: run.agents.map(a => ({ id: a.id, aspect: a.aspect, status: a.status, note: a.note })),
+        agents: run.agents.map(a => ({
+            id: a.id,
+            aspect: a.aspect,
+            status: a.status,
+            note: a.note,
+            limited: a.status === "done" && limitedReview((a.coverage as { status: string }[] | null) ?? [])
+        })),
         spendUsd: run.calls.reduce((s, c) => s + Number(c.costUsd ?? 0), 0),
         unpriced: run.calls.some(c => c.costUsd === null),
         byModel: byServingModel(run.calls),

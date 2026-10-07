@@ -45,6 +45,7 @@ export function apiAspectRunner(client: Anthropic): AspectRunner {
 
 export async function runAspect(o: AspectInput & { client: Anthropic }): Promise<AgentOutcome> {
     const { ctx } = o;
+    ctx.share = o.share;
     const tools = makeTools(ctx);
     const end = (status: AgentOutcome["status"], note: string | null) => outcomeOf(ctx, status, note);
 

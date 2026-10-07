@@ -60,7 +60,8 @@ async function audit(
         },
         {
             sink,
-            runAspect: runAspect ?? apiAspectRunner(new Anthropic({ apiKey: "t", fetch: replayFetch([finish()]).fetch, maxRetries: 0 })),
+            runAspect:
+                runAspect ?? apiAspectRunner(new Anthropic({ apiKey: "t", fetch: replayFetch([finish(), finish()]).fetch, maxRetries: 0 })),
             scanners: replayRunner("src/test/fixtures/scanners"),
             fetchRulesets: async () => REPLAY_RULESETS,
             workspaceDir,

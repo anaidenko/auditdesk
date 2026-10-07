@@ -4,6 +4,7 @@ import { readFile } from "node:fs/promises";
 import { z } from "zod";
 
 import type { Checklist } from "../checklists";
+import { limitedReview } from "../coverage";
 import { grepFiles, listFiles, readFileRange, snippetOf } from "../files";
 import { fingerprint } from "../findings";
 import type { Masker } from "../masker";
@@ -22,8 +23,19 @@ export interface AgentContext {
     masker: Masker;
     repoMap: string;
     sink: AuditSink;
-    state: { finished: { summary: string; coverage: Coverage[] } | null; reported: string[]; fatal: Error | null };
+    /** The agent's budget share; the engines set it from their input. */
+    share?: { usd: number; tokens: number };
+    state: {
+        finished: { summary: string; coverage: Coverage[] } | null;
+        reported: string[];
+        fatal: Error | null;
+        /** How many times finish_aspect sent the agent back to unexamined items. */
+        sentBack?: number;
+    };
 }
+
+/** How many times an agent that finishes with a limited review is sent back while its share has room. */
+export const SEND_BACK = 1;
 
 /** A ToolError goes back to the model as its tool result; any other error is a bug and ends the run. */
 function guard<A>(ctx: AgentContext, fn: (args: A) => Promise<string>): (args: A) => Promise<string> {
@@ -231,6 +243,14 @@ async function finishAspect(ctx: AgentContext, input: z.infer<typeof finishInput
     const unknown = input.coverage.filter(c => !ids.includes(c.item)).map(c => c.item);
     if (unknown.length) throw new ToolError(`Not on this checklist: ${unknown.join(", ")}.`);
     const coverage: Coverage[] = ids.map(id => input.coverage.find(c => c.item === id) ?? { item: id, status: "not_examined" });
+    if (limitedReview(coverage) && ctx.share && (ctx.state.sentBack ?? 0) < SEND_BACK) {
+        const spend = await ctx.sink.agentSpend(ctx.agentRunId);
+        if (!spend.unpriced && spend.usd * 2 < ctx.share.usd && spend.freshTokens * 2 < ctx.share.tokens) {
+            ctx.state.sentBack = (ctx.state.sentBack ?? 0) + 1;
+            const left = coverage.filter(c => c.status === "not_examined").map(c => c.item);
+            return `Not finished: ${left.length} of ${ids.length} items are not examined (${left.join(", ")}), and most of this aspect's budget is left. Examine them in the code, file what you find, then call finish_aspect again with the updated coverage.`;
+        }
+    }
     ctx.state.finished = { summary: input.summary, coverage };
     return "Aspect finished.";
 }

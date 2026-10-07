@@ -91,6 +91,23 @@ describe("runAspect", () => {
         }
     });
 
+    it("sends the agent back once when it finishes with most items unexamined and most of its share left", async () => {
+        const { requests, run } = await setup([
+            finish([]),
+            tool("read_file", { path: "src/db.js", start_line: 1, end_line: 2 }),
+            finish([])
+        ]);
+        expect(await run()).toMatchObject({ status: "done" });
+        expect(requests).toHaveLength(3);
+        expect(JSON.stringify(requests[1].body.messages)).toMatch(/Not finished: 2 of 2 items are not examined \(SEC-01, SEC-04\)/);
+    });
+
+    it("accepts a thin finish at once when the share is mostly spent", async () => {
+        const { requests, run } = await setup([finish([])], { share: { usd: 0.001, tokens: 1_000_000 } });
+        expect(await run()).toMatchObject({ status: "done" });
+        expect(requests).toHaveLength(1);
+    });
+
     it("tags a finding filed under an AI-built item ai-built", async () => {
         const checklist = parseChecklist("security", "# Security\n\n## SEC-01 Authentication\n\n## SEC-02 Missing checks (AI-built)\n");
         const { sink, run } = await setup([tool("report_finding", finding({ checklist_item: "SEC-02", tags: ["auth"] })), finish()], {

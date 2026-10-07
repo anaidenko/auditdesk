@@ -62,6 +62,7 @@ type Stop = { status: AgentOutcome["status"]; note: string };
 
 export async function runAspectSdk(cfg: SdkRunnerConfig, o: AspectInput): Promise<AgentOutcome> {
     const { ctx } = o;
+    ctx.share = o.share;
     const end = (status: AgentOutcome["status"], note: string | null) => outcomeOf(ctx, status, note);
     const dir = join(cfg.runDir, "sdk", ctx.agentRunId);
     await mkdir(join(dir, "cwd"), { recursive: true });
