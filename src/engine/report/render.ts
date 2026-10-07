@@ -112,6 +112,38 @@ const STATIC_ONLY: Record<string, string> = {
         "Accessibility was judged from the code alone: no page was rendered and no screen reader was run; contrast was computed only for colour pairs written in the code."
 };
 
+/** "a, b and c" */
+const listed = (parts: string[]) => (parts.length > 1 ? `${parts.slice(0, -1).join(", ")} and ${parts.at(-1)}` : (parts[0] ?? ""));
+
+/** The audit's steps as they ran: the scanners, an agent per aspect, and what the review made of the findings. */
+function method(d: ReportData): string {
+    const steps: string[] = [];
+    if (d.toolVersions)
+        steps.push(
+            "Scanners first: gitleaks over every branch's history, osv-scanner over the lock files and Semgrep; their versions are under Technical details."
+        );
+    if (d.aspects.length)
+        steps.push(
+            "Then one agent per aspect read the code through read-only tools, against the aspect's checklist; Coverage above shows what each examined."
+        );
+    const r = d.review;
+    if (r?.filed) {
+        const outcomes = [
+            `${r.reported} ${r.reported === 1 ? "is" : "are"} in this report`,
+            ...(r.merged ? [`${r.merged} ${r.merged === 1 ? "was" : "were"} merged into others`] : []),
+            ...(r.rejected ? [`${r.rejected} rejected as wrong`] : []),
+            ...(r.excluded ? [`${r.excluded} kept out of the report`] : [])
+        ];
+        const reviewed = r.filed - r.unreviewed;
+        steps.push(
+            r.unreviewed
+                ? `The auditor reviewed ${reviewed} of the ${plural(r.filed, "finding", "findings")} the scanners and agents filed: ${listed(outcomes)}; ${r.unreviewed} not reviewed yet ${r.unreviewed === 1 ? "is" : "are"} not.`
+                : `The auditor reviewed ${r.filed === 1 ? "the 1 finding" : `all ${r.filed} findings`} the scanners and agents filed: ${listed(outcomes)}.`
+        );
+    }
+    return steps.map(s => `<li>${s}</li>`).join("\n");
+}
+
 /** Performance and accessibility read from code: what the report cannot claim for them. */
 function staticOnly(d: ReportData): string {
     return Object.entries(STATIC_ONLY)
@@ -377,9 +409,14 @@ ${manyRepos ? `<label>Repository <select name="repo">${option("", "All")}${names
     const tiles = SEVERITIES.map(s => `<div class="tile ${s}${count(s) ? "" : " zero"}"><b>${count(s)}</b><span>${s}</span></div>`).join(
         ""
     );
+    const link = (href: string | null | undefined, html: string) => (href ? `<a href="${e(href)}">${html}</a>` : html);
     const repos = d.repositories
-        .map(r => `<li>${e(r.name)} <span class="muted">· ${e(r.branch)} ·</span> <code>${e(r.sha.slice(0, 10))}</code></li>`)
+        .map(
+            r =>
+                `<li>${link(r.links?.repo, e(r.name))} <span class="muted">· ${link(r.links?.branch, e(r.branch))} ·</span> ${link(r.links?.commit, `<code>${e(r.sha.slice(0, 10))}</code>`)}</li>`
+        )
         .join("");
+    const auditor = d.auditor ? link(d.auditorUrl, e(d.auditor)) : "";
     const limited = (a: ReportData["aspects"][number]) => a.status === "done" && limitedReview(a.coverage);
     const aspects = d.aspects.length
         ? `<h3>Coverage</h3>\n<ul class="coverage">${d.aspects
@@ -432,7 +469,7 @@ ${d.questions.map(card).join("\n")}</section>`
 <p class="lede">${plural(findings.length, "finding", "findings")} and ${plural(d.questions.length, "open question", "open questions")} across ${plural(d.repositories.length, "repository", "repositories")}</p>
 <dl class="facts">
 <div><dt>Date</dt><dd>${e(d.generatedAt)}</dd></div>
-${d.auditor ? `<div><dt>Auditor</dt><dd>${e(d.auditor)}</dd></div>` : ""}
+${auditor ? `<div><dt>Auditor</dt><dd>${auditor}</dd></div>` : ""}
 <div class="repos"><dt>Repositories audited (branch, commit)</dt><dd><ul>${repos}</ul></dd></div>
 </dl>
 <div class="tiles">${tiles}</div>
@@ -468,6 +505,7 @@ ${since(d, findings)}
 ${aspects}
 <h3>Method</h3>
 <ul class="method">
+${method(d)}
 <li>The client's code was read, not installed, built or run: no dependency install, no type-check, no project lint.</li>
 ${staticOnly(d)}
 <li>Model access: ${d.modelAccess.map(a => ACCESS_TEXT[a]).join("; ") || "none"}.</li>
@@ -478,6 +516,7 @@ ${d.repositories
             `<li>Not covered in ${e(r.name)}: ${e(r.notCovered.join("; "))}. The audit covers JavaScript and TypeScript; these were not analysed.</li>`
     )
     .join("\n")}
+${d.methodUrl ? `<li>More on the method: <a href="${e(d.methodUrl)}">${e(d.methodUrl.replace(/^https?:\/\//, "").replace(/\/$/, ""))}</a>.</li>` : ""}
 </ul>
 </section>
 
@@ -509,7 +548,7 @@ ${costLine(d.cost)}
 <section id="disclaimer"><h2>Disclaimer</h2>
 <p class="disclaimer">An audit finds issues; it does not certify their absence. Findings describe the code at the commits listed above.</p>
 </section>
-<p class="colophon">${d.auditor ? `${e(d.auditor)} · ` : ""}${e(d.generatedAt)}</p>
+<p class="colophon">${auditor ? `${auditor} · ` : ""}${e(d.generatedAt)}</p>
 </main>
 <script>${FILTER_SCRIPT}</script>
 </body>

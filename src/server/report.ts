@@ -8,6 +8,7 @@ import { workspaceDir } from "@/engine/config";
 import { findingLabel } from "@/engine/findings";
 import { pathNames } from "@/engine/pipeline";
 import { loadReferences, referencesFor } from "@/engine/references";
+import { repoLinks, webUrl } from "@/engine/report/links";
 import type { ReportData, ReportFinding } from "@/engine/report/types";
 import type { ToolVersions } from "@/engine/scanners/types";
 import type { StackProfile } from "@/engine/stack";
@@ -80,6 +81,24 @@ function sinceLastAudit<
         regressed: count("regressed"),
         changed: now.filter(r => r.recheck === "changed").map(r => findingLabel(r.number)),
         added: rows.filter(r => r.runId === latest).length
+    };
+}
+
+/** What the review made of the findings filed: the report's method states it (design § 10). */
+async function reviewTally(projectId: string): Promise<NonNullable<ReportData["review"]>> {
+    const groups = await prisma.finding.groupBy({
+        by: ["status"],
+        where: { projectId, kind: "finding", status: { not: "superseded" } },
+        _count: { _all: true }
+    });
+    const count = (...statuses: string[]) => groups.filter(g => statuses.includes(g.status)).reduce((n, g) => n + g._count._all, 0);
+    return {
+        filed: count("accepted", "edited", "merged", "rejected", "excluded", "unreviewed"),
+        reported: count(...REPORTABLE),
+        merged: count("merged"),
+        rejected: count("rejected"),
+        excluded: count("excluded"),
+        unreviewed: count("unreviewed")
     };
 }
 
@@ -174,12 +193,19 @@ export async function loadReportData(projectId: string, o: { includeCost?: boole
         projectName: project.name,
         generatedAt: new Date().toISOString().slice(0, 10),
         auditor: process.env.AUDITOR_NAME?.trim() || null,
-        repositories: project.repositories.map(r => ({
-            name: names.get(r.id)!,
-            branch: r.branch,
-            sha: r.commitSha ?? "not cloned",
-            notCovered: (r.stack as StackProfile | null)?.notCovered ?? []
-        })),
+        auditorUrl: webUrl(process.env.AUDITOR_URL),
+        methodUrl: webUrl(process.env.AUDIT_METHOD_URL),
+        repositories: project.repositories.map(r => {
+            const links = repoLinks(r.source, r.branch, r.commitSha);
+            return {
+                name: names.get(r.id)!,
+                branch: r.branch,
+                sha: r.commitSha ?? "not cloned",
+                notCovered: (r.stack as StackProfile | null)?.notCovered ?? [],
+                ...(links && { links })
+            };
+        }),
+        review: await reviewTally(projectId),
         // A seams finding's paths start with the pipeline's name for each repository, not the report's.
         ...(rows.some(r => r.aspect === SEAMS) && {
             seamsPaths: [...pathNames(project.repositories)].map(([id, path]) => ({ path, repository: names.get(id)! }))

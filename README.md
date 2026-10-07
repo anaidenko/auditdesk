@@ -30,10 +30,12 @@ Local only: it binds 127.0.0.1 and has no login. The design is in [docs/design.m
   code that moved on is for the auditor to verify, and a fix that comes back is regressed. The
   report opens with what changed since the last audit.
 - **The report:** one self-contained HTML file with filters and search, and a PDF. A summary of
-  what to fix before sign-off and what can wait, scope and coverage, each finding with its
+  what to fix before sign-off and what can wait, scope and method (the steps that ran, what the
+  review made of the findings, each aspect's coverage), each finding with its
   recommendation in view and its details and evidence a click away (Expand all opens every card;
   print and the PDF show them all), and links to the OWASP Top 10:2025, ASVS 5.0.0, CWE, Cheat
-  Sheets and WCAG 2.2 it is relevant to.
+  Sheets and WCAG 2.2 it is relevant to. A repository cloned from GitHub, GitLab or Bitbucket links
+  to itself, its branch and its commit; a local one does not.
 - **Exports:** besides the report, SARIF 2.1.0 for code scanning, one file per repository, and the
   accepted findings as issue drafts: a CSV for Linear's CLI importer ("Linear (CSV)") or another
   tracker's, or JSON that `pnpm issues:gh` turns into GitHub issues through the `gh` CLI. It
@@ -80,7 +82,8 @@ log and pid under `logs/`, takes the port from `.dev-port` (default 3000), and r
 while a job runs, since that would mark the job interrupted.
 
 Set `AUDITOR_NAME` in `.env.local`: it is the name on the report's cover, and without it the
-report names no auditor. The PDF export prints through the Chromium that Playwright installs.
+report names no auditor. `AUDITOR_URL` links that name, and `AUDIT_METHOD_URL` is linked from
+Scope and method as the method in full; both are optional. The PDF export prints through the Chromium that Playwright installs.
 Docker runs PostgreSQL and the scanners. The app opens at http://127.0.0.1:3000.
 
 ## Model access

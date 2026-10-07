@@ -170,6 +170,81 @@ describe("renderReport", () => {
         expect(html).toMatch(/<p class="colophon">\d{4}-\d{2}-\d{2}<\/p>/);
     });
 
+    it("links the auditor's name to their page, on the cover and at the end, and only when there is one", () => {
+        const link = '<a href="https://naidenko.dev/">Andrii Naidenko</a>';
+        const html = renderReport(data({ auditorUrl: "https://naidenko.dev/" }));
+        expect(between(html, '<header class="cover"', "</header>")).toContain(link);
+        expect(between(html, '<p class="colophon">', "</p>")).toContain(link);
+        expect(renderReport(data())).not.toContain(">Andrii Naidenko</a>");
+        expect(between(renderReport(data()), '<p class="colophon">', "</p>")).toContain("Andrii Naidenko · ");
+    });
+
+    it("links each repository, its branch and its commit when it has a web address, and a local one not at all", () => {
+        const sha = "0123456789abcdef0123456789abcdef01234567";
+        const html = renderReport(
+            data({
+                repositories: [
+                    {
+                        name: "acme/app",
+                        branch: "main",
+                        sha,
+                        notCovered: [],
+                        links: {
+                            repo: "https://github.com/acme/app",
+                            branch: "https://github.com/acme/app/tree/main",
+                            commit: `https://github.com/acme/app/commit/${sha}`
+                        }
+                    },
+                    { name: "web", branch: "main", sha: "fedcba9876543210", notCovered: [] }
+                ]
+            })
+        );
+        const repos = between(html, '<div class="repos">', "</div>");
+        expect(repos).toContain('<a href="https://github.com/acme/app">acme/app</a>');
+        expect(repos).toContain('<a href="https://github.com/acme/app/tree/main">main</a>');
+        expect(repos).toContain(`<a href="https://github.com/acme/app/commit/${sha}"><code>0123456789</code></a>`);
+        expect(repos).toContain("<li>web <span");
+        expect(repos.match(/<a /g)).toHaveLength(3);
+    });
+
+    it("walks through the method: scanners, an agent per aspect, the auditor's review with its tally, then the method in full", () => {
+        const html = renderReport(
+            data({
+                toolVersions: {
+                    images: {
+                        gitleaks: { image: "g", digest: "g@sha256:1" },
+                        osv: { image: "o", digest: "o@sha256:2" },
+                        semgrep: { image: "s", digest: "s@sha256:3" }
+                    },
+                    rulesets: [],
+                    osvQueriedAt: "2026-10-07T10:00:00Z"
+                },
+                review: { filed: 59, reported: 43, merged: 10, rejected: 5, excluded: 1, unreviewed: 0 },
+                methodUrl: "https://naidenko.dev/audit"
+            })
+        );
+        const method = between(html, '<ul class="method">', "</ul>");
+        expect(method).toContain("gitleaks over every branch's history, osv-scanner over the lock files and Semgrep");
+        expect(method).toContain("one agent per aspect read the code through read-only tools, against the aspect's checklist");
+        expect(method).toContain(
+            "The auditor reviewed all 59 findings the scanners and agents filed: 43 are in this report, 10 were merged into others, 5 rejected as wrong and 1 kept out of the report."
+        );
+        expect(method).toContain('<a href="https://naidenko.dev/audit">naidenko.dev/audit</a>');
+        expect(method.indexOf("gitleaks")).toBeLessThan(method.indexOf("one agent per aspect"));
+        expect(method.indexOf("one agent per aspect")).toBeLessThan(method.indexOf("The auditor reviewed"));
+        expect(method.indexOf("The auditor reviewed")).toBeLessThan(method.indexOf("not installed, built or run"));
+    });
+
+    it("says how many findings are not reviewed yet, and leaves out the parts it has no data for", () => {
+        const partial = renderReport(data({ review: { filed: 12, reported: 9, merged: 0, rejected: 0, excluded: 0, unreviewed: 3 } }));
+        expect(between(partial, '<ul class="method">', "</ul>")).toContain(
+            "The auditor reviewed 9 of the 12 findings the scanners and agents filed: 9 are in this report; 3 not reviewed yet are not."
+        );
+        const bare = between(renderReport(data({ aspects: [] })), '<ul class="method">', "</ul>");
+        expect(bare).not.toMatch(/gitleaks|one agent per aspect|The auditor reviewed|More on the method/);
+        expect(bare).toContain("not installed, built or run");
+    });
+
     it("lists the sections in its contents, each with its count, and no finding", () => {
         const html = renderReport(data({ questions: [finding({ label: "F-003", severity: null, title: "Who rotates the key?" })] }));
         const toc = between(html, '<nav class="toc"', "</nav>");
