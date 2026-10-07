@@ -47,10 +47,7 @@ ${["critical", "high", "medium", "low", "info", "question"].map(s => `.${s}{colo
 .risks{list-style:none;padding:0;margin:.5rem 0}.risks li{display:flex;gap:.7rem;align-items:baseline;padding:.5rem 0;border-bottom:1px solid var(--line)}
 .risks .aside{margin-left:auto;padding-left:.5rem;font-size:.82rem;color:var(--muted);white-space:nowrap}
 .fid{flex-shrink:0;white-space:nowrap;font:600 12.5px ui-monospace,SFMono-Regular,Menlo,monospace;color:var(--muted)}
-table{border-collapse:collapse;width:100%;font-size:.88rem}
-th{text-align:left;font-size:.7rem;font-weight:600;letter-spacing:.07em;text-transform:uppercase;color:var(--muted);padding:.5rem .6rem;border-bottom:1px solid var(--line)}
-td{padding:.5rem .6rem;border-bottom:1px solid var(--line);vertical-align:top}td.nowrap{white-space:nowrap}
-.aspect{border:1px solid var(--line);border-radius:10px;padding:.2rem 1.1rem 1rem;margin:1rem 0}
+.coverage{list-style:none;padding:0;margin:.5rem 0}.coverage>li{margin:.7rem 0}.gaps{margin:.3rem 0;padding-left:1.2rem;font-size:.9rem}.gaps li{margin:.15rem 0}
 .pill{display:inline-block;font-size:.72rem;font-weight:600;padding:.08rem .5rem;border-radius:999px;background:var(--info-bg);color:var(--info);white-space:nowrap}
 .pill.examined,.pill.done{background:#ecfdf5;color:#047857}.pill.partly,.pill.partial,.pill.limited{background:var(--medium-bg);color:var(--medium)}
 .pill.declined,.pill.failed,.pill.stopped,.pill.regressed{background:var(--critical-bg);color:var(--critical)}
@@ -87,7 +84,7 @@ section{margin-top:2.2rem}
 section#findings,section#questions{margin-top:0;break-before:page}
 h2,h3,h4,summary,figcaption{break-after:avoid}
 .finding{break-inside:avoid;-webkit-box-decoration-break:clone;box-decoration-break:clone}.finding summary,.pair,.callout,figure{break-inside:avoid}
-tr,.risks li{break-inside:avoid}
+.risks li,.gaps li{break-inside:avoid}
 a{color:inherit}
 }
 `;
@@ -329,25 +326,20 @@ ${manyRepos ? `<label>Repository <select name="repo">${option("", "All")}${names
         .map(r => `<li>${e(r.name)} <span class="muted">· ${e(r.branch)} ·</span> <code>${e(r.sha.slice(0, 10))}</code></li>`)
         .join("");
     const limited = (a: ReportData["aspects"][number]) => a.status === "done" && limitedReview(a.coverage);
-    const aspects = d.aspects
-        .map(
-            a => `<div class="aspect"><h3>${e(a.title)} <span class="pill ${e(a.status)}">${e(a.status)}</span>${
-                limited(a) ? ` <span class="pill limited">limited review</span>` : ""
-            }</h3>
+    const aspects = d.aspects.length
+        ? `<h3>Coverage</h3>\n<ul class="coverage">${d.aspects
+              .map(a => {
+                  const examined = a.coverage.filter(c => c.status === "examined").length;
+                  const gaps = a.coverage.filter(c => c.status !== "examined");
+                  return `<li><b>${e(a.title)}</b>${a.coverage.length ? `: ${examined} of ${plural(a.coverage.length, "item", "items")} examined.` : ""} <span class="pill ${e(a.status)}">${e(a.status)}</span>${
+                      limited(a) ? ` <span class="pill limited">limited review</span>` : ""
+                  }
 ${a.note ? `<p>${e(a.note)}</p>` : ""}
-${limited(a) ? `<p>The agent looked at fewer than half of its checklist; the items it did not examine are marked below.</p>` : ""}
-${
-    a.coverage.length
-        ? `<table><thead><tr><th>Item</th><th>Checklist</th><th>Coverage</th></tr></thead><tbody>${a.coverage
-              .map(
-                  c =>
-                      `<tr><td class="nowrap">${e(c.item)}</td><td>${e(c.title)}</td><td class="nowrap"><span class="pill ${e(c.status)}">${e(COVERAGE[c.status] ?? c.status)}</span></td></tr>`
-              )
-              .join("")}</tbody></table>`
-        : ""
-}</div>`
-        )
-        .join("\n");
+${limited(a) ? `<p>The agent looked at fewer than half of its checklist; the items it did not examine are listed below.</p>` : ""}
+${gaps.length ? `<ul class="gaps">${gaps.map(c => `<li><span class="fid">${e(c.item)}</span> ${e(c.title)} <span class="pill ${e(c.status)}">${e(COVERAGE[c.status] ?? c.status)}</span></li>`).join("")}</ul>` : ""}</li>`;
+              })
+              .join("\n")}</ul>`
+        : "";
     const tools = d.toolVersions
         ? `<li>Scanners: ${e(
               Object.values(d.toolVersions.images)

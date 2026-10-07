@@ -231,6 +231,38 @@ describe("renderReport", () => {
         expect(print).toMatch(/\.finding\{[^}]*break-inside:avoid/);
     });
 
+    it("sums up an aspect whose agent examined every item in one line", () => {
+        const covered = ["SEC-01", "SEC-03", "SEC-04"].map(item => ({ item, title: item, status: "examined" }));
+        const scope = between(
+            renderReport(data({ aspects: [{ title: "Security", status: "done", note: null, coverage: covered }] })),
+            '<section id="scope"',
+            "</section>"
+        );
+        expect(scope).toContain("<b>Security</b>: 3 of 3 items examined.");
+        expect(scope).not.toContain("<table");
+        expect(scope).not.toContain('class="gaps"');
+    });
+
+    it("names each item not fully examined, with its status", () => {
+        const coverage = [
+            { item: "SEC-01", title: "Authentication", status: "examined" },
+            { item: "SEC-03", title: "Authorization", status: "partly" },
+            { item: "SEC-04", title: "Injection", status: "not_examined" },
+            { item: "SEC-05", title: "XSS", status: "not_reported" }
+        ];
+        const scope = between(
+            renderReport(data({ aspects: [{ title: "Security", status: "done", note: null, coverage }] })),
+            '<section id="scope"',
+            "</section>"
+        );
+        expect(scope).toContain("<b>Security</b>: 1 of 4 items examined.");
+        const gaps = between(scope, '<ul class="gaps">', "</ul>");
+        expect(gaps).toContain('<span class="fid">SEC-03</span> Authorization <span class="pill partly">partly examined</span>');
+        expect(gaps).toContain('<span class="pill not_examined">not examined</span>');
+        expect(gaps).toContain("not reported (the agent stopped first)");
+        expect(gaps).not.toContain("SEC-01");
+    });
+
     it("names a one-line range as one line", () => {
         const html = renderReport(
             data({ findings: [finding({ evidence: [{ file: "pnpm-lock.yaml", startLine: 9, endLine: 9, snippet: "x" }] })] })
