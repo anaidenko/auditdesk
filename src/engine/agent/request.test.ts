@@ -33,8 +33,8 @@ function paramsFor(aspect: string, prefix: string) {
 }
 
 describe("agentParams", () => {
-    it("defaults to the cheapest setting: Sonnet 5.5 at low effort", () => {
-        expect({ model: DEFAULT_MODEL, effort: DEFAULT_EFFORT }).toEqual({ model: "claude-sonnet-5-5", effort: "low" });
+    it("defaults to Sonnet 5.5 at high effort, the sweep's choice", () => {
+        expect({ model: DEFAULT_MODEL, effort: DEFAULT_EFFORT }).toEqual({ model: "claude-sonnet-5-5", effort: "high" });
     });
 
     it("sends a byte-identical tools-and-system prefix for every aspect", () => {

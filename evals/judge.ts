@@ -2,12 +2,16 @@ import Anthropic from "@anthropic-ai/sdk";
 import { betaZodOutputFormat } from "@anthropic-ai/sdk/helpers/beta/zod";
 import { z } from "zod";
 
-import { DEFAULT_EFFORT, DEFAULT_MODEL } from "@/engine/agent/request";
+import { DEFAULT_MODEL, type Effort } from "@/engine/agent/request";
 import { NOT_JUDGED } from "@/engine/eval-results";
 import { priceMessage } from "@/engine/prices";
 
 import type { AnswerKey, KeyEntry } from "./fixtures";
 import { type GradedFinding, places } from "./grade";
+
+// A verdict on one finding against its key entry needs little thinking: the audits' default
+// effort is the agents', not the judge's.
+const JUDGE_EFFORT: Effort = "low";
 
 export interface Verdict {
     finding: string;
@@ -128,7 +132,7 @@ export async function judgeLeftovers(
                     model: DEFAULT_MODEL,
                     max_tokens: 16_000,
                     thinking: { type: "adaptive" },
-                    output_config: { effort: DEFAULT_EFFORT, format: verdictFormat() },
+                    output_config: { effort: JUDGE_EFFORT, format: verdictFormat() },
                     system: SYSTEM,
                     messages: [{ role: "user", content: prompt(f, key, o.located?.get(f.label) ?? []) }]
                 })
