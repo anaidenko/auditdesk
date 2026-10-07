@@ -69,6 +69,9 @@ read-only tools. Setup and commands: README.md.
 ## Permissions
 
 - **Run local commands freely:** installs, builds, tests, `pnpm db:up`.
+- **Start and stop the app with `scripts/dev-server.sh`** (`pnpm app start --wait`, `stop`,
+  `status`, `logs`), never by killing a process: Claude Code's auto mode refuses to stop a
+  server it did not start, and the script will not stop one while a job runs.
 - **Ask first** for anything that leaves this machine or is hard to undo: `git push`, creating
   the GitHub repository, a live Claude API call, `rm -rf`, `git reset --hard`, force-push.
 - **No secrets in git.** `.env*.local` is ignored, and the pre-commit hook runs gitleaks on the

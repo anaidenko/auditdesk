@@ -1,3 +1,5 @@
+# One project for every worktree, so a worktree's `pnpm db:up` finds the same database.
+name: auditdesk
 services:
   db:
     image: postgres:18

@@ -17,6 +17,7 @@
         "db:migrate": "prisma migrate dev",
         "db:deploy": "prisma migrate deploy",
         "eval": "tsx evals/cli.mts",
+        "app": "bash scripts/dev-server.sh",
         "eval:key": "tsx evals/make-key.mts",
         "issues:gh": "tsx scripts/issues.mts",
         "postinstall": "prisma generate"

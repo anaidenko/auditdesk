@@ -4,12 +4,12 @@
 //   pnpm tsx --conditions=react-server scripts/sample-report.mts export <projectId>
 // `run` makes a project of the prepared tree and runs it on the Claude plan, a live run that
 // spends the plan's window; `export` writes the report of the findings reviewed since.
-// Stop the app before `run` and start it only after: the script runs the job itself, and the
+// Stop the app before `run` (scripts/dev-server.sh stop) and start it only after: the script runs the job itself, and the
 // app's runner would claim it or, starting, mark it interrupted.
 // .mts for top-level await, as scripts/smoke.mts.
 import nextEnv from "@next/env";
 import { execFileSync } from "node:child_process";
-import { existsSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 
@@ -36,7 +36,8 @@ if (command === "run") {
     if (!form.ok) throw new Error(`${form.error} Usage: run <model> <effort> <budget-usd> [<thousand-tokens>]`);
     const active = await prisma.job.count({ where: { status: { in: ["queued", "running"] } } });
     if (active) throw new Error(`${active} job(s) are queued or running: let the app finish them, then stop it.`);
-    const port = process.env.PORT ?? "3000";
+    // The port scripts/dev-server.sh serves on, so a server it started is found too.
+    const port = process.env.PORT ?? (existsSync(".dev-port") ? readFileSync(".dev-port", "utf8").trim() : "3000");
     const up = await fetch(`http://127.0.0.1:${port}/`, { signal: AbortSignal.timeout(1000) }).then(
         () => true,
         () => false
