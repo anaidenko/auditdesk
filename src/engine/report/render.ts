@@ -20,6 +20,8 @@ const CSS = `
 html{-webkit-print-color-adjust:exact;print-color-adjust:exact}
 body{margin:0;background:#f4f4f5;color:var(--ink);font:15px/1.6 ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;-webkit-font-smoothing:antialiased}
 .doc{max-width:880px;margin:2.5rem auto;background:#fff;border:1px solid var(--line);border-radius:14px;box-shadow:0 1px 3px rgba(0,0,0,.06);padding:3rem 3.25rem}
+.doc{overflow-wrap:anywhere}
+@media screen and (max-width:640px){.doc{margin:0;border-radius:0;padding:1.75rem 1.1rem}}
 h1,h2,h3,h4{line-height:1.25;letter-spacing:-.01em}
 h2{font-size:1.35rem;margin:0 0 1.1rem;padding-bottom:.55rem;border-bottom:1px solid var(--line)}
 h3{font-size:1.02rem;margin:1.6rem 0 .6rem}
