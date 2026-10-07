@@ -61,8 +61,9 @@ export function normaliseSemgrep(results: SemgrepResult[], o: { repositoryId: st
             ...base,
             agentRunId: null,
             kind: "finding",
-            title: `${o.masker.mask(r.extra.message.split(/(?<=\.)\s/)[0].slice(0, 160))}${role ? ` (${ROLE_WORDS[role]})` : ""}`,
-            severity: role ? "low" : (SEVERITY[r.extra.severity] ?? "medium"),
+            title: `${o.masker.mask(r.extra.message.split(/(?<=\.)\s/)[0].slice(0, 160)).replace(role ? /\.\s*$/ : /$^/, "")}${role ? ` (${ROLE_WORDS[role]})` : ""}`,
+            // In a sample file a hard-coded secret is rated as gitleaks rates it; anything else is low.
+            severity: role ? (item === "SEC-10" ? "medium" : "low") : (SEVERITY[r.extra.severity] ?? "medium"),
             likelihood: null,
             impact: null,
             summary: o.masker.mask(r.extra.message),
@@ -70,7 +71,7 @@ export function normaliseSemgrep(results: SemgrepResult[], o: { repositoryId: st
             recommendation: "Confirm the input is attacker-controlled; if so, follow the rule's references.",
             effort: "S",
             references: { cwe, cheatSheets: r.extra.metadata.references?.filter(u => u.includes("cheatsheetseries.owasp.org")) },
-            tags: role ? ["test-path"] : [],
+            tags: [],
             source: "scanner",
             fingerprint: fingerprint({ ...base, evidence: [{ ...evidence[0], snippet: `${r.check_id}\n${evidence[0].snippet}` }] })
         } satisfies NewFinding;

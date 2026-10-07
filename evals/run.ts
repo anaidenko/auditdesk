@@ -188,19 +188,18 @@ export async function runEval(o: EvalOptions, deps: EvalDeps): Promise<{ file: s
     }
     const durationMs = performance.now() - started;
 
-    // A scanner finding folded into an agent's is graded through the agent's, as the auditor sees it.
-    const findings: GradedFinding[] = sink.findings
-        .filter(f => !f.mergedInto)
-        .map(f => ({
-            label: f.label,
-            kind: f.kind,
-            source: f.source,
-            aspect: f.aspect,
-            checklistItem: f.checklistItem,
-            title: f.title,
-            summary: f.summary,
-            evidence: f.evidence
-        }));
+    // Each finding is graded by its own evidence; a folded scanner finding still counts as the scanner's find.
+    const findings: GradedFinding[] = sink.findings.map(f => ({
+        ...(f.mergedInto ? { folded: true } : {}),
+        label: f.label,
+        kind: f.kind,
+        source: f.source,
+        aspect: f.aspect,
+        checklistItem: f.checklistItem,
+        title: f.title,
+        summary: f.summary,
+        evidence: f.evidence
+    }));
     const g = grade(findings, key, { aspects });
 
     const byModel = new Map<string, { model: string; calls: number; usd: number; unpriced: number }>();

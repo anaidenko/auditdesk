@@ -119,6 +119,12 @@ The auditor accepts, edits, merges, rejects (kept with the reason, as data on fa
 or excludes each finding, and may move it between "fix before sign-off" and "can wait". A re-run
 of one aspect replaces its unreviewed findings and tells the agent about the reviewed ones.
 
+Two rules keep the scanners' noise down. A generic secret or a Semgrep result in a test, fixture,
+seed or example file is rated lower and says where it is; a provider's own key format keeps its
+rating, and a route is never treated as sample code. When an agent files a finding on the lines
+of an unreviewed scanner finding of the same run, under the same item and weakness, the scanner's
+is folded into it with its higher severity, and comes back to the review if that aspect is re-run.
+
 ## The report
 
 One self-contained HTML file, opening offline, and a PDF of the same document: a cover, a

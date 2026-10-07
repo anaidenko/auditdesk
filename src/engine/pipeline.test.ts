@@ -77,6 +77,7 @@ describe("runAudit", () => {
         const sink = new TestSink();
         const evalAtLine7 = finding({
             checklist_item: "SEC-04",
+            cwe: "CWE-95",
             title: "User input reaches eval",
             evidence: [{ file: "src/server.js", start_line: 7, end_line: 7 }]
         });
@@ -93,6 +94,19 @@ describe("runAudit", () => {
         expect(semgrepEval.mergedInto).toBe(agent.label);
         expect(sink.events).toContainEqual(`Folded ${semgrepEval.label} into ${agent.label}: the scanner's finding repeats the agent's.`);
         expect(await sink.findingIndex("r")).not.toContainEqual(expect.stringContaining(semgrepEval.label));
+    });
+
+    it("goes on with the audit when a fold fails, and says why", async () => {
+        class Refusing extends TestSink {
+            override async foldScannerDuplicates(): Promise<never> {
+                throw new Error("F-004 was already merged or superseded.");
+            }
+        }
+        const sink = new Refusing();
+        const result = await audit(sink, await makeSampleRepo(), await mkdtemp(join(tmpdir(), "ws-")));
+        expect(result.stopped).toBe(false);
+        expect(sink.agents.map(a => a.status)).toEqual(["done"]);
+        expect(sink.events).toContainEqual("Did not fold the scanner's duplicates: F-004 was already merged or superseded.");
     });
 
     it("counts what the scanners filed and masked in words that fit the count", async () => {

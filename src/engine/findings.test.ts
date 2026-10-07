@@ -69,11 +69,27 @@ describe("scannerDuplicates", () => {
         expect(scannerDuplicates(agent, scanner)).toEqual([{ from: "F-004", into: "F-005" }]);
     });
 
-    it("folds one scanner finding into the first agent finding that covers it, and never a question", () => {
+    it("folds a scanner finding into the narrowest agent finding that covers it, and never into a question", () => {
         const agent = [f("F-005", "agent", "SEC-04", "a.js", 5, 9), f("F-006", "agent", "SEC-04", "a.js", 7)];
         const question = { ...f("F-008", "agent", "SEC-04", "a.js", 7), kind: "question" as const };
-        expect(scannerDuplicates([...agent, question], [f("F-004", "scanner", "SEC-04", "a.js", 7)])).toEqual([
-            { from: "F-004", into: "F-005" }
+        expect(scannerDuplicates([question, ...agent], [f("F-004", "scanner", "SEC-04", "a.js", 7)])).toEqual([
+            { from: "F-004", into: "F-006" }
+        ]);
+    });
+
+    it("folds nothing into an agent finding that cites a range wider than the grader trusts", () => {
+        const wide = f("F-020", "agent", "SEC-04", "routes/search.ts", 1, 120);
+        expect(scannerDuplicates([wide], [f("F-004", "scanner", "SEC-04", "routes/search.ts", 23)])).toEqual([]);
+    });
+
+    it("keeps apart two findings that name different weaknesses", () => {
+        const agent = { ...f("F-020", "agent", "SEC-04", "a.js", 20, 30), cwe: "CWE-89" };
+        const sql = { ...f("F-004", "scanner", "SEC-04", "a.js", 23), cwe: "CWE-89" };
+        const evalCall = { ...f("F-006", "scanner", "SEC-04", "a.js", 28), cwe: "CWE-95" };
+        const unnamed = f("F-007", "scanner", "SEC-04", "a.js", 25);
+        expect(scannerDuplicates([agent], [sql, evalCall, unnamed])).toEqual([
+            { from: "F-004", into: "F-020" },
+            { from: "F-007", into: "F-020" }
         ]);
     });
 });

@@ -217,6 +217,26 @@ describe("grade", () => {
         expect(g.leftovers).toEqual(["F-001"]);
     });
 
+    it("counts a scanner finding folded into an agent's as found by the scanner, and never as a leftover", () => {
+        const g = grade(
+            [
+                finding({ label: "F-001", source: "scanner", folded: true }),
+                finding({
+                    label: "F-002",
+                    source: "scanner",
+                    folded: true,
+                    checklistItem: "SEC-09",
+                    evidence: [{ file: "z.ts", startLine: 1, endLine: 1 }]
+                }),
+                finding({ label: "F-003", source: "scanner", folded: true, checklistItem: "SEC-05" })
+            ],
+            key([entry({ id: "K1" })])
+        );
+        expect(g.matched).toEqual([{ key: "K1", finding: "F-001" }]);
+        expect(g.leftovers).toEqual([]);
+        expect(g.locationOnly).toEqual([]);
+    });
+
     it("counts what the agents found apart from what the scanners found", () => {
         const g = grade(
             [

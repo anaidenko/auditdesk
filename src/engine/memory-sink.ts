@@ -1,6 +1,6 @@
 import { freshTokens } from "./budget";
 import { findingLabel, indexLine, scannerDuplicates } from "./findings";
-import type { AuditSink, CallRecord, NewFinding, Spend } from "./types";
+import { type AuditSink, type CallRecord, type NewFinding, SEVERITIES, type SeverityName, type Spend } from "./types";
 
 /** The sink `pnpm eval` and the engine's tests use: everything in memory. */
 export class MemorySink implements AuditSink {
@@ -45,16 +45,23 @@ export class MemorySink implements AuditSink {
             )
             .map(indexLine);
     }
+    /**
+     * As the app's sink folds, but the agent's finding keeps its own evidence: the eval grades each
+     * finding by what it cited (evals/run.ts).
+     */
     async foldScannerDuplicates(repositoryId: string, agentRunId: string) {
-        const agent = this.findings.filter(f => f.agentRunId === agentRunId);
-        const scanner = this.findings.filter(f => f.repositoryId === repositoryId && f.source === "scanner" && !f.mergedInto);
-        const pairs = scannerDuplicates(agent, scanner);
-        for (const { from, into } of pairs) {
+        const placed = (f: (typeof this.findings)[number]) => ({ ...f, cwe: f.references.cwe ?? null });
+        const agent = this.findings.filter(f => f.agentRunId === agentRunId).map(placed);
+        const scanner = this.findings.filter(f => f.repositoryId === repositoryId && f.source === "scanner" && !f.mergedInto).map(placed);
+        const rank = (v: SeverityName | null) => (v ? SEVERITIES.indexOf(v) : SEVERITIES.length);
+        return scannerDuplicates(agent, scanner).map(({ from, into }) => {
             const source = this.findings.find(f => f.label === from)!;
+            const target = this.findings.find(f => f.label === into)!;
             source.mergedInto = into;
-            this.findings.find(f => f.label === into)!.evidence.push(...source.evidence);
-        }
-        return pairs;
+            const raised = rank(source.severity) < rank(target.severity) ? source.severity! : undefined;
+            if (raised) target.severity = raised;
+            return { from, into, ...(raised ? { raised } : {}) };
+        });
     }
     async knownFingerprints(repositoryId: string) {
         return new Set(this.findings.filter(f => f.repositoryId === repositoryId).map(f => f.fingerprint));

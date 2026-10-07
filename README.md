@@ -19,7 +19,8 @@ Local only: it binds 127.0.0.1 and has no login. The design is in [docs/design.m
 - **Stack detection** from manifests and schemas, confirmed or edited by the auditor, suggests
   the conditional aspects; an AI-built mode adds checks for code written largely by AI tools.
 - **Review:** accept, edit, merge, reject or exclude every finding; only accepted or edited ones
-  reach the report. IDs (`F-012`) are never reused, and a reviewed finding keeps its ID through
+  reach the report. A scanner finding that an agent filed again is folded into the agent's, and
+  results in test, fixture, seed or example files are rated lower and say so. IDs (`F-012`) are never reused, and a reviewed finding keeps its ID through
   re-runs.
 - **The report:** one self-contained HTML file with filters and search, and a PDF. A summary of
   what to fix before sign-off and what can wait, scope and coverage, each finding with its

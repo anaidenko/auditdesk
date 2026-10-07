@@ -1,4 +1,5 @@
 import { ASPECTS } from "@/engine/aspects";
+import { WIDE } from "@/engine/findings";
 
 import type { AnswerKey, KeyEntry } from "./fixtures";
 
@@ -6,6 +7,8 @@ export interface GradedFinding {
     label: string;
     kind: "finding" | "question";
     source: "agent" | "scanner";
+    /** A scanner finding the run folded into an agent's: it can be found, never a leftover. */
+    folded?: boolean;
     aspect: string;
     checklistItem: string | null;
     title: string;
@@ -34,8 +37,7 @@ export interface Grade {
     missed: string[];
 }
 
-/** A cited range longer than this locates nothing by itself: a whole file would match every entry in it. */
-export const WIDE = 30;
+export { WIDE };
 
 const aspectOf = (item: string | null) => (item === null ? undefined : ASPECTS.find(a => item.startsWith(`${a.prefix}-`))?.key);
 const norm = (file: string) => file.replace(/^\.\//, "");
@@ -104,6 +106,7 @@ export function grade(findings: GradedFinding[], key: AnswerKey, o: { slack?: nu
                 if (!near.length) for (const id of nearest(located, ev)) onPlace.add(id);
             }
         for (const e of key.entries) if (hits.has(e.id)) g.matched.push({ key: e.id, finding: f.label });
+        if (f.folded) continue;
         if (!hits.size)
             for (const e of key.entries) if (onPlace.has(e.id)) g.locationOnly.push({ key: e.id, finding: f.label, item: f.checklistItem });
         if (hits.size || onPlace.size) continue;

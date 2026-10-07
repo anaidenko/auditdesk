@@ -81,6 +81,22 @@ describe("review", () => {
         expect(rows.map(r => r.status)).toEqual(["rejected", "excluded"]);
     });
 
+    it("merges without repeating evidence the target already shows", async () => {
+        const { project, repo } = await projectWithRepo();
+        const add = (evidence: { file: string; startLine: number; endLine: number }[]) =>
+            createFinding(project.id, null, sampleFinding(repo.id, { evidence }));
+        const target = await add([{ file: "a.ts", startLine: 1, endLine: 9 }]);
+        const inside = await add([
+            { file: "a.ts", startLine: 3, endLine: 4 },
+            { file: "b.ts", startLine: 1, endLine: 1 }
+        ]);
+        await merge(inside.id, target.label);
+        expect((await prisma.finding.findUniqueOrThrow({ where: { id: target.id } })).evidence).toEqual([
+            { file: "a.ts", startLine: 1, endLine: 9 },
+            { file: "b.ts", startLine: 1, endLine: 1 }
+        ]);
+    });
+
     it("refuses to accept or edit a merged or superseded finding", async () => {
         const { a, b } = await twoFindings();
         await merge(a.id, b.label);

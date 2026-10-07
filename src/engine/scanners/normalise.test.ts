@@ -33,15 +33,29 @@ describe("gitleaks", () => {
         expect(prints.join()).not.toContain("0".repeat(30));
     });
 
-    it("rates a secret in a test, fixture, seed or example file lower, tags it and says why", () => {
+    it("rates a generic secret in a sample file lower and says why, keeping its fingerprint", () => {
         const inTest = leaks.map(l => ({ ...l, File: "test/api/login.test.ts" }));
         const [current] = normaliseGitleaks(inTest, { repositoryId: "r", masker, inTree: () => true });
-        expect(current).toMatchObject({ severity: "medium", tags: ["test-path"] });
-        expect(current.title).toMatch(/\(in a test file\)/);
-        expect(current.likelihood).toMatch(/whether the credential is real/);
+        expect(current).toMatchObject({ severity: "medium", tags: [] });
+        expect(current.title).toMatch(/[^.] \(in a test file\)$/);
+        expect(current.likelihood).toBe("It is in a test file; whether the credential is real decides the risk.");
+        expect(current.recommendation).toMatch(/^Check whether the credential is real/);
+        expect(current.fingerprint).toBe("870d368c109f219076b2cacef84b1fde");
         const [history] = normaliseGitleaks(inTest, { repositoryId: "r", masker, inTree: () => false });
         expect(history.severity).toBe("low");
-        expect(current.fingerprint).toBe(normaliseGitleaks(inTest, { repositoryId: "r", masker, inTree: () => true })[0].fingerprint);
+        expect(history.recommendation).toBe("Rotate it if it is real.");
+    });
+
+    it("keeps a provider's key at its usual severity in a sample file, and warns about seeds that run in production", () => {
+        const stripe = leaks.map(l => ({ ...l, RuleID: "stripe-access-token", File: "prisma/seed.ts" }));
+        const [f] = normaliseGitleaks(stripe, { repositoryId: "r", masker, inTree: () => true });
+        expect(f.severity).toBe("critical");
+        expect(f.title).toMatch(/\(in a seed file\)$/);
+        const [generic] = normaliseGitleaks(
+            leaks.map(l => ({ ...l, File: "prisma/seed.ts" })),
+            { repositoryId: "r", masker, inTree: () => true }
+        );
+        expect(generic.likelihood).toMatch(/a seed that runs in production makes it a default credential on every deployment/);
     });
 
     it("rates a secret found only in history one level lower and says so", () => {
@@ -72,11 +86,19 @@ describe("Semgrep", () => {
         expect(evalFinding.tags).toEqual([]);
     });
 
-    it("rates a result in a test file low and tags it", () => {
+    it("rates a result in a test file low, and a hard-coded secret as gitleaks would", () => {
         const results = parseSemgrep(recorded("semgrep")).map(r => ({ ...r, path: "test/server.spec.js" }));
-        const [f] = normaliseSemgrep(results, { repositoryId: "r", masker });
-        expect(f).toMatchObject({ severity: "low", tags: ["test-path"] });
-        expect(f.title).toMatch(/\(in a test file\)$/);
+        const findings = normaliseSemgrep(results, { repositoryId: "r", masker });
+        expect(findings[0]).toMatchObject({ severity: "low", tags: [] });
+        expect(findings[0].title).toMatch(/[^.] \(in a test file\)$/);
+        const secret = normaliseSemgrep(
+            results.map(r => ({
+                ...r,
+                extra: { ...r.extra, metadata: { ...r.extra.metadata, cwe: ["CWE-798: Use of Hard-coded Credentials"] } }
+            })),
+            { repositoryId: "r", masker }
+        )[0];
+        expect(secret).toMatchObject({ checklistItem: "SEC-10", severity: "medium" });
     });
 });
 
