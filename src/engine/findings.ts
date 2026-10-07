@@ -26,6 +26,8 @@ export function fingerprint(f: {
     return createHash("sha256").update(parts.join("\n")).digest("hex").slice(0, 32);
 }
 
+const INDEXED_PLACES = 10;
+
 /** One line per finding, as the agent sees the ones already filed (design § 6). */
 export function indexLine(f: {
     label: string;
@@ -34,8 +36,14 @@ export function indexLine(f: {
     evidence: Evidence[];
     title: string;
 }): string {
-    const e = f.evidence[0];
-    return `${f.label} [${f.severity ?? "question"}] ${f.checklistItem ?? "-"} ${e ? `${e.file}:${e.startLine}` : "-"} ${f.title}`;
+    // A scanner finding of several places names each, so an agent does not file one again as new.
+    const places = f.evidence.length > 1 && f.evidence.every(e => e.key) ? f.evidence : f.evidence.slice(0, 1);
+    const where = places
+        .slice(0, INDEXED_PLACES)
+        .map(e => `${e.file}:${e.startLine}`)
+        .join(", ");
+    const more = places.length > INDEXED_PLACES ? ` and ${places.length - INDEXED_PLACES} more` : "";
+    return `${f.label} [${f.severity ?? "question"}] ${f.checklistItem ?? "-"} ${where || "-"}${more} ${f.title}`;
 }
 
 /** Whether any of the finding's evidence lies under the path name, as a seams finding's paths do. */

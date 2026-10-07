@@ -49,6 +49,36 @@ describe("findings", () => {
     });
 });
 
+describe("indexLine", () => {
+    it("names every place of a scanner finding of several, up to ten, so an agent does not file them again", () => {
+        const places = Array.from({ length: 12 }, (_, i) => ({ file: `src/f${i}.js`, startLine: i + 1, endLine: i + 1, key: `k${i}` }));
+        const line = indexLine({
+            label: "F-001",
+            severity: "critical",
+            checklistItem: "SEC-10",
+            evidence: places,
+            title: "Secrets in the code: 12 generic API keys in 12 files"
+        });
+        expect(line).toBe(
+            `F-001 [critical] SEC-10 ${places
+                .slice(0, 10)
+                .map(p => `${p.file}:${p.startLine}`)
+                .join(", ")} and 2 more Secrets in the code: 12 generic API keys in 12 files`
+        );
+        const agent = indexLine({
+            label: "F-002",
+            severity: "high",
+            checklistItem: "SEC-04",
+            evidence: [
+                { file: "a.ts", startLine: 3, endLine: 4 },
+                { file: "b.ts", startLine: 1, endLine: 1 }
+            ],
+            title: "Raw SQL"
+        });
+        expect(agent).toBe("F-002 [high] SEC-04 a.ts:3 Raw SQL");
+    });
+});
+
 describe("scannerDuplicates", () => {
     const f = (label: string, source: "agent" | "scanner", item: string, file: string, start: number, end = start) => ({
         label,
