@@ -107,6 +107,23 @@ describe("aspects in the report", () => {
     });
 });
 
+describe("the seams between repositories", () => {
+    it("files a finding across repositories under the seams, and names the pass without a repository", async () => {
+        const { project, repo } = await projectWithRepo("/tmp/web");
+        await prisma.repository.create({ data: { projectId: project.id, source: "/tmp/api", branch: "main" } });
+        const r = await run(project.id, "done", null, new Date("2026-10-07"));
+        await agent(r.id, repo.id, "done", new Date("2026-10-07"), "seams");
+        const f = await createFinding(project.id, r.id, {
+            ...sampleFinding(repo.id, { aspect: "seams", checklistItem: "SEA-01" }),
+            repositoryId: null
+        });
+        await prisma.finding.update({ where: { id: f.id }, data: { status: "accepted" } });
+        const d = await loadReportData(project.id);
+        expect(d.findings.map(x => [x.repository, x.aspect])).toEqual([["Seams between repositories", "Seams between repositories"]]);
+        expect(d.aspects.map(a => a.title)).toEqual(["Seams between repositories"]);
+    });
+});
+
 describe("aspects and repositories that changed", () => {
     it("keeps an aspect no longer in the catalogue in the scope, instead of failing the report", async () => {
         const { project, repo } = await projectWithRepo("/tmp/app");

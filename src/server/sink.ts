@@ -194,7 +194,7 @@ export class PrismaSink implements PipelineSink {
         ]);
     }
 
-    async supersedeUnreviewed(repositoryId: string, aspect: string) {
+    async supersedeUnreviewed(repositoryId: string | null, aspect: string) {
         const where = { repositoryId, aspect, source: "agent" as const, status: "unreviewed" as const };
         await prisma.$transaction(async tx => {
             const ids = (await tx.finding.findMany({ where, select: { id: true } })).map(r => r.id);

@@ -2,7 +2,7 @@ import { mkdir, writeFile } from "node:fs/promises";
 import { basename, join } from "node:path";
 import "server-only";
 
-import { ASPECTS, aspectTitle } from "@/engine/aspects";
+import { ASPECTS, SEAMS, aspectTitle } from "@/engine/aspects";
 import { loadChecklist } from "@/engine/checklists";
 import { workspaceDir } from "@/engine/config";
 import { findingLabel } from "@/engine/findings";
@@ -71,7 +71,7 @@ export async function loadReportData(projectId: string, o: { includeCost?: boole
         effortHours: r.effortHours,
         evidence: r.evidence as unknown as Evidence[],
         references: r.references as References,
-        repository: names.get(r.repositoryId ?? "") ?? "—",
+        repository: names.get(r.repositoryId ?? "") ?? (r.aspect === SEAMS ? aspectTitle(SEAMS) : "—"),
         tags: r.tags,
         fixBeforeSignoff: r.fixBeforeSignoff,
         refs: referencesFor(referenceData, r.checklistItem, r.references as References, { question: r.kind === "question" })
@@ -108,7 +108,9 @@ export async function loadReportData(projectId: string, o: { includeCost?: boole
                 ...c,
                 title: titles.get(c.item) ?? ""
             }));
-            return { title: `${checklist.title} (${names.get(a.repositoryId)})`, status: a.status, note: a.note, coverage };
+            // The seams pass reads every repository; its agent is filed under the first.
+            const title = a.aspect === SEAMS ? checklist.title : `${checklist.title} (${names.get(a.repositoryId)})`;
+            return { title, status: a.status, note: a.note, coverage };
         })
     );
     const catalogue = await Promise.all(

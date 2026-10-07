@@ -35,6 +35,19 @@ describe("PrismaSink", () => {
         expect(await status(otherAspect.id)).toBe("unreviewed");
     });
 
+    it("supersedes the seams pass's unreviewed findings, which belong to no repository, on its re-run", async () => {
+        const { sink, repo, add } = await setup();
+        const seam = await add({ source: "agent", aspect: "seams", checklistItem: "SEA-01", title: "seam" });
+        const kept = await add({ source: "agent", aspect: "seams", checklistItem: "SEA-02", title: "kept" });
+        await prisma.finding.updateMany({ where: { id: { in: [seam.id, kept.id] } }, data: { repositoryId: null } });
+        await prisma.finding.update({ where: { id: kept.id }, data: { status: "accepted" } });
+        const own = await add({ source: "agent", aspect: "seams", title: "a repository's" });
+        await sink.supersedeUnreviewed(null, "seams");
+        const status = async (id: string) => (await prisma.finding.findUniqueOrThrow({ where: { id } })).status;
+        expect([await status(seam.id), await status(kept.id), await status(own.id)]).toEqual(["superseded", "accepted", "unreviewed"]);
+        expect(repo.id).toBeTruthy();
+    });
+
     async function foldSetup() {
         const { sink, repo, add, run } = await setup();
         const agentRun = await prisma.agentRun.create({

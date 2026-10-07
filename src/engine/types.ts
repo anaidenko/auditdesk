@@ -17,7 +17,8 @@ export interface References {
 }
 
 export interface NewFinding {
-    repositoryId: string;
+    /** Null for a finding across repositories (the seams pass). */
+    repositoryId: string | null;
     agentRunId: string | null;
     aspect: string;
     kind: "finding" | "question";

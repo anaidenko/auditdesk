@@ -166,6 +166,34 @@ describe("renderReport", () => {
         expect(toc).toContain('<a href="#repo-api">api</a>');
     });
 
+    it("gives the seams between repositories their own run of findings after the repositories'", () => {
+        const html = renderReport(
+            data({
+                repositories: [
+                    { name: "web", branch: "main", sha: "0123456789abcdef", notCovered: [] },
+                    { name: "api", branch: "main", sha: "fedcba9876543210", notCovered: [] }
+                ],
+                findings: [
+                    finding({
+                        label: "F-001",
+                        severity: "critical",
+                        repository: "Seams between repositories",
+                        title: "Admin route open to anyone"
+                    }),
+                    finding({ label: "F-002", severity: "low", repository: "api", title: "Verbose errors" })
+                ]
+            })
+        );
+        const body = html.slice(html.indexOf('<section id="findings">'));
+        const heading = '<h3 class="repo" id="repo-Seams-between-repositories">Seams between repositories</h3>';
+        expect(body.indexOf('open id="F-002"')).toBeLessThan(body.indexOf(heading));
+        expect(body.indexOf(heading)).toBeLessThan(body.indexOf('open id="F-001"'));
+        expect(between(html, '<nav class="toc">', "</nav>")).toContain(
+            '<a href="#repo-Seams-between-repositories">Seams between repositories</a>'
+        );
+        expect(html).toContain('<option value="Seams between repositories">');
+    });
+
     it("adds no repository headings for a single repository", () => {
         expect(renderReport(data())).not.toContain('class="repo"');
     });

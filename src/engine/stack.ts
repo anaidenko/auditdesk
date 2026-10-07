@@ -341,7 +341,11 @@ export function suggestionsFor(profiles: (StackProfile | null)[]): { aspects: As
     const known = profiles.filter((p): p is StackProfile => !!p);
     const keys = new Set(known.flatMap(suggestAspects));
     return {
-        aspects: (["llm", "tenancy"] as const).filter(k => keys.has(k)),
+        // The seams pass needs two repositories to compare, whatever their stacks.
+        aspects: [
+            ...(["llm", "tenancy"] as const).filter(k => keys.has(k)),
+            ...(profiles.length > 1 && known.length ? (["seams"] as const) : [])
+        ],
         aiBuiltSigns: [...new Set(known.flatMap(p => p.aiBuiltSigns))].sort()
     };
 }

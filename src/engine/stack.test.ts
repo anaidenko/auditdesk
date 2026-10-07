@@ -227,6 +227,17 @@ describe("suggestionsFor", () => {
     it("joins the suggestions of every repository with a detected stack", () => {
         const front = { ...EMPTY_STACK, llmSdks: ["OpenAI SDK"], aiBuiltSigns: [".cursorrules"] };
         const back = { ...EMPTY_STACK, tenancyHints: ["schema.prisma: orgId"], aiBuiltSigns: [".cursorrules", "CLAUDE.md"] };
-        expect(suggestionsFor([front, null, back])).toEqual({ aspects: ["llm", "tenancy"], aiBuiltSigns: [".cursorrules", "CLAUDE.md"] });
+        expect(suggestionsFor([front, null, back])).toEqual({
+            aspects: ["llm", "tenancy", "seams"],
+            aiBuiltSigns: [".cursorrules", "CLAUDE.md"]
+        });
+    });
+});
+
+describe("the seams suggestion", () => {
+    it("suggests the seams pass when the project has more than one repository", () => {
+        expect(suggestionsFor([EMPTY_STACK, EMPTY_STACK]).aspects).toContain("seams");
+        expect(suggestionsFor([EMPTY_STACK]).aspects).not.toContain("seams");
+        expect(suggestionsFor([null, null]).aspects).not.toContain("seams");
     });
 });

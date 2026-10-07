@@ -10,7 +10,7 @@ import { SAMPLE_KEY, makeSampleRepo } from "@/test/sample-repo";
 
 import { type AspectInput, type AspectRunner, apiAspectRunner } from "./agent/run-aspect";
 import { MemorySink } from "./memory-sink";
-import { type AuditDeps, type AuditInput, type PipelineSink, runAudit } from "./pipeline";
+import { type AuditDeps, type AuditInput, type PipelineSink, pathNames, runAudit } from "./pipeline";
 import { REPLAY_RULESETS, replayRunner } from "./scanners/replay";
 import type { ScannerRunner } from "./scanners/types";
 import type { StackProfile } from "./stack";
@@ -31,7 +31,7 @@ class TestSink extends MemorySink implements PipelineSink {
     async finishAgent(id: string, outcome: { status: string }) {
         this.agents.find(a => a.id === id)!.status = outcome.status;
     }
-    async supersedeUnreviewed() {}
+    async supersedeUnreviewed(_repositoryId: string | null, _aspect: string) {}
 }
 
 const finish = () =>
@@ -186,6 +186,104 @@ function capturing() {
 }
 
 const prefixText = (o: AspectInput) => o.system.map(b => b.text).join("\n");
+
+describe("the seams pass", () => {
+    it("runs one agent over every repository after their own aspects, and files what it finds under none of them", async () => {
+        const sink = new TestSink();
+        const [web, api] = [await makeSampleRepo(), await makeSampleRepo()];
+        const repositories = [
+            { id: "r-web", source: web, branch: "main" },
+            { id: "r-api", source: api, branch: "main" }
+        ];
+        const [webName, apiName] = [...pathNames(repositories).values()];
+        const inputs: AspectInput[] = [];
+        const seamsAgent = apiAspectRunner(
+            new Anthropic({
+                apiKey: "t",
+                fetch: replayFetch([
+                    tool("list_files", { dir: ".", glob: "" }),
+                    tool(
+                        "report_finding",
+                        finding({
+                            checklist_item: "SEA-01",
+                            title: "The front end calls a route the back end serves to anyone",
+                            evidence: [
+                                { file: `${webName}/src/server.js`, start_line: 4, end_line: 4 },
+                                { file: `${apiName}/src/server.js`, start_line: 7, end_line: 7 }
+                            ]
+                        })
+                    ),
+                    tool("finish_aspect", { summary: "Done.", coverage: [{ item: "SEA-01", status: "examined" }] })
+                ]).fetch,
+                maxRetries: 0
+            })
+        );
+        const runAspect: AspectRunner = async o => {
+            inputs.push(o);
+            return o.ctx.aspect === "seams" ? seamsAgent(o) : { status: "done", note: null, summary: "ok", coverage: [] };
+        };
+        await audit(sink, web, await mkdtemp(join(tmpdir(), "ws-")), { repositories, aspects: ["security", "seams"] }, runAspect);
+        expect(inputs.map(i => [i.ctx.aspect, i.ctx.repositoryId])).toEqual([
+            ["security", "r-web"],
+            ["security", "r-api"],
+            ["seams", "r-web"]
+        ]);
+        // Three agents share the budget: the seams pass is one, not one per repository.
+        expect(inputs[0].share.usd).toBeCloseTo(10 / 3);
+        const seams = inputs[2];
+        expect(seams.ctx.roots?.map(r => r.name)).toEqual([webName, apiName]);
+        expect(prefixText(seams)).toContain(`## ${webName}`);
+        expect(prefixText(seams)).toContain(`## ${apiName}`);
+        const filed = sink.findings.find(f => f.checklistItem === "SEA-01")!;
+        expect(filed.repositoryId).toBeNull();
+        expect(filed.evidence.map(e => e.file)).toEqual([`${webName}/src/server.js`, `${apiName}/src/server.js`]);
+        expect(sink.events).toContainEqual(expect.stringMatching(/^Agent: Seams between repositories/));
+    });
+
+    it("re-runs the seams pass alone, replacing its unreviewed findings", async () => {
+        class Superseding extends TestSink {
+            superseded: [string | null, string][] = [];
+            override async supersedeUnreviewed(repositoryId: string | null, aspect: string) {
+                this.superseded.push([repositoryId, aspect]);
+            }
+        }
+        const sink = new Superseding();
+        const { inputs, runAspect } = capturing();
+        const repositories = [
+            { id: "r-web", source: await makeSampleRepo(), branch: "main" },
+            { id: "r-api", source: await makeSampleRepo(), branch: "main" }
+        ];
+        await audit(
+            sink,
+            repositories[0].source,
+            await mkdtemp(join(tmpdir(), "ws-")),
+            { repositories, aspects: ["security", "seams"], only: { repositoryId: "r-web", aspect: "seams" } },
+            runAspect
+        );
+        expect(inputs.map(i => i.ctx.aspect)).toEqual(["seams"]);
+        expect(inputs[0].ctx.roots).toHaveLength(2);
+        expect(sink.superseded).toEqual([[null, "seams"]]);
+    });
+
+    it("skips the seams pass for a project of one repository, and gives its share to the others", async () => {
+        const sink = new TestSink();
+        const { inputs, runAspect } = capturing();
+        await audit(sink, await makeSampleRepo(), await mkdtemp(join(tmpdir(), "ws-")), { aspects: ["security", "seams"] }, runAspect);
+        expect(inputs.map(i => i.ctx.aspect)).toEqual(["security"]);
+        expect(inputs[0].share.usd).toBeCloseTo(10);
+        expect(sink.events).toContain("Skipped Seams between repositories: the project has one repository.");
+    });
+
+    it("names repositories for paths, told apart by branch and then by number", () => {
+        const names = pathNames([
+            { id: "a", source: "https://github.com/acme/shop.git", branch: "main" },
+            { id: "b", source: "/work/shop", branch: "release/2" },
+            { id: "c", source: "/work/api/", branch: "main" },
+            { id: "d", source: "git@github.com:acme/api.git", branch: "main" }
+        ]);
+        expect([...names.values()]).toEqual(["shop-main", "shop-release-2", "api-main", "api-2"]);
+    });
+});
 
 describe("the cached prefix", () => {
     it("detects the stack when none is confirmed, records it, and gives it to the agents", async () => {

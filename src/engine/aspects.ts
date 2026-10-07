@@ -10,8 +10,24 @@ export const ASPECTS = [
     { key: "quality", prefix: "QUA", title: "Code quality and tests", conditional: false },
     { key: "production", prefix: "PRD", title: "Production readiness", conditional: false },
     { key: "llm", prefix: "LLM", title: "LLM integrations", conditional: true, when: "the code calls a language model" },
-    { key: "tenancy", prefix: "TEN", title: "Multi-tenancy", conditional: true, when: "records belong to tenants" }
+    { key: "tenancy", prefix: "TEN", title: "Multi-tenancy", conditional: true, when: "records belong to tenants" },
+    {
+        key: "seams",
+        prefix: "SEA",
+        title: "Seams between repositories",
+        conditional: true,
+        when: "the project has more than one repository, such as a front end and its API"
+    }
 ] as const;
+
+/** The aspect one agent runs across every repository of the project, after the per-repository ones. */
+export const SEAMS = "seams";
+
+/** The agents a run starts: one per aspect and repository, and the seams pass once, when there is more than one repository. */
+export function agentCount(repositories: number, aspects: string[]): number {
+    const seams = aspects.includes(SEAMS) && repositories > 1 ? 1 : 0;
+    return repositories * aspects.filter(a => a !== SEAMS).length + seams;
+}
 
 export type AspectKey = (typeof ASPECTS)[number]["key"];
 

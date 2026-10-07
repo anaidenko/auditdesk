@@ -11,7 +11,12 @@ export function findingLabel(n: number): string {
  * Identifies an issue across runs: line numbers move between commits, so they are left out.
  * Re-audits (v1.1) match on it; v1 uses it to skip scanner findings a re-run already filed.
  */
-export function fingerprint(f: { repositoryId: string; aspect: string; checklistItem: string | null; evidence: Evidence[] }): string {
+export function fingerprint(f: {
+    repositoryId: string | null;
+    aspect: string;
+    checklistItem: string | null;
+    evidence: Evidence[];
+}): string {
     const parts = [
         f.repositoryId,
         f.aspect,

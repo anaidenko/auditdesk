@@ -1,12 +1,12 @@
 import { describe, expect, it } from "vitest";
 
-import { ASPECTS, aspectTitle, selectAspects } from "./aspects";
+import { ASPECTS, agentCount, aspectTitle, selectAspects } from "./aspects";
 import { loadChecklist } from "./checklists";
 
 const intro = (text: string) => text.slice(0, text.indexOf("\n## "));
 
 describe("aspects", () => {
-    it("lists security first, then the rest of the v1 catalogue", () => {
+    it("lists security first, then the rest of the catalogue, the seams between repositories last", () => {
         expect(ASPECTS.map(a => a.key)).toEqual([
             "security",
             "dependencies",
@@ -15,7 +15,8 @@ describe("aspects", () => {
             "quality",
             "production",
             "llm",
-            "tenancy"
+            "tenancy",
+            "seams"
         ]);
     });
 
@@ -38,5 +39,13 @@ describe("aspects", () => {
         expect(c.items.length).toBeGreaterThanOrEqual(5);
         expect(c.items.map(i => i.id)).toEqual(c.items.map((_, i) => `${a.prefix}-${String(i + 1).padStart(2, "0")}`));
         expect(intro(c.text)).toMatch(/^Severity:/m);
+    });
+});
+
+describe("agentCount", () => {
+    it("counts an agent per aspect and repository, and the seams pass once, only across repositories", () => {
+        expect(agentCount(2, ["security", "quality"])).toBe(4);
+        expect(agentCount(2, ["security", "seams"])).toBe(3);
+        expect(agentCount(1, ["security", "seams"])).toBe(1);
     });
 });

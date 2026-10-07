@@ -65,6 +65,10 @@ engine (imports nothing from Next.js): workspace, scanners, masker, repository m
 4. **Repository map:** the directories with file counts and sizes, entry points, routes, the
    data schema, environment variable names and the test layout, so agents start oriented.
 5. **Aspect agents,** one per aspect and repository, one after another, security first.
+6. **The seams pass,** when it is ticked and the project has more than one repository: one agent
+   reads every repository at once, each path starting with the repository's name, with all their
+   maps and the findings already filed, and reports what shows where they meet. Its findings
+   belong to no single repository; the report gives them their own section.
 
 ## Aspects
 
@@ -80,6 +84,7 @@ Security is always on; the others are ticked per audit.
 | Production readiness | configuration and secrets, logging, monitoring, health and shutdown, deployment, backups, scaling |
 | LLM integrations | prompt injection, tools and agency, output handling, cost limits, data sent to the provider |
 | Multi-tenancy | the tenant model, resolving the tenant, scoping every query, caches, jobs, defence in depth |
+| Seams between repositories | the API the front end calls against the routes the back end serves, authentication and authorization across the boundary, CORS and cookies, validation only on the client, server secrets in the browser bundle, errors and data across the boundary |
 
 Each aspect has a checklist with stable item IDs (`SEC-03`) and a severity guide written in the
 terms of one shared scale, graded by consequence. An agent reports each item as examined, partly
