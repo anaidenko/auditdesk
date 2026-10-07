@@ -336,15 +336,23 @@ export function suggestAiBuilt(s: StackProfile): boolean {
     return s.aiBuiltSigns.length > 0;
 }
 
-/** What a project's repositories suggest together; a repository not yet detected suggests nothing. */
-export function suggestionsFor(profiles: (StackProfile | null)[]): { aspects: AspectKey[]; aiBuiltSigns: string[] } {
+/**
+ * What a project's repositories suggest together; a repository not yet detected suggests nothing.
+ * `lastRunRepositories`: how many repositories the last run audited, null before the first run.
+ */
+export function suggestionsFor(
+    profiles: (StackProfile | null)[],
+    o: { lastRunRepositories?: number | null } = {}
+): { aspects: AspectKey[]; aiBuiltSigns: string[] } {
     const known = profiles.filter((p): p is StackProfile => !!p);
     const keys = new Set(known.flatMap(suggestAspects));
+    // The seams pass needs two repositories to compare, whatever their stacks: suggested with a fresh
+    // detection, before the first run, or once a repository was added since the last run.
+    const added = o.lastRunRepositories !== undefined && (o.lastRunRepositories === null || profiles.length > o.lastRunRepositories);
     return {
-        // The seams pass needs two repositories to compare, whatever their stacks.
         aspects: [
             ...(["llm", "tenancy"] as const).filter(k => keys.has(k)),
-            ...(profiles.length > 1 && known.length ? (["seams"] as const) : [])
+            ...(profiles.length > 1 && (known.length || added) ? (["seams"] as const) : [])
         ],
         aiBuiltSigns: [...new Set(known.flatMap(p => p.aiBuiltSigns))].sort()
     };

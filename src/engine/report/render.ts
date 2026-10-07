@@ -1,6 +1,7 @@
 import { limitedReview } from "../coverage";
 import { compareFindings } from "../findings";
 import type { Ref } from "../references";
+import { shortSha } from "../short-sha";
 import { type ModelAccess, SEVERITIES } from "../types";
 
 import type { ReportData, ReportFinding } from "./types";
@@ -261,7 +262,7 @@ function since(d: ReportData, findings: ReportFinding[]): string {
         `${s.added} new`
     ];
     return `<section id="since"><h2>Since the last audit</h2>
-<p>Re-audited at ${s.commits.map(c => `${e(c.sha.slice(0, 7))} (${e(c.repository)})`).join(", ")}.</p>
+<p>Re-audited at ${s.commits.map(c => `${e(shortSha(c.sha))} (${e(c.repository)})`).join(", ")}.</p>
 <p>${counts.join(" · ")}.</p>
 ${s.changed.length ? `<p>Code changed since, not yet verified: ${s.changed.map(e).join(", ")}.</p>` : ""}
 <h3>Fixed</h3>

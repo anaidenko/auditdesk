@@ -1,3 +1,5 @@
+import { symlink } from "node:fs/promises";
+import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 
 import { makeRepo } from "@/test/git-repo";
@@ -103,6 +105,44 @@ describe("a cross-repository agent's tools", () => {
         );
         await expect(run("read_file", { path: "../etc/passwd", start_line: 1, end_line: 1 })).rejects.toThrow(/Start the path/);
         await expect(run("read_file", { path: "api/../../etc/passwd", start_line: 1, end_line: 1 })).rejects.toThrow(/leaves the/);
+    });
+
+    it("matches a glob written in the agent's paths, with the repository's name, as well as in a repository's own", async () => {
+        const { run } = await seams();
+        const both = /web\/src\/api\.ts[^\n]*\napi\/src\/routes\.ts/;
+        expect(await run("grep", { pattern: "/api/users", glob: "{web,api}/src/**" })).toMatch(both);
+        expect(await run("grep", { pattern: "/api/users", glob: "src/**" })).toMatch(both);
+        expect(await run("list_files", { dir: "", glob: "*/src/*.ts" })).toMatch(both);
+        expect(await run("list_files", { dir: "web/src", glob: "web/src/*.ts" })).toMatch(/^web\/src\/api\.ts \(\d+ bytes\)$/);
+    });
+
+    it("names the agent's path in an error, and tells a repository's name from a file", async () => {
+        const { run } = await seams();
+        await expect(run("read_file", { path: "web", start_line: 1, end_line: 1 })).rejects.toThrow(
+            /^web is a repository; use list_files\.$/
+        );
+        await expect(run("read_file", { path: "api/src/nope.ts", start_line: 1, end_line: 1 })).rejects.toThrow(
+            /^No such file or directory: api\/src\/nope\.ts$/
+        );
+        await expect(run("read_file", { path: "api/e", start_line: 1, end_line: 1 })).rejects.toThrow(
+            /^No such file or directory: api\/e$/
+        );
+        await expect(run("list_files", { dir: "web/src/api.ts", glob: "" })).rejects.toThrow(
+            /^web\/src\/api\.ts is a file; use read_file\.$/
+        );
+    });
+
+    it("refuses a path into the other repository's clone, through .. or a symlink", async () => {
+        const { c, run } = await seams();
+        await symlink(c.roots![0].clonePath, join(c.roots![1].clonePath, "to-web"));
+        await expect(run("read_file", { path: "api/../web/src/api.ts", start_line: 1, end_line: 1 })).rejects.toThrow(/leaves the/);
+        await expect(run("read_file", { path: "api/to-web/src/api.ts", start_line: 1, end_line: 1 })).rejects.toThrow(
+            /^The path api\/to-web\/src\/api\.ts leaves the repository\.$/
+        );
+        expect(await run("list_files", { dir: "api", glob: "" })).toContain("api/to-web -> symlink, not followed");
+        expect(await run("grep", { pattern: "getUser", glob: "" })).toBe(
+            "web/src/api.ts:1: export const getUser = id => fetch(`/api/users/${id}`);"
+        );
     });
 
     it("lists every repository's scanner results, and files a finding with evidence in both under no single repository", async () => {

@@ -18,6 +18,7 @@ import { type ScanResults, leakInTree, leakMasks, runGitleaks, runScanners } fro
 import { normaliseOsv, osvEvidence } from "./scanners/osv";
 import { normaliseSemgrep } from "./scanners/semgrep";
 import type { Ruleset, ScannerRunner, ToolVersions } from "./scanners/types";
+import { shortSha } from "./short-sha";
 import { type StackProfile, detectStack, stackProfileText } from "./stack";
 import type { AuditSink, SeverityName } from "./types";
 import { cloneRepository } from "./workspace";
@@ -36,7 +37,8 @@ export interface PipelineSink extends AuditSink {
      */
     foldScannerDuplicates(repositoryId: string, agentRunId: string): Promise<{ from: string; into: string; raised?: SeverityName }[]>;
     /** The repository's reported findings from runs at another commit, which a full run re-checks (design § 9). */
-    earlierFindings(repositoryId: string, sha: string): Promise<EarlierFinding[]>;
+    /** With null, the seams pass's findings, at every repository's commit joined by "+". */
+    earlierFindings(repositoryId: string | null, sha: string): Promise<EarlierFinding[]>;
     recheckFindings(results: RecheckResult[], sha: string): Promise<void>;
 }
 
@@ -96,6 +98,8 @@ export interface AuditDeps {
     checklistsDir: string;
 }
 
+const count = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
+
 export async function runAudit(input: AuditInput, deps: AuditDeps): Promise<{ stopped: boolean }> {
     const { sink } = deps;
     const seams = input.aspects.includes(SEAMS);
@@ -146,6 +150,47 @@ export async function runAudit(input: AuditInput, deps: AuditDeps): Promise<{ st
         scanned.push({ repo, sha, clonePath, scan });
     }
     const masker = new Masker(masks);
+    const readMasked = async (clonePath: string, file: string) => {
+        try {
+            const { abs } = await resolveInClone(clonePath, file);
+            return (await readFile(abs, "utf8")).split(/\r?\n/).map(l => masker.mask(l));
+        } catch {
+            return null;
+        }
+    };
+    const reportRecheck = async (results: RecheckResult[], what: string) => {
+        const news = results.filter(r => !r.keep);
+        const of = (status: RecheckStatus) => news.filter(r => r.status === status).map(r => r.label);
+        const part = (status: RecheckStatus, words: string, list: boolean) =>
+            of(status).length ? `${of(status).length} ${words}${list ? ` (${of(status).join(", ")})` : ""}` : "";
+        const parts = [
+            part("fixed", "fixed", true),
+            part("unchanged", "with code unchanged", false),
+            part("open", "still open as confirmed", false),
+            part("regressed", "regressed", true),
+            part("changed", "changed, to verify", true),
+            results.length - news.length ? `${results.length - news.length} fixed before` : ""
+        ].filter(Boolean);
+        await sink.progress(`Re-checked ${count(results.length, "earlier finding", "earlier findings")} ${what}: ${parts.join(", ")}.`);
+    };
+
+    // The seams pass's findings cite several repositories, so they are re-checked once, with every
+    // clone in place and before any agent starts; a path names its repository first.
+    if (!input.only) {
+        const commit = scanned.map(s => s.sha).join("+");
+        const earlier = await sink.earlierFindings(null, commit);
+        if (earlier.length) {
+            const results = await recheck(earlier, {
+                scanners: [],
+                read: async file => {
+                    const at = scanned.find(s => file.startsWith(`${names.get(s.repo.id)}/`));
+                    return at ? readMasked(at.clonePath, file.slice(names.get(at.repo.id)!.length + 1)) : null;
+                }
+            });
+            await sink.recheckFindings(results, commit);
+            await reportRecheck(results, `of the seams pass against ${shortSha(commit)}`);
+        }
+    }
 
     for (const { repo, sha, clonePath, scan } of scanned) {
         const inTree = new Set<string>();
@@ -180,7 +225,6 @@ export async function runAudit(input: AuditInput, deps: AuditDeps): Promise<{ st
             await sink.createFinding(f);
             filed++;
         }
-        const count = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
         await sink.progress(
             `Scanners filed ${count(filed, "new finding", "new findings")} (${count(scan.leaks.length, "secret", "secrets")} masked from here on).`
         );
@@ -189,33 +233,9 @@ export async function runAudit(input: AuditInput, deps: AuditDeps): Promise<{ st
         if (!input.only) {
             const earlier = await sink.earlierFindings(repo.id, sha);
             if (earlier.length) {
-                const results = await recheck(earlier, {
-                    scanners: scannerFindings,
-                    read: async file => {
-                        try {
-                            const { abs } = await resolveInClone(clonePath, file);
-                            return (await readFile(abs, "utf8")).split(/\r?\n/).map(l => masker.mask(l));
-                        } catch {
-                            return null;
-                        }
-                    }
-                });
+                const results = await recheck(earlier, { scanners: scannerFindings, read: file => readMasked(clonePath, file) });
                 await sink.recheckFindings(results, sha);
-                const news = results.filter(r => !r.keep);
-                const of = (status: RecheckStatus) => news.filter(r => r.status === status).map(r => r.label);
-                const part = (status: RecheckStatus, words: string, list: boolean) =>
-                    of(status).length ? `${of(status).length} ${words}${list ? ` (${of(status).join(", ")})` : ""}` : "";
-                const parts = [
-                    part("fixed", "fixed", true),
-                    part("unchanged", "with code unchanged", false),
-                    part("open", "still open as confirmed", false),
-                    part("regressed", "regressed", true),
-                    part("changed", "changed, to verify", true),
-                    results.length - news.length ? `${results.length - news.length} fixed before` : ""
-                ].filter(Boolean);
-                await sink.progress(
-                    `Re-checked ${count(earlier.length, "earlier finding", "earlier findings")} against ${sha.slice(0, 7)}: ${parts.join(", ")}.`
-                );
+                await reportRecheck(results, `against ${shortSha(sha)}`);
             }
         }
 
@@ -244,7 +264,10 @@ export async function runAudit(input: AuditInput, deps: AuditDeps): Promise<{ st
                 view: { clonePath, repoMap },
                 system,
                 before: input.only ? () => sink.supersedeUnreviewed(repo.id, aspect) : undefined,
-                findingIndex: () => sink.findingIndex(repo.id),
+                findingIndex: async () => [
+                    ...(await sink.findingIndex(repo.id)),
+                    ...(await sink.findingIndex(null, { cites: names.get(repo.id)! })).map(l => `Across repositories: ${l}`)
+                ],
                 after: async agentRunId => {
                     try {
                         for (const f of await sink.foldScannerDuplicates(repo.id, agentRunId))
@@ -288,8 +311,10 @@ export async function runAudit(input: AuditInput, deps: AuditDeps): Promise<{ st
                     )
                 }),
                 before: input.only ? () => sink.supersedeUnreviewed(null, SEAMS) : undefined,
-                findingIndex: async () =>
-                    (await Promise.all(views.map(async v => (await sink.findingIndex(v.repo.id)).map(l => `${v.name}: ${l}`)))).flat()
+                findingIndex: async () => [
+                    ...(await Promise.all(views.map(async v => (await sink.findingIndex(v.repo.id)).map(l => `${v.name}: ${l}`)))).flat(),
+                    ...(await sink.findingIndex(null))
+                ]
             });
             if (outcome?.status === "stopped") return { stopped: true };
         }

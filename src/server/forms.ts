@@ -1,5 +1,5 @@
 import { DEFAULT_EFFORT, DEFAULT_MODEL, type Effort } from "@/engine/agent/request";
-import { type AspectKey, selectAspects } from "@/engine/aspects";
+import { type AspectKey, agentCount, selectAspects } from "@/engine/aspects";
 import { validateBudget } from "@/engine/budget";
 import { EFFORTS, MODEL_CHOICES } from "@/engine/models";
 import type { Brief } from "@/engine/prompts";
@@ -36,7 +36,7 @@ export function parseRunForm(
     if (!EFFORTS.includes(effort)) return { ok: false, error: "Choose one of the offered efforts." };
     const budgetUsd = Number(fd.get("budgetUsd"));
     const budgetTokens = Math.round(Number(fd.get("budgetKTokens")) * 1000);
-    const error = validateBudget({ usd: budgetUsd, tokens: budgetTokens }, repositories * aspects.value.length);
+    const error = validateBudget({ usd: budgetUsd, tokens: budgetTokens }, agentCount(repositories, aspects.value));
     return error ? { ok: false, error } : { ok: true, value: { budgetUsd, budgetTokens, aspects: aspects.value, model, effort } };
 }
 

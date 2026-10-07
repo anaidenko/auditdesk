@@ -240,4 +240,11 @@ describe("the seams suggestion", () => {
         expect(suggestionsFor([EMPTY_STACK]).aspects).not.toContain("seams");
         expect(suggestionsFor([null, null]).aspects).not.toContain("seams");
     });
+
+    it("suggests the seams pass without a detection before the first run, or when a repository was added since the last", () => {
+        expect(suggestionsFor([null, null], { lastRunRepositories: null }).aspects).toEqual(["seams"]);
+        expect(suggestionsFor([null, null], { lastRunRepositories: 1 }).aspects).toEqual(["seams"]);
+        expect(suggestionsFor([null, null], { lastRunRepositories: 2 }).aspects).toEqual([]);
+        expect(suggestionsFor([null], { lastRunRepositories: null }).aspects).toEqual([]);
+    });
 });

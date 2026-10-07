@@ -70,7 +70,7 @@ function sinceLastAudit<
     const count = (status: string) => now.filter(r => r.recheck === status).length;
     return {
         commits: [...new Map(now.map(r => [r.repositoryId ?? "", r.recheckedSha ?? ""] as const)).entries()].map(([id, sha]) => ({
-            repository: names.get(id) ?? "—",
+            repository: names.get(id) ?? (id === "" ? aspectTitle(SEAMS) : "—"),
             sha
         })),
         fixed: now.filter(r => r.recheck === "fixed").map(toReport),
@@ -118,11 +118,13 @@ export async function loadReportData(projectId: string, o: { includeCost?: boole
         where: { run: { projectId }, status: { notIn: ["pending", "running"] } },
         orderBy: { createdAt: "desc" }
     });
+    // The seams pass reads every repository: one row, after them all, whichever its agent ran under.
     const order = (a: { repositoryId: string; aspect: string }) => [
-        project.repositories.findIndex(r => r.id === a.repositoryId),
+        a.aspect === SEAMS ? project.repositories.length : project.repositories.findIndex(r => r.id === a.repositoryId),
         ASPECTS.findIndex(x => x.key === a.aspect) + 1 || ASPECTS.length + 1
     ];
-    const latestAgents = [...new Map(finished.map(a => [`${a.repositoryId}:${a.aspect}`, a] as const).reverse()).values()].sort((x, y) => {
+    const target = (a: { repositoryId: string; aspect: string }) => (a.aspect === SEAMS ? SEAMS : `${a.repositoryId}:${a.aspect}`);
+    const latestAgents = [...new Map(finished.map(a => [target(a), a] as const).reverse()).values()].sort((x, y) => {
         const [rx, ax] = order(x);
         const [ry, ay] = order(y);
         return rx - ry || ax - ay;

@@ -9,6 +9,7 @@ import { finding, tool } from "@/test/agent-messages";
 import { SAMPLE_KEY, makeSampleRepo } from "@/test/sample-repo";
 
 import { type AspectInput, type AspectRunner, apiAspectRunner } from "./agent/run-aspect";
+import { git } from "./git";
 import { MemorySink } from "./memory-sink";
 import { type AuditDeps, type AuditInput, type PipelineSink, pathNames, runAudit } from "./pipeline";
 import type { EarlierFinding, RecheckResult } from "./recheck";
@@ -33,7 +34,7 @@ class TestSink extends MemorySink implements PipelineSink {
         this.agents.find(a => a.id === id)!.status = outcome.status;
     }
     async supersedeUnreviewed(_repositoryId: string | null, _aspect: string) {}
-    async earlierFindings(_repositoryId: string, _sha: string): Promise<EarlierFinding[]> {
+    async earlierFindings(_repositoryId: string | null, _sha: string): Promise<EarlierFinding[]> {
         return [];
     }
     async recheckFindings(_results: RecheckResult[], _sha: string) {}
@@ -86,7 +87,8 @@ describe("runAudit", () => {
         const leak = first.findings.find(f => f.source === "scanner" && f.checklistItem === "SEC-10")!;
         class Rechecking extends TestSink {
             rechecks: { results: RecheckResult[]; sha: string }[] = [];
-            override async earlierFindings(_r: string, sha: string): Promise<EarlierFinding[]> {
+            override async earlierFindings(r: string | null, sha: string): Promise<EarlierFinding[]> {
+                if (r === null) return [];
                 expect(sha).toMatch(/^[0-9a-f]{40}$/);
                 const base = {
                     references: {},
@@ -359,6 +361,110 @@ describe("the seams pass", () => {
         expect(inputs.map(i => i.ctx.aspect)).toEqual(["seams"]);
         expect(inputs[0].ctx.roots).toHaveLength(2);
         expect(sink.superseded).toEqual([[null, "seams"]]);
+    });
+
+    it("gives the seams pass its earlier findings, and each repository's agents those that cite it", async () => {
+        const sink = new TestSink();
+        const { inputs, runAspect } = capturing();
+        const repositories = [
+            { id: "r-web", source: await makeSampleRepo(), branch: "main" },
+            { id: "r-api", source: await makeSampleRepo(), branch: "main" }
+        ];
+        const [webName] = [...pathNames(repositories).values()];
+        await sink.createFinding({
+            repositoryId: null,
+            agentRunId: null,
+            aspect: "seams",
+            kind: "finding",
+            checklistItem: "SEA-02",
+            title: "The admin route trusts the front end's check",
+            severity: "high",
+            likelihood: null,
+            impact: null,
+            summary: "s",
+            explanation: "e",
+            recommendation: "r",
+            effort: "S",
+            evidence: [{ file: `${webName}/src/server.js`, startLine: 4, endLine: 4 }],
+            references: {},
+            tags: [],
+            source: "agent",
+            fingerprint: "seam"
+        });
+        await audit(
+            sink,
+            repositories[0].source,
+            await mkdtemp(join(tmpdir(), "ws-")),
+            { repositories, aspects: ["security", "seams"] },
+            runAspect
+        );
+        const [web, api, seams] = inputs.map(i => i.firstMessage);
+        expect(web).toContain(`Across repositories: F-001 [high] SEA-02 ${webName}/src/server.js:4`);
+        expect(api).not.toContain("F-001");
+        expect(seams).toContain(`F-001 [high] SEA-02 ${webName}/src/server.js:4 The admin route trusts the front end's check`);
+    });
+
+    it("re-checks the seams pass's earlier findings in every repository's clone, before the agents, at the commits joined", async () => {
+        const repositories = [
+            { id: "r-web", source: await makeSampleRepo(), branch: "main" },
+            { id: "r-api", source: await makeSampleRepo(), branch: "main" }
+        ];
+        const [webName, apiName] = [...pathNames(repositories).values()];
+        const asked: (string | null)[] = [];
+        class Rechecking extends TestSink {
+            rechecks: { results: RecheckResult[]; sha: string }[] = [];
+            override async earlierFindings(repositoryId: string | null): Promise<EarlierFinding[]> {
+                asked.push(repositoryId);
+                if (repositoryId !== null) return [];
+                const line = (file: string, snippet: string) => ({ file, startLine: 7, endLine: 7, snippet });
+                const seam = (id: string, evidence: EarlierFinding["evidence"]) => ({
+                    id,
+                    label: id,
+                    source: "agent" as const,
+                    fingerprint: id,
+                    title: "t",
+                    checklistItem: "SEA-02",
+                    references: {},
+                    evidence,
+                    recheck: null,
+                    recheckDigest: null,
+                    recheckGone: false
+                });
+                const calc = 'app.get("/calc", (req, res) => res.send(String(eval(req.query.expr))));';
+                return [
+                    seam("both", [line(`${webName}/src/server.js`, calc), line(`${apiName}/src/server.js`, calc)]),
+                    seam("moved-on", [line(`${apiName}/src/server.js`, 'app.get("/calc", (req, res) => res.send(calc(req.query.expr)));')]),
+                    seam("unknown-root", [line(`gone/src/server.js`, calc)])
+                ];
+            }
+            override async recheckFindings(results: RecheckResult[], sha: string) {
+                this.rechecks.push({ results, sha });
+            }
+        }
+        const sink = new Rechecking();
+        const { runAspect } = capturing();
+        await audit(
+            sink,
+            repositories[0].source,
+            await mkdtemp(join(tmpdir(), "ws-")),
+            { repositories, aspects: ["security", "seams"] },
+            runAspect
+        );
+        expect(asked).toEqual([null, "r-web", "r-api"]);
+        const shas = await Promise.all(repositories.map(async r => (await git(["rev-parse", "HEAD"], r.source)).trim()));
+        expect(sink.rechecks).toEqual([
+            {
+                sha: `${shas[0]}+${shas[1]}`,
+                results: [
+                    expect.objectContaining({ id: "both", status: "unchanged" }),
+                    expect.objectContaining({ id: "moved-on", status: "changed" }),
+                    expect.objectContaining({ id: "unknown-root", status: "changed" })
+                ]
+            }
+        ]);
+        const said = sink.events.findIndex(e => e.startsWith("Re-checked 3 earlier findings of the seams pass"));
+        expect(said).toBeGreaterThan(-1);
+        expect(said).toBeLessThan(sink.events.findIndex(e => e.startsWith("Agent:")));
     });
 
     it("skips the seams pass for a project of one repository, and gives its share to the others", async () => {

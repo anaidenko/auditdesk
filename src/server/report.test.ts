@@ -165,6 +165,43 @@ describe("the seams between repositories", () => {
         expect(d.findings.map(x => [x.repository, x.aspect])).toEqual([["Seams between repositories", "Seams between repositories"]]);
         expect(d.aspects.map(a => a.title)).toEqual(["Seams between repositories"]);
     });
+
+    it("lists the seams pass after every repository's aspects, once, whichever repository its agent ran under", async () => {
+        const { project, repo: web } = await projectWithRepo("/tmp/web");
+        const api = await prisma.repository.create({
+            data: { projectId: project.id, source: "/tmp/api", branch: "main", createdAt: new Date(Date.now() + 1000) }
+        });
+        const r = await run(project.id, "done", null, new Date("2026-10-07"));
+        await agent(r.id, web.id, "done", new Date("2026-10-07T10:00:00Z"));
+        await agent(r.id, web.id, "partial", new Date("2026-10-07T10:01:00Z"), "seams");
+        await agent(r.id, api.id, "done", new Date("2026-10-07T10:02:00Z"));
+        await agent(r.id, api.id, "done", new Date("2026-10-07T10:03:00Z"), "seams");
+        const d = await loadReportData(project.id);
+        expect(d.aspects.map(a => [a.title, a.status])).toEqual([
+            ["Security (web)", "done"],
+            ["Security (api)", "done"],
+            ["Seams between repositories", "done"]
+        ]);
+    });
+
+    it("names the seams pass and its joined commits in the comparison with the last audit", async () => {
+        const { project, repo } = await projectWithRepo("/tmp/web");
+        const before = await run(project.id, "done", null, new Date("2026-10-01"));
+        const after = await run(project.id, "done", null, new Date("2026-10-08"));
+        const f = await createFinding(project.id, before.id, { ...sampleFinding(repo.id, { aspect: "seams" }), repositoryId: null });
+        const commit = `${"a".repeat(40)}+${"b".repeat(40)}`;
+        await prisma.finding.update({
+            where: { id: f.id },
+            data: {
+                status: "accepted",
+                recheck: "unchanged",
+                recheckedSha: commit,
+                recheckRunId: after.id,
+                recheckedAt: new Date("2026-10-08")
+            }
+        });
+        expect((await loadReportData(project.id)).since?.commits).toEqual([{ repository: "Seams between repositories", sha: commit }]);
+    });
 });
 
 describe("aspects and repositories that changed", () => {

@@ -24,20 +24,29 @@ function isBinary(buf: Buffer): boolean {
     return buf.subarray(0, 8000).includes(0);
 }
 
-export async function listFiles(root: string, o: { dir?: string; glob?: string; limit?: number } = {}): Promise<string> {
+/**
+ * `prefix`: the repository's name in a cross-repository agent's paths; a glob may be written with
+ * it or without.
+ */
+const globMatcher = (glob: string | undefined, prefix = "") => {
+    const match = glob ? globToRegExp(glob) : null;
+    return (rel: string) => !match || match.test(rel) || (!!prefix && match.test(`${prefix}${rel}`));
+};
+
+export async function listFiles(root: string, o: { dir?: string; glob?: string; limit?: number; prefix?: string } = {}): Promise<string> {
     let base = "";
     if (o.dir && o.dir !== ".") {
         const { abs, rel } = await resolveInClone(root, o.dir);
         if (!(await stat(abs)).isDirectory()) throw new ToolError(`${rel} is a file; use read_file.`);
         base = rel;
     }
-    const match = o.glob ? globToRegExp(o.glob) : null;
+    const matches = globMatcher(o.glob, o.prefix);
     const limit = o.limit ?? LIMITS.listEntries;
     const lines: string[] = [];
     let more = 0;
     for await (const entry of walk(join(root, base))) {
         const rel = base ? `${base}/${entry.rel}` : entry.rel;
-        if (match && !match.test(rel)) continue;
+        if (!matches(rel)) continue;
         if (lines.length >= limit) {
             more++;
             continue;
@@ -94,7 +103,7 @@ export async function readSnippet(root: string, path: string, startLine: number,
 export async function grepFiles(
     root: string,
     pattern: string,
-    o: { glob?: string; timeoutMs?: number; totalMs?: number; mask?: LineMask } = {}
+    o: { glob?: string; prefix?: string; timeoutMs?: number; totalMs?: number; mask?: LineMask } = {}
 ): Promise<string> {
     let re: RegExp;
     try {
@@ -102,14 +111,14 @@ export async function grepFiles(
     } catch (e) {
         throw new ToolError(`Invalid regular expression: ${(e as Error).message}`);
     }
-    const match = o.glob ? globToRegExp(o.glob) : null;
+    const matches = globMatcher(o.glob, o.prefix);
     const sandbox = createContext({ re, lines: [] as string[], hits: [] as number[] });
     const deadline = Date.now() + (o.totalMs ?? LIMITS.grepTotalMs);
     const hits: string[] = [];
     let tooBig = 0;
     let more = 0;
     for await (const entry of walk(root)) {
-        if ("symlink" in entry || (match && !match.test(entry.rel))) continue;
+        if ("symlink" in entry || !matches(entry.rel)) continue;
         if (entry.size > LIMITS.grepFileBytes) {
             tooBig++;
             continue;

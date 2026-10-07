@@ -14,7 +14,10 @@ describe("renderReport", () => {
                     finding({ label: "F-005", severity: "low", recheck: "changed" })
                 ],
                 since: {
-                    commits: [{ repository: "app", sha: "c".repeat(40) }],
+                    commits: [
+                        { repository: "app", sha: "c".repeat(40) },
+                        { repository: "Seams between repositories", sha: `${"c".repeat(40)}+${"d".repeat(40)}` }
+                    ],
                     fixed: [finding({ label: "F-002", severity: "high", title: "Raw SQL in search" })],
                     unchanged: 1,
                     open: 2,
@@ -26,7 +29,7 @@ describe("renderReport", () => {
         );
         expect(html).toContain('<li><a href="#since">Since the last audit</a></li>');
         const since = html.slice(html.indexOf('<section id="since">'), html.indexOf("</section>", html.indexOf('<section id="since">')));
-        expect(since).toContain("Re-audited at ccccccc (app).");
+        expect(since).toContain("Re-audited at ccccccc (app), ccccccc+ddddddd (Seams between repositories).");
         expect(since).toContain("1 fixed · 1 with code unchanged · 2 confirmed open · 1 regressed · 2 new.");
         expect(since).toContain("Code changed since, not yet verified: F-005.");
         expect(since).toContain("Raw SQL in search");

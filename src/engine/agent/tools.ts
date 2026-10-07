@@ -150,7 +150,9 @@ export function toolSpecs(ctx: AgentContext): ToolSpec[] {
             run: guard(ctx, async ({ dir, glob }) => {
                 if (!ctx.roots) return listFiles(ctx.clonePath, { dir, glob: glob || undefined });
                 if (!atRoot(dir) || glob)
-                    return across(ctx, atRoot(dir) ? null : dir, glob, (root, rel, g) => listFiles(root, { dir: rel, glob: g }));
+                    return across(ctx, atRoot(dir) ? null : dir, glob, (root, rel, g, prefix) =>
+                        listFiles(root, { dir: rel, glob: g, prefix })
+                    );
                 return ctx.roots.map(r => `${r.name}/ (repository)`).join("\n");
             })
         }),
@@ -161,7 +163,11 @@ export function toolSpecs(ctx: AgentContext): ToolSpec[] {
             readOnly: true,
             run: guard(ctx, async ({ path, start_line, end_line }) => {
                 const at = inRoot(ctx, path);
-                return prefixed(at.prefix, await readFileRange(at.clonePath, at.rel, start_line, end_line, line => ctx.masker.mask(line)));
+                if (at.prefix && at.rel === ".") throw new ToolError(`${at.prefix.slice(0, -1)} is a repository; use list_files.`);
+                return prefixed(
+                    at.prefix,
+                    await named(at, () => readFileRange(at.clonePath, at.rel, start_line, end_line, line => ctx.masker.mask(line)))
+                );
             })
         }),
         spec({
@@ -173,8 +179,8 @@ export function toolSpecs(ctx: AgentContext): ToolSpec[] {
             }),
             readOnly: true,
             run: guard(ctx, async ({ pattern, glob }) => {
-                const search = (root: string, _rel: string | undefined, g: string | undefined) =>
-                    grepFiles(root, pattern, { glob: g, mask: line => ctx.masker.mask(line) });
+                const search = (root: string, _rel: string | undefined, g: string | undefined, prefix?: string) =>
+                    grepFiles(root, pattern, { glob: g, prefix, mask: line => ctx.masker.mask(line) });
                 return ctx.roots ? across(ctx, null, glob, search) : search(ctx.clonePath, undefined, glob || undefined);
             })
         }),
@@ -236,20 +242,38 @@ const prefixed = (prefix: string, out: string) =>
               .join("\n")
         : out;
 
+/** A file tool's error in the agent's own path, its repository's name first. */
+async function named<T>(at: { rel: string; prefix: string }, run: () => Promise<T>): Promise<T> {
+    try {
+        return await run();
+    } catch (e) {
+        if (!(e instanceof ToolError) || !at.prefix || at.rel === ".") throw e;
+        // The path as a word of the message: a short one ("e") also occurs inside its words.
+        const path = new RegExp(`(^|\\s)${at.rel.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}(?=$|\\s|[.;:,](?:\\s|$))`, "g");
+        throw new ToolError(e.message.replace(path, `$1${at.prefix}${at.rel}`));
+    }
+}
+
 /**
  * Runs a file tool on each repository a cross-repository agent reads, or on the one a directory or
- * a glob names first, and joins what they printed.
+ * a glob names first, and joins what they printed. The glob is matched with each path's repository
+ * name and without it.
  */
 async function across(
     ctx: AgentContext,
     dir: string | null,
     glob: string,
-    tool: (root: string, rel: string | undefined, glob: string | undefined) => Promise<string>
+    tool: (root: string, rel: string | undefined, glob: string | undefined, prefix: string) => Promise<string>
 ): Promise<string> {
-    const named = dir ?? (glob.split("/")[0] && ctx.roots!.some(r => r.name === glob.split("/")[0]) ? glob : null);
-    const roots = named ? [inRoot(ctx, named)] : ctx.roots!.map(r => inRoot(ctx, `${r.name}/`));
-    const g = named && !dir ? glob.split("/").slice(1).join("/") || undefined : glob || undefined;
-    const outs = await Promise.all(roots.map(async r => prefixed(r.prefix, await tool(r.clonePath, dir ? r.rel : undefined, g))));
+    const head = glob.split("/")[0];
+    const roots = dir
+        ? [inRoot(ctx, dir)]
+        : ctx.roots!.filter(r => !ctx.roots!.some(x => x.name === head) || r.name === head).map(r => inRoot(ctx, `${r.name}/`));
+    const outs = await Promise.all(
+        roots.map(async r =>
+            prefixed(r.prefix, await named(r, () => tool(r.clonePath, dir ? r.rel : undefined, glob || undefined, r.prefix)))
+        )
+    );
     const found = outs.filter(o => !/^(No files\.|No matches)/.test(o));
     return found.length ? found.join("\n") : outs[0];
 }

@@ -38,6 +38,11 @@ export function indexLine(f: {
     return `${f.label} [${f.severity ?? "question"}] ${f.checklistItem ?? "-"} ${e ? `${e.file}:${e.startLine}` : "-"} ${f.title}`;
 }
 
+/** Whether any of the finding's evidence lies under the path name, as a seams finding's paths do. */
+export function cites(evidence: Evidence[], name: string): boolean {
+    return evidence.some(e => e.file.startsWith(`${name}/`));
+}
+
 const rank = (s: SeverityName | null) => (s === null ? SEVERITIES.length : SEVERITIES.indexOf(s));
 
 /** The catalogue's position of an aspect named by key or title; one outside it sorts last. */
