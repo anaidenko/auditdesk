@@ -17,7 +17,7 @@ import {
 import { ACCESS_LABEL } from "@/app/model-access";
 import { Badge, FormError, Icon, button, input, label } from "@/app/ui";
 import { DEFAULT_EFFORT, DEFAULT_MODEL, type Effort } from "@/engine/agent/request";
-import { ASPECTS } from "@/engine/aspects";
+import { ASPECTS, agentCount } from "@/engine/aspects";
 import { type CostStats, estimateRun, pickStats } from "@/engine/estimate";
 import { EFFORTS, MODEL_CHOICES } from "@/engine/models";
 import type { ModelAccess } from "@/engine/types";
@@ -67,7 +67,7 @@ export function StartRunForm({
     const [state, action, pending] = useActionState<FormState<RunValues>, FormData>(startRun.bind(null, projectId), { error: null });
     const ticked = (key: string) => key === "security" || (state.values?.aspects ?? [...chosen, ...suggested]).includes(key);
     const [live, setLive] = useState({
-        aspects: ASPECTS.filter(a => ticked(a.key)).length,
+        aspects: ASPECTS.filter(a => ticked(a.key)).map(a => a.key as string),
         usd: defaults.usd,
         model: DEFAULT_MODEL as string,
         effort: DEFAULT_EFFORT as Effort
@@ -78,7 +78,7 @@ export function StartRunForm({
         if (!f) return;
         const fd = new FormData(f);
         setLive({
-            aspects: 1 + fd.getAll("aspects").length,
+            aspects: ["security", ...fd.getAll("aspects").map(String)],
             usd: Number(fd.get("budgetUsd")),
             model: String(fd.get("model")),
             effort: String(fd.get("effort")) as Effort
@@ -87,7 +87,7 @@ export function StartRunForm({
     // A box ticked by a new suggestion, or values a browser restored, change the form without a change event.
     useLayoutEffect(() => read(form.current), [chosen, suggested, repositories, state]);
     const picked = pickStats(costStats, live.model, live.effort);
-    const estimate = repositories ? estimateRun(picked.stats, repositories * live.aspects, live.usd, picked.basis) : null;
+    const estimate = repositories ? estimateRun(picked.stats, agentCount(repositories, live.aspects), live.usd, picked.basis) : null;
     return (
         // Remounted with what a refused start held, since React resets a form after its action.
         <form

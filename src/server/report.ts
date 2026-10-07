@@ -2,10 +2,11 @@ import { mkdir, writeFile } from "node:fs/promises";
 import { basename, join } from "node:path";
 import "server-only";
 
-import { ASPECTS, aspectTitle } from "@/engine/aspects";
+import { ASPECTS, SEAMS, aspectTitle } from "@/engine/aspects";
 import { loadChecklist } from "@/engine/checklists";
 import { workspaceDir } from "@/engine/config";
 import { findingLabel } from "@/engine/findings";
+import { pathNames } from "@/engine/pipeline";
 import { loadReferences, referencesFor } from "@/engine/references";
 import type { ReportData, ReportFinding } from "@/engine/report/types";
 import type { ToolVersions } from "@/engine/scanners/types";
@@ -70,7 +71,7 @@ function sinceLastAudit<
     const count = (status: string) => now.filter(r => r.recheck === status).length;
     return {
         commits: [...new Map(now.map(r => [r.repositoryId ?? "", r.recheckedSha ?? ""] as const)).entries()].map(([id, sha]) => ({
-            repository: names.get(id) ?? "—",
+            repository: names.get(id) ?? (id === "" ? aspectTitle(SEAMS) : "—"),
             sha
         })),
         fixed: now.filter(r => r.recheck === "fixed").map(toReport),
@@ -106,7 +107,7 @@ export async function loadReportData(projectId: string, o: { includeCost?: boole
         effortHours: r.effortHours,
         evidence: r.evidence as unknown as Evidence[],
         references: r.references as References,
-        repository: names.get(r.repositoryId ?? "") ?? "—",
+        repository: names.get(r.repositoryId ?? "") ?? (r.aspect === SEAMS ? aspectTitle(SEAMS) : "—"),
         tags: r.tags,
         fixBeforeSignoff: r.fixBeforeSignoff,
         refs: referencesFor(referenceData, r.checklistItem, r.references as References, { question: r.kind === "question" }),
@@ -118,11 +119,13 @@ export async function loadReportData(projectId: string, o: { includeCost?: boole
         where: { run: { projectId }, status: { notIn: ["pending", "running"] } },
         orderBy: { createdAt: "desc" }
     });
+    // The seams pass reads every repository: one row, after them all, whichever its agent ran under.
     const order = (a: { repositoryId: string; aspect: string }) => [
-        project.repositories.findIndex(r => r.id === a.repositoryId),
+        a.aspect === SEAMS ? project.repositories.length : project.repositories.findIndex(r => r.id === a.repositoryId),
         ASPECTS.findIndex(x => x.key === a.aspect) + 1 || ASPECTS.length + 1
     ];
-    const latestAgents = [...new Map(finished.map(a => [`${a.repositoryId}:${a.aspect}`, a] as const).reverse()).values()].sort((x, y) => {
+    const target = (a: { repositoryId: string; aspect: string }) => (a.aspect === SEAMS ? SEAMS : `${a.repositoryId}:${a.aspect}`);
+    const latestAgents = [...new Map(finished.map(a => [target(a), a] as const).reverse()).values()].sort((x, y) => {
         const [rx, ax] = order(x);
         const [ry, ay] = order(y);
         return rx - ry || ax - ay;
@@ -144,7 +147,9 @@ export async function loadReportData(projectId: string, o: { includeCost?: boole
                 ...c,
                 title: titles.get(c.item) ?? ""
             }));
-            return { title: `${checklist.title} (${names.get(a.repositoryId)})`, status: a.status, note: a.note, coverage };
+            // The seams pass reads every repository; its agent is filed under the first.
+            const title = a.aspect === SEAMS ? checklist.title : `${checklist.title} (${names.get(a.repositoryId)})`;
+            return { title, status: a.status, note: a.note, coverage };
         })
     );
     const catalogue = await Promise.all(
@@ -175,6 +180,10 @@ export async function loadReportData(projectId: string, o: { includeCost?: boole
             sha: r.commitSha ?? "not cloned",
             notCovered: (r.stack as StackProfile | null)?.notCovered ?? []
         })),
+        // A seams finding's paths start with the pipeline's name for each repository, not the report's.
+        ...(rows.some(r => r.aspect === SEAMS) && {
+            seamsPaths: [...pathNames(project.repositories)].map(([id, path]) => ({ path, repository: names.get(id)! }))
+        }),
         aiBuilt: project.aiBuilt,
         aspects,
         itemTitles,

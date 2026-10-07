@@ -2,7 +2,7 @@ import { execFileSync } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
 import { mkdtemp } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, relative } from "node:path";
 import { describe, expect, it } from "vitest";
 
 import { makeRepo } from "@/test/git-repo";
@@ -47,6 +47,29 @@ describe("prepareFixture", () => {
             encoding: "utf8"
         }).trim();
         expect(() => execFileSync("git", ["cat-file", "-e", blob], { cwd: prepared.path, stdio: "pipe" })).toThrow();
+    });
+
+    it("fetches a new pin from the fixture's current URL when its cached clone came from another", async () => {
+        const old = await makeRepo({ "app.ts": "export {}\n" });
+        const ws = await mkdtemp(join(tmpdir(), "ws-"));
+        const oldSha = execFileSync("git", ["rev-parse", "HEAD"], { cwd: old, encoding: "utf8" }).trim();
+        await prepareFixture({ name: "demo", url: old, sha: oldSha, rules }, ws);
+        const moved = await makeRepo({ "app.ts": "export const moved = 1\n" });
+        const sha = execFileSync("git", ["rev-parse", "HEAD"], { cwd: moved, encoding: "utf8" }).trim();
+        const prepared = await prepareFixture({ name: "demo", url: moved, sha, rules }, ws);
+        expect(readFileSync(join(prepared.path, "app.ts"), "utf8")).toBe("export const moved = 1\n");
+        expect(execFileSync("git", ["remote", "get-url", "origin"], { cwd: prepared.upstreamDir, encoding: "utf8" }).trim()).toBe(moved);
+    });
+
+    it("reads a relative local path from the caller's directory, not the cached clone's", async () => {
+        const ws = await mkdtemp(join(tmpdir(), "ws-"));
+        const first = await makeRepo({ "app.ts": "export {}\n" });
+        const firstSha = execFileSync("git", ["rev-parse", "HEAD"], { cwd: first, encoding: "utf8" }).trim();
+        await prepareFixture({ name: "demo", url: relative(process.cwd(), first), sha: firstSha, rules }, ws);
+        const moved = await makeRepo({ "app.ts": "export const moved = 1\n" });
+        const sha = execFileSync("git", ["rev-parse", "HEAD"], { cwd: moved, encoding: "utf8" }).trim();
+        const prepared = await prepareFixture({ name: "demo", url: relative(process.cwd(), moved), sha, rules }, ws);
+        expect(readFileSync(join(prepared.path, "app.ts"), "utf8")).toBe("export const moved = 1\n");
     });
 
     it("keeps a tracked file that the fixture's own .gitignore names", async () => {

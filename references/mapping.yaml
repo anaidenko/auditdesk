@@ -131,3 +131,11 @@ items:
   TEN-05: { cheatsheets: [Multi_Tenant_Security] }
   TEN-06: { cheatsheets: [Multi_Tenant_Security] }
   TEN-07: { cheatsheets: [Multi_Tenant_Security] }
+
+  SEA-01: { top10: "A06:2025", asvs: [V4.1, V4.2] }
+  SEA-02: { asvs: [V3.3, V7.2, V9.1], cheatsheets: [Session_Management, Authentication] }
+  SEA-03: { cwe: 602, asvs: [V8.2, V8.3], cheatsheets: [Authorization, Insecure_Direct_Object_Reference_Prevention] }
+  SEA-04: { asvs: [V3.3, V3.5], cheatsheets: [Cross-Site_Request_Forgery_Prevention, HTTP_Headers] }
+  SEA-05: { cwe: 602, asvs: [V2.2], cheatsheets: [Input_Validation, Mass_Assignment] }
+  SEA-06: { asvs: [V13.3, V3.1], cheatsheets: [Secrets_Management] }
+  SEA-07: { asvs: [V16.5, V4.1], cheatsheets: [Error_Handling] }

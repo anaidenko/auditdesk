@@ -60,6 +60,17 @@ describe("forms", () => {
         expect(parseRunForm(f, 1)).toMatchObject({ ok: false, error: expect.stringMatching(/20 thousand/) });
         expect(parseRunForm(fd({ budgetUsd: "10", budgetKTokens: "100" }), 1)).toMatchObject({ ok: true });
     });
+
+    it("counts the seams pass as one agent, and none for a project of one repository, as the estimate does", () => {
+        const f = (k: string) => {
+            const form = fd({ budgetUsd: "10", budgetKTokens: k });
+            form.append("aspects", "seams");
+            return form;
+        };
+        expect(parseRunForm(f("60"), 2)).toMatchObject({ ok: true });
+        expect(parseRunForm(f("59"), 2)).toMatchObject({ ok: false, error: expect.stringMatching(/^Each of the 3 agents/) });
+        expect(parseRunForm(f("20"), 1)).toMatchObject({ ok: true });
+    });
 });
 
 describe("parseModelAccess", () => {

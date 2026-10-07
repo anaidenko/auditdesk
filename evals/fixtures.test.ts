@@ -1,32 +1,74 @@
 import { execFileSync as run } from "node:child_process";
-import { existsSync } from "node:fs";
-import { describe, expect, it } from "vitest";
+import { mkdtempSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { beforeAll, describe, expect, it } from "vitest";
 
 import { ASPECTS } from "@/engine/aspects";
 import { loadChecklist } from "@/engine/checklists";
 import { SEVERITIES } from "@/engine/types";
 
-import { type KeyEntry, type KeyLocation, fixturePath, loadFixtures, loadKey } from "./fixtures";
+import { type KeyEntry, type KeyLocation, loadFixtures, loadKey } from "./fixtures";
 
 const own = loadFixtures().find(f => f.name === "own")!;
-const present = existsSync(fixturePath(own));
 
 describe("the fixture list", () => {
-    it("pins the own fixture by a relative path and a full commit", () => {
-        expect(own.path).toMatch(/^\.\.\//);
+    it("pins the own fixture by its public repository and a full commit", () => {
+        expect(own.url).toBe("https://github.com/anaidenko/auditdesk-fixture");
         expect(own.sha).toMatch(/^[0-9a-f]{40}$/);
     });
 });
 
-// The fixture is a sibling repository until it is published (plan, Task 6.5).
-describe.skipIf(!present)("the own fixture's answer key", () => {
+describe("the own fixture's answer key", () => {
     const key = loadKey("own");
+
+    it("files every entry under an item of its aspect's checklist, and plants defects for every aspect of one repository", async () => {
+        // The own fixture is one repository, so the seams between repositories have nothing to find in it.
+        expect(new Set(key.entries.map(e => e.aspect))).toEqual(new Set(ASPECTS.map(a => a.key).filter(k => k !== "seams")));
+        const all = new Set((await Promise.all(ASPECTS.map(a => loadChecklist(a.key)))).flatMap(c => c.items.map(i => i.id)));
+        for (const e of key.entries) {
+            expect(
+                (await loadChecklist(e.aspect)).items.map(i => i.id),
+                e.id
+            ).toContain(e.checklistItem);
+            for (const item of e.alsoItems ?? []) expect(all, `${e.id} ${item}`).toContain(item);
+        }
+        for (const k of key.known) expect(all, k.title).toContain(k.checklistItem);
+    });
+
+    it("keeps IDs unique, severities valid, and questions without a severity", () => {
+        expect(new Set(key.entries.map(e => e.id)).size).toBe(key.entries.length);
+        for (const e of key.entries) {
+            expect(e.severity === null, e.id).toBe(e.kind === "question");
+            if (e.severity !== null) expect(SEVERITIES, e.id).toContain(e.severity);
+        }
+    });
+});
+
+// A full clone, not a partial one: the tests read every file, and a partial clone would fetch each blob apart.
+describe("the own fixture at its pinned commit", () => {
+    const key = loadKey("own");
+    let clone = "";
+    beforeAll(() => {
+        clone = join(mkdtempSync(join(tmpdir(), "own-fixture-")), "clone");
+        try {
+            // execFileSync blocks vitest's hook timeout, so the clone carries its own, and a missing
+            // repository fails rather than waiting at a password prompt or an askpass dialog.
+            run("git", ["clone", "--quiet", "--no-checkout", own.url, clone], {
+                stdio: "pipe",
+                timeout: 60_000,
+                env: { ...process.env, GIT_TERMINAL_PROMPT: "0", GIT_ASKPASS: "" }
+            });
+        } catch (e) {
+            throw new Error(
+                `Cannot clone ${own.url}. Offline, point it at a local clone: GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=url.<path>.insteadOf GIT_CONFIG_VALUE_0=${own.url} pnpm test`,
+                { cause: e }
+            );
+        }
+    }, 70_000);
     // Read without trimming, or a file's leading blank lines would shift every anchor in it.
-    const show = (file: string) => run("git", ["show", `${own.sha}:${file}`], { cwd: fixturePath(own), encoding: "utf8" });
-    const tree = () =>
-        run("git", ["ls-tree", "-r", "--name-only", own.sha], { cwd: fixturePath(own), encoding: "utf8" })
-            .split("\n")
-            .filter(Boolean);
+    const show = (file: string) => run("git", ["show", `${own.sha}:${file}`], { cwd: clone, encoding: "utf8" });
+    const tree = () => run("git", ["ls-tree", "-r", "--name-only", own.sha], { cwd: clone, encoding: "utf8" }).split("\n").filter(Boolean);
     const located = (e: KeyEntry): KeyLocation[] => [
         ...(e.kind === "finding" ? [{ file: e.file!, startLine: e.startLine!, endLine: e.endLine!, anchor: e.anchor! }] : []),
         ...(e.also ?? [])
@@ -44,34 +86,14 @@ describe.skipIf(!present)("the own fixture's answer key", () => {
         }
     });
 
-    it("plants defects for every v1 aspect, each under an item of its aspect's checklist", async () => {
-        expect(new Set(key.entries.map(e => e.aspect))).toEqual(new Set(ASPECTS.map(a => a.key)));
-        const all = new Set((await Promise.all(ASPECTS.map(a => loadChecklist(a.key)))).flatMap(c => c.items.map(i => i.id)));
-        for (const e of key.entries) {
-            expect(
-                (await loadChecklist(e.aspect)).items.map(i => i.id),
-                e.id
-            ).toContain(e.checklistItem);
-            for (const item of e.alsoItems ?? []) expect(all, `${e.id} ${item}`).toContain(item);
-        }
-        for (const k of key.known) {
-            expect(all, k.title).toContain(k.checklistItem);
-            if (k.file) expect(tree(), k.title).toContain(k.file);
-        }
-    });
-
-    it("keeps IDs unique, severities valid, and questions without a severity", () => {
-        expect(new Set(key.entries.map(e => e.id)).size).toBe(key.entries.length);
-        for (const e of key.entries) {
-            expect(e.severity === null, e.id).toBe(e.kind === "question");
-            if (e.severity !== null) expect(SEVERITIES, e.id).toContain(e.severity);
-        }
+    it("names only files the fixture has as the places of its known issues", () => {
+        for (const k of key.known) if (k.file) expect(tree(), k.title).toContain(k.file);
     });
 
     it("names no defect anywhere in the fixture: its files, their names or its history", () => {
         const files = tree();
         expect(files.filter(f => /^\.(claude|cursor|windsurf|kiro|bolt)\//.test(f))).toEqual([]);
-        const log = run("git", ["log", "--format=%B", own.sha], { cwd: fixturePath(own), encoding: "utf8" });
+        const log = run("git", ["log", "--format=%B", own.sha], { cwd: clone, encoding: "utf8" });
         const text = [log, ...files.map(f => `${f}\n${show(f)}`)].join("\n").toLowerCase();
         for (const word of ["vuln", "insecure", "planted", "exploit", "xss", "ssrf", "idor", "injection", "todo", "fixme", "unsafe"]) {
             expect(text, word).not.toContain(word);

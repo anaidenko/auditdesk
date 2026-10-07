@@ -11,7 +11,12 @@ export function findingLabel(n: number): string {
  * Identifies an issue across runs: line numbers move between commits, so they are left out.
  * Re-audits (v1.1) match on it; v1 uses it to skip scanner findings a re-run already filed.
  */
-export function fingerprint(f: { repositoryId: string; aspect: string; checklistItem: string | null; evidence: Evidence[] }): string {
+export function fingerprint(f: {
+    repositoryId: string | null;
+    aspect: string;
+    checklistItem: string | null;
+    evidence: Evidence[];
+}): string {
     const parts = [
         f.repositoryId,
         f.aspect,
@@ -31,6 +36,11 @@ export function indexLine(f: {
 }): string {
     const e = f.evidence[0];
     return `${f.label} [${f.severity ?? "question"}] ${f.checklistItem ?? "-"} ${e ? `${e.file}:${e.startLine}` : "-"} ${f.title}`;
+}
+
+/** Whether any of the finding's evidence lies under the path name, as a seams finding's paths do. */
+export function cites(evidence: Evidence[], name: string): boolean {
+    return evidence.some(e => e.file.startsWith(`${name}/`));
 }
 
 const rank = (s: SeverityName | null) => (s === null ? SEVERITIES.length : SEVERITIES.indexOf(s));

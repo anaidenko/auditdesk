@@ -110,6 +110,57 @@ describe("PrismaSink", () => {
         expect(atSame).toBeTruthy();
     });
 
+    it("gives a re-audit the project's seams findings, which belong to no repository, at another set of commits", async () => {
+        const { project, repo: web } = await projectWithRepo("/tmp/web");
+        const api = await prisma.repository.create({
+            data: { projectId: project.id, source: "/tmp/api", branch: "main", createdAt: new Date(Date.now() + 1000) }
+        });
+        // Written api first: JSONB keeps no key order, so the joined commits follow the repositories' order.
+        const runAt = (commits: Record<string, string>) =>
+            prisma.run.create({
+                data: {
+                    projectId: project.id,
+                    model: "m",
+                    effort: "low",
+                    aspects: ["seams"],
+                    budgetUsd: 1,
+                    budgetTokens: 20_000,
+                    status: "done",
+                    commits
+                }
+            });
+        const before = await runAt({ [api.id]: "c".repeat(40), [web.id]: "a".repeat(40) });
+        const same = await runAt({ [api.id]: "d".repeat(40), [web.id]: "b".repeat(40) });
+        const now = await prisma.run.create({
+            data: { projectId: project.id, model: "m", effort: "low", aspects: ["seams"], budgetUsd: 1, budgetTokens: 20_000 }
+        });
+        const seam = async (runId: string, title: string) => {
+            const f = await createFinding(project.id, runId, { ...sampleFinding(web.id, { aspect: "seams", title }), repositoryId: null });
+            await prisma.finding.update({ where: { id: f.id }, data: { status: "accepted" } });
+            return f;
+        };
+        const earlier = await seam(before.id, "earlier");
+        await seam(same.id, "at these commits");
+        const other = await projectWithRepo();
+        const elsewhere = await createFinding(other.project.id, null, {
+            ...sampleFinding(other.repo.id, { aspect: "seams" }),
+            repositoryId: null
+        });
+        await prisma.finding.update({ where: { id: elsewhere.id }, data: { status: "accepted" } });
+        const sink = new PrismaSink(now.id, project.id);
+        const commit = `${"b".repeat(40)}+${"d".repeat(40)}`;
+        expect((await sink.earlierFindings(null, commit)).map(f => f.id)).toEqual([earlier.id]);
+        await sink.recheckFindings(
+            [{ id: earlier.id, label: "F-001", status: "unchanged", digest: "d", gone: false, keep: false }],
+            commit
+        );
+        expect(await prisma.finding.findUniqueOrThrow({ where: { id: earlier.id } })).toMatchObject({
+            recheck: "unchanged",
+            recheckedSha: commit
+        });
+        expect(await sink.earlierFindings(null, commit)).toEqual([]);
+    });
+
     it("supersedes only the unreviewed agent findings of the re-run aspect", async () => {
         const { sink, repo, add } = await setup();
         const agentNew = await add({ source: "agent", title: "new" });
@@ -123,6 +174,50 @@ describe("PrismaSink", () => {
         expect(await status(agentAccepted.id)).toBe("accepted");
         expect(await status(scanner.id)).toBe("unreviewed");
         expect(await status(otherAspect.id)).toBe("unreviewed");
+    });
+
+    it("supersedes the seams pass's unreviewed findings, which belong to no repository, on its re-run", async () => {
+        const { sink, add } = await setup();
+        const seam = await add({ source: "agent", aspect: "seams", checklistItem: "SEA-01", title: "seam" });
+        const kept = await add({ source: "agent", aspect: "seams", checklistItem: "SEA-02", title: "kept" });
+        await prisma.finding.updateMany({ where: { id: { in: [seam.id, kept.id] } }, data: { repositoryId: null } });
+        await prisma.finding.update({ where: { id: kept.id }, data: { status: "accepted" } });
+        const own = await add({ source: "agent", aspect: "seams", title: "a repository's" });
+        const other = await projectWithRepo();
+        const elsewhere = await createFinding(other.project.id, null, {
+            ...sampleFinding(other.repo.id, { aspect: "seams" }),
+            repositoryId: null
+        });
+        await sink.supersedeUnreviewed(null, "seams");
+        expect((await prisma.finding.findUniqueOrThrow({ where: { id: elsewhere.id } })).status).toBe("unreviewed");
+        const status = async (id: string) => (await prisma.finding.findUniqueOrThrow({ where: { id } })).status;
+        expect([await status(seam.id), await status(kept.id), await status(own.id)]).toEqual(["superseded", "accepted", "unreviewed"]);
+    });
+
+    it("indexes the project's seams findings, which belong to no repository, and those that cite a repository's path", async () => {
+        const { sink, add } = await setup();
+        const seam = await add({
+            aspect: "seams",
+            checklistItem: "SEA-02",
+            title: "A rejected seam",
+            evidence: [{ file: "web/src/api.ts", startLine: 3, endLine: 3 }]
+        });
+        await prisma.finding.update({
+            where: { id: seam.id },
+            data: { repositoryId: null, status: "rejected", statusReason: "by design" }
+        });
+        const other = await projectWithRepo();
+        await createFinding(other.project.id, null, {
+            ...sampleFinding(other.repo.id, { aspect: "seams", title: "Elsewhere" }),
+            repositoryId: null
+        });
+        const index = await sink.findingIndex(null);
+        expect(index).toEqual([
+            expect.stringMatching(/web\/src\/api\.ts:3 A rejected seam \(rejected by the auditor: by design; do not report it again\)$/)
+        ]);
+        expect(await sink.findingIndex(null, { cites: "web" })).toEqual(index);
+        expect(await sink.findingIndex(null, { cites: "we" })).toEqual([]);
+        expect(await sink.findingIndex(null, { cites: "api" })).toEqual([]);
     });
 
     async function foldSetup() {

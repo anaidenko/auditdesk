@@ -1,6 +1,6 @@
 import { freshTokens } from "./budget";
-import { findingLabel, indexLine, scannerDuplicates } from "./findings";
-import { type AuditSink, type CallRecord, type NewFinding, SEVERITIES, type SeverityName, type Spend } from "./types";
+import { cites, findingLabel, indexLine, scannerDuplicates } from "./findings";
+import { type AuditSink, type CallRecord, type IndexFilter, type NewFinding, SEVERITIES, type SeverityName, type Spend } from "./types";
 
 /** The sink `pnpm eval` and the engine's tests use: everything in memory. */
 export class MemorySink implements AuditSink {
@@ -34,14 +34,15 @@ export class MemorySink implements AuditSink {
         this.findings.push({ ...f, label });
         return label;
     }
-    async findingIndex(repositoryId: string, filter: { aspect?: string; source?: "scanner" | "agent" } = {}) {
+    async findingIndex(repositoryId: string | null, filter: IndexFilter = {}) {
         return this.findings
             .filter(
                 f =>
                     !f.mergedInto &&
                     f.repositoryId === repositoryId &&
                     (!filter.aspect || f.aspect === filter.aspect) &&
-                    (!filter.source || f.source === filter.source)
+                    (!filter.source || f.source === filter.source) &&
+                    (!filter.cites || cites(f.evidence, filter.cites))
             )
             .map(indexLine);
     }

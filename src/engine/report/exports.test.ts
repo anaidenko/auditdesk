@@ -109,6 +109,51 @@ describe("sarif", () => {
         const d = reportData({ itemTitles: { "DEP-01": "Known vulnerabilities" }, findings: [reportFinding({ checklistItem: "DEP-01" })] });
         expect(sarif(d, "app").runs[0].tool.driver.rules[0].shortDescription.text).toBe("Known vulnerabilities");
     });
+
+    it("puts a seams finding in the SARIF of each repository it cites, with that repository's locations only", () => {
+        const d = reportData({
+            repositories: [
+                { name: "acme/web", branch: "main", sha: "a1", notCovered: [] },
+                { name: "api", branch: "main", sha: "b2", notCovered: [] }
+            ],
+            seamsPaths: [
+                { path: "web", repository: "acme/web" },
+                { path: "api", repository: "api" }
+            ],
+            findings: [
+                reportFinding({
+                    label: "F-008",
+                    repository: "acme/web",
+                    evidence: [{ file: "api/client.ts", startLine: 1, endLine: 1 }]
+                }),
+                reportFinding({
+                    label: "F-009",
+                    checklistItem: "SEA-02",
+                    aspect: "Seams between repositories",
+                    repository: "Seams between repositories",
+                    evidence: [
+                        { file: "web/src/api.ts", startLine: 3, endLine: 3 },
+                        { file: "api/src/routes.ts", startLine: 7, endLine: 8 }
+                    ]
+                }),
+                reportFinding({
+                    label: "F-010",
+                    checklistItem: "SEA-06",
+                    aspect: "Seams between repositories",
+                    repository: "Seams between repositories",
+                    evidence: [{ file: "web/.env.production", startLine: 1, endLine: 1 }]
+                })
+            ]
+        });
+        const uris = (repo: string) =>
+            sarif(d, repo).runs[0].results.map(r => [r.properties.label, r.locations.map(l => l.physicalLocation.artifactLocation.uri)]);
+        expect(uris("api")).toEqual([["F-009", ["src/routes.ts"]]]);
+        expect(uris("acme/web")).toEqual([
+            ["F-008", ["api/client.ts"]],
+            ["F-009", ["src/api.ts"]],
+            ["F-010", [".env.production"]]
+        ]);
+    });
 });
 
 describe("issue drafts", () => {

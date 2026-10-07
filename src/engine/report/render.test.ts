@@ -14,7 +14,10 @@ describe("renderReport", () => {
                     finding({ label: "F-005", severity: "low", recheck: "changed" })
                 ],
                 since: {
-                    commits: [{ repository: "app", sha: "c".repeat(40) }],
+                    commits: [
+                        { repository: "app", sha: "c".repeat(40) },
+                        { repository: "Seams between repositories", sha: `${"c".repeat(40)}+${"d".repeat(40)}` }
+                    ],
                     fixed: [finding({ label: "F-002", severity: "high", title: "Raw SQL in search" })],
                     unchanged: 1,
                     open: 2,
@@ -26,7 +29,7 @@ describe("renderReport", () => {
         );
         expect(html).toContain('<li><a href="#since">Since the last audit</a></li>');
         const since = html.slice(html.indexOf('<section id="since">'), html.indexOf("</section>", html.indexOf('<section id="since">')));
-        expect(since).toContain("Re-audited at ccccccc (app).");
+        expect(since).toContain("Re-audited at ccccccc (app), ccccccc+ddddddd (Seams between repositories).");
         expect(since).toContain("1 fixed · 1 with code unchanged · 2 confirmed open · 1 regressed · 2 new.");
         expect(since).toContain("Code changed since, not yet verified: F-005.");
         expect(since).toContain("Raw SQL in search");
@@ -215,6 +218,55 @@ describe("renderReport", () => {
         const toc = between(html, '<nav class="toc">', "</nav>");
         expect(toc.indexOf("F-002")).toBeLessThan(toc.indexOf("F-001"));
         expect(toc).toContain('<a href="#repo-api">api</a>');
+    });
+
+    it("gives the seams between repositories their own run of findings after the repositories'", () => {
+        const html = renderReport(
+            data({
+                repositories: [
+                    { name: "web", branch: "main", sha: "0123456789abcdef", notCovered: [] },
+                    { name: "api", branch: "main", sha: "fedcba9876543210", notCovered: [] }
+                ],
+                findings: [
+                    finding({
+                        label: "F-001",
+                        severity: "critical",
+                        repository: "Seams between repositories",
+                        title: "Admin route open to anyone"
+                    }),
+                    finding({ label: "F-002", severity: "low", repository: "api", title: "Verbose errors" })
+                ]
+            })
+        );
+        const body = html.slice(html.indexOf('<section id="findings">'));
+        const heading = '<h3 class="repo" id="repo-Seams-between-repositories">Seams between repositories</h3>';
+        expect(body.indexOf('open id="F-002"')).toBeLessThan(body.indexOf(heading));
+        expect(body.indexOf(heading)).toBeLessThan(body.indexOf('open id="F-001"'));
+        expect(between(html, '<nav class="toc">', "</nav>")).toContain(
+            '<a href="#repo-Seams-between-repositories">Seams between repositories</a>'
+        );
+        expect(html).toContain('<option value="Seams between repositories">');
+    });
+
+    it("says which repository each path of a seams finding starts with", () => {
+        const html = renderReport(
+            data({
+                repositories: [
+                    { name: "acme/web", branch: "main", sha: "0123456789abcdef", notCovered: [] },
+                    { name: "partner/web", branch: "main", sha: "fedcba9876543210", notCovered: [] }
+                ],
+                findings: [finding({ label: "F-001", repository: "Seams between repositories" })],
+                seamsPaths: [
+                    { path: "web-main", repository: "acme/web" },
+                    { path: "web-2", repository: "partner/web" }
+                ]
+            })
+        );
+        const seams = html.slice(html.indexOf('id="repo-Seams-between-repositories"'));
+        expect(seams).toContain(
+            '<p class="muted">Each path starts with its repository: <code>web-main/</code> is acme/web, <code>web-2/</code> is partner/web.</p>'
+        );
+        expect(seams.indexOf("Each path starts")).toBeLessThan(seams.indexOf('open id="F-001"'));
     });
 
     it("adds no repository headings for a single repository", () => {

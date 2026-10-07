@@ -31,7 +31,10 @@ export default async function ProjectPage({ params }: { params: Promise<{ projec
     const lastRun = project.runs[0];
     const since = lastRun ? (lastRun.finishedAt ?? lastRun.createdAt) : null;
     const fresh = (at: Date | null, after: Date | null) => !!at && (!after || at > after);
-    const suggestions = suggestionsFor(project.repositories.map(r => (fresh(r.stackDetectedAt, since) ? stackOf(r) : null)));
+    const suggestions = suggestionsFor(
+        project.repositories.map(r => (fresh(r.stackDetectedAt, since) ? stackOf(r) : null)),
+        { lastRunRepositories: lastRun ? Object.keys((lastRun.commits as Record<string, string> | null) ?? {}).length : null }
+    );
     // The AI-built hint shows only signs found since the brief was last saved.
     const aiHint = suggestionsFor(project.repositories.map(r => (fresh(r.stackDetectedAt, project.briefSavedAt) ? stackOf(r) : null)));
     return (

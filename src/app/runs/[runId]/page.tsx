@@ -3,11 +3,12 @@ import { notFound } from "next/navigation";
 
 import { rerunAspect } from "@/app/review-actions";
 import { Alert, Card, Icon, PageHeader, RunStatus, button } from "@/app/ui";
-import { aspectTitle } from "@/engine/aspects";
+import { SEAMS, aspectTitle } from "@/engine/aspects";
 import { overReserve, readPlanUsage } from "@/engine/plan-usage";
 import { prisma } from "@/server/db";
 
 import { RunProgress } from "./RunProgress";
+import { runTargets } from "./targets";
 
 export const dynamic = "force-dynamic";
 
@@ -29,9 +30,6 @@ export default async function RunPage({
         }
     });
     if (!run) notFound();
-    // One row per repository and aspect, with its latest agent: a re-run adds a second agent, and a run
-    // interrupted before its agents started has none, yet each can be re-run (design § 9).
-    const latest = new Map(run.agents.map(a => [`${a.repositoryId}:${a.aspect}`, a]));
     const repoName = new Map(
         run.project.repositories.map(r => [
             r.id,
@@ -43,9 +41,7 @@ export default async function RunPage({
     );
     // A re-run is a new start: above the reserve it asks again (Task E.7a).
     const askReserve = run.modelAccess === "claude_plan" && overReserve(await readPlanUsage());
-    const targets = run.project.repositories.flatMap(r =>
-        run.aspects.map(aspect => ({ repositoryId: r.id, aspect, status: latest.get(`${r.id}:${aspect}`)?.status ?? "not started" }))
-    );
+    const targets = runTargets(run.project.repositories, run.aspects, run.agents);
     return (
         <div className="space-y-8">
             <PageHeader
@@ -89,7 +85,9 @@ export default async function RunPage({
                                     className="flex flex-wrap items-center gap-3 py-2.5 text-sm"
                                 >
                                     <span className="font-medium">{aspectTitle(a.aspect)}</span>
-                                    <span className="font-mono text-xs text-zinc-500">{repoName.get(a.repositoryId)}</span>
+                                    <span className="font-mono text-xs text-zinc-500">
+                                        {a.aspect === SEAMS ? "every repository" : repoName.get(a.repositoryId)}
+                                    </span>
                                     <RunStatus status={a.status} />
                                     {askReserve && (
                                         <label className="ml-auto flex items-center gap-2 text-xs font-medium text-amber-800">

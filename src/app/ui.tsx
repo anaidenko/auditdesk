@@ -1,5 +1,7 @@
 import type { ReactNode } from "react";
 
+import { shortSha } from "@/engine/short-sha";
+
 export function cx(...classes: (string | false | null | undefined)[]): string {
     return classes.filter(Boolean).join(" ");
 }
@@ -107,7 +109,7 @@ export function RecheckBadge({ recheck, sha }: { recheck: string | null; sha: st
     return (
         <Badge tone={r.tone} data-testid="recheck">
             {r.words}
-            {sha && <span className="font-mono opacity-70">{sha.slice(0, 7)}</span>}
+            {sha && <span className="font-mono opacity-70">{shortSha(sha)}</span>}
         </Badge>
     );
 }

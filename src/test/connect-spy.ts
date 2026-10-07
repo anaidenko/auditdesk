@@ -13,6 +13,9 @@ export async function startConnectSpy() {
     });
     server.on("connect", (req, socket) => {
         attempts.push(`CONNECT ${req.url}`);
+        // After "connect" the socket is ours: a client that resets the refused tunnel (Linux CI does)
+        // raises ECONNRESET on it, which is uncaught without a listener.
+        socket.on("error", () => {});
         socket.end("HTTP/1.1 403 Forbidden\r\n\r\n");
     });
     await new Promise<void>(resolve => server.listen(0, "127.0.0.1", resolve));
