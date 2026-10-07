@@ -41,11 +41,11 @@ section,.toc{margin-top:3rem}
 .toc ol{margin:0;padding-left:1.2rem}.toc>ol>li{margin:.45rem 0;font-weight:600}
 .toc ul{list-style:none;padding:0;margin:.4rem 0 .7rem;font-weight:400;font-size:.9rem}
 .toc ul li{display:flex;gap:.6rem;align-items:baseline;margin:.25rem 0;break-inside:avoid}
-.toc .toc-repo{margin:.6rem 0 0;font-size:.9rem}
 h3.repo{margin:1.8rem 0 .8rem;padding-bottom:.35rem;border-bottom:1px solid var(--line);break-after:avoid}
 .badge{flex-shrink:0;display:inline-block;font-size:.68rem;font-weight:700;letter-spacing:.06em;text-transform:uppercase;padding:.12rem .5rem;border-radius:999px;white-space:nowrap;vertical-align:.1em}
 ${["critical", "high", "medium", "low", "info", "question"].map(s => `.${s}{color:var(--${s});background:var(--${s}-bg)}.tile.${s}{border-color:var(--${s}-bg)}`).join("")}
 .risks{list-style:none;padding:0;margin:.5rem 0}.risks li{display:flex;gap:.7rem;align-items:baseline;padding:.5rem 0;border-bottom:1px solid var(--line)}
+.risks .aside{margin-left:auto;padding-left:.5rem;font-size:.82rem;color:var(--muted);white-space:nowrap}
 .fid{flex-shrink:0;white-space:nowrap;font:600 12.5px ui-monospace,SFMono-Regular,Menlo,monospace;color:var(--muted)}
 table{border-collapse:collapse;width:100%;font-size:.88rem}
 th{text-align:left;font-size:.7rem;font-weight:600;letter-spacing:.07em;text-transform:uppercase;color:var(--muted);padding:.5rem .6rem;border-bottom:1px solid var(--line)}
@@ -132,6 +132,7 @@ const ACCESS_TEXT: Record<ModelAccess, string> = {
 const severityOf = (f: ReportFinding) => f.severity ?? "question";
 const badge = (f: ReportFinding) => `<span class="badge ${e(severityOf(f))}">${e(severityOf(f))}</span>`;
 const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
+const effortText = (f: ReportFinding) => (f.effort ? `effort ${f.effort}${f.effortHours != null ? ` (${f.effortHours} h)` : ""}` : null);
 
 function evidence(ev: ReportFinding["evidence"][number]): string {
     const lines = (ev.snippet ?? "").split("\n");
@@ -140,7 +141,6 @@ function evidence(ev: ReportFinding["evidence"][number]): string {
     return `<figure><figcaption>${e(ev.file)} · ${where}</figcaption>${ev.snippet ? `<pre><code>${code}</code></pre>` : ""}</figure>`;
 }
 
-// The report's one script: it filters and searches the findings in the browser, reaching nothing outside the file.
 // The report's one script: it filters and searches the findings and questions in the browser,
 // reaching nothing outside the file. It hides with a class that only the screen honours, so a
 // printout is always complete.
@@ -148,14 +148,12 @@ const FILTER_SCRIPT = `(()=>{const f=document.querySelector(".filters");if(!f)re
 const rank={critical:0,high:1,medium:2,low:3,info:4,question:5};
 const cards=[...document.querySelectorAll("section#findings .finding")];
 const questions=[...document.querySelectorAll("section#questions .finding")];
-const rows=[...document.querySelectorAll("section#findings tbody tr")];
 const groups=[...document.querySelectorAll("section#findings .repo-group")];
 const val=n=>{const el=f.querySelector("[name="+n+"]");return el?el.value:""};
 const apply=()=>{const min=val("sev"),asp=val("aspect"),repo=val("repo"),q=val("q").trim().toLowerCase();const active=!!(min||asp||repo||q);const shown=new Set();let asked=0;
 const ok=c=>(!min||rank[c.dataset.sev]<=rank[min])&&(!asp||c.dataset.aspect===asp)&&(!repo||c.dataset.repo===repo)&&(!q||c.textContent.toLowerCase().includes(q));
 for(const c of cards){const v=ok(c);c.classList.toggle("off",!v);if(v)shown.add(c.id)}
 for(const c of questions){const v=ok(c);c.classList.toggle("off",!v);if(v)asked++}
-for(const r of rows)r.classList.toggle("off",!shown.has(r.dataset.id));
 for(const g of groups)g.classList.toggle("off",active&&![...g.querySelectorAll(".finding")].some(c=>shown.has(c.id)));
 f.querySelector("output").textContent=shown.size+" of "+cards.length+" findings"+(questions.length?" and "+asked+" of "+questions.length+(questions.length===1?" question":" questions"):"")+" shown";};
 const reveal=()=>{const t=location.hash&&document.getElementById(decodeURIComponent(location.hash.slice(1)));if(t&&t.closest(".off")){f.reset();apply();t.scrollIntoView()}};
@@ -218,15 +216,7 @@ function finding(f: ReportFinding): string {
                 ? "agreed to fix before sign-off"
                 : "agreed to fix after sign-off"
             : null;
-    const meta = [
-        f.repository,
-        f.aspect,
-        f.checklistItem,
-        f.effort && `effort ${f.effort}${f.effortHours != null ? ` (${f.effortHours} h)` : ""}`,
-        call
-    ]
-        .filter(Boolean)
-        .join(" · ");
+    const meta = [f.repository, f.aspect, f.checklistItem, effortText(f), call].filter(Boolean).join(" · ");
     const link = (r: Ref) => (r.url ? `<a href="${e(r.url)}">${e(r.label)}</a>` : e(r.label));
     const R = f.refs;
     const refs = R
@@ -296,17 +286,18 @@ export function renderReport(d: ReportData): string {
     const before = (f: ReportFinding) => f.fixBeforeSignoff ?? (f.severity === "critical" || f.severity === "high");
     const fixFirst = findings.filter(before);
     const canWait = findings.filter(f => !before(f));
+    // The cover names a single repository; a line repeating it only wraps.
+    const manyRepos = d.repositories.length > 1;
+    const aside = (f: ReportFinding) => [manyRepos ? f.repository : null, f.aspect, effortText(f)].filter(Boolean).join(" · ");
     const riskList = (list: ReportFinding[], none: string) =>
         list.length
-            ? `<ul class="risks">${list.map(f => `<li>${badge(f)}<a class="fid" href="#${e(f.label)}">${e(f.label)}</a><span>${e(f.title)}</span></li>`).join("")}</ul>`
+            ? `<ul class="risks">${list.map(f => `<li>${badge(f)}<a class="fid" href="#${e(f.label)}">${e(f.label)}</a><span>${e(f.title)}</span><span class="aside">${e(aside(f))}</span></li>`).join("")}</ul>`
             : `<p class="muted">${e(none)}</p>`;
     const effortLine = effortSummary(findings);
-    const tocItems = (list: ReportFinding[]) =>
+    const titleList = (list: ReportFinding[]) =>
         list.length
             ? `<ul>${list.map(f => `<li>${badge(f)}<a class="fid" href="#${e(f.label)}">${e(f.label)}</a><span>${e(f.title)}</span></li>`).join("")}</ul>`
             : "";
-    // The cover names a single repository; a column repeating it only wraps.
-    const manyRepos = d.repositories.length > 1;
     // With several repositories the findings run per repository, in the cover's order (design § 10).
     const names = [...new Set([...d.repositories.map(r => r.name), ...findings.map(f => f.repository)])];
     const ids = new Map<string, string>();
@@ -366,17 +357,11 @@ ${
               d.toolVersions.osvQueriedAt.slice(0, 10)
           )}.</li>`
         : "";
-    const rows = findings
-        .map(
-            f =>
-                `<tr data-id="${e(f.label)}"><td class="nowrap"><a href="#${e(f.label)}">${e(f.label)}</a></td><td>${badge(f)}</td><td>${e(f.title)}</td><td>${e(f.aspect)}</td>${manyRepos ? `<td>${e(f.repository)}</td>` : ""}<td class="nowrap">${e(f.effort ?? "")}</td></tr>`
-        )
-        .join("");
     const aiBuilt = d.aiBuilt ? [...findings, ...d.questions].filter(f => f.tags?.includes("ai-built")) : [];
     const aiSection = aiBuilt.length
         ? `<section id="ai-built"><h2>Signs of AI-generated code</h2>
 <p class="muted">Findings typical of code written largely by AI tools: uneven checks, packages to verify, copies that drifted apart. Each is described in full under Findings.</p>
-${tocItems(aiBuilt)}</section>`
+${titleList(aiBuilt)}</section>`
         : "";
     const questions = d.questions.length
         ? `<section id="questions"><h2>Open questions</h2>
@@ -410,13 +395,13 @@ ${d.auditor ? `<div><dt>Auditor</dt><dd>${e(d.auditor)}</dd></div>` : ""}
 <li><a href="#summary">Summary</a></li>
 ${d.since ? `<li><a href="#since">Since the last audit</a></li>` : ""}
 <li><a href="#scope">Scope and method</a></li>
-<li><a href="#findings">Findings</a>${
+<li><a href="#findings">Findings (${findings.length})</a>${
         manyRepos
-            ? groups.map(g => `<p class="toc-repo"><a href="#${e(ids.get(g.name)!)}">${e(g.name)}</a></p>${tocItems(g.list)}`).join("")
-            : tocItems(findings)
+            ? `<ul>${groups.map(g => `<li><a href="#${e(ids.get(g.name)!)}">${e(g.name)} (${g.list.length})</a></li>`).join("")}</ul>`
+            : ""
     }</li>
-${aiBuilt.length ? `<li><a href="#ai-built">Signs of AI-generated code</a></li>` : ""}
-${d.questions.length ? `<li><a href="#questions">Open questions</a>${tocItems(d.questions)}</li>` : ""}
+${aiBuilt.length ? `<li><a href="#ai-built">Signs of AI-generated code (${aiBuilt.length})</a></li>` : ""}
+${d.questions.length ? `<li><a href="#questions">Open questions (${d.questions.length})</a></li>` : ""}
 <li><a href="#disclaimer">Disclaimer</a></li>
 </ol></nav>
 
@@ -453,8 +438,7 @@ ${d.repositories
 </section>
 
 <section id="findings"><h2>Findings</h2>
-${findings.length ? filters : ""}
-${findings.length ? `<table><thead><tr><th>ID</th><th>Severity</th><th>Title</th><th>Aspect</th>${manyRepos ? "<th>Repository</th>" : ""}<th>Effort</th></tr></thead><tbody>${rows}</tbody></table>` : `<p class="muted">No findings were accepted for this report.</p>`}
+${findings.length ? filters : `<p class="muted">No findings were accepted for this report.</p>`}
 ${
     manyRepos
         ? groups
