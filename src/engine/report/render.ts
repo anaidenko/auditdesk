@@ -39,7 +39,7 @@ section,.toc{margin-top:3rem}
 .tile{border-radius:10px;padding:.75rem .9rem;border:1px solid transparent}
 .tile b{display:block;font-size:1.75rem;line-height:1.1;font-variant-numeric:tabular-nums}
 .tile span{font-size:.75rem;font-weight:600;letter-spacing:.05em;text-transform:uppercase}
-.tile.zero{opacity:.45}
+.tile.zero{background:transparent;border-color:var(--line)}.tile.zero b,.tile.zero span{color:var(--muted)}
 .toc ol{margin:0;padding-left:1.2rem}.toc>ol>li{margin:.45rem 0;font-weight:600}
 .toc ul{list-style:none;padding:0;margin:.4rem 0 .7rem;font-weight:400;font-size:.9rem}
 .toc ul li{display:flex;gap:.6rem;align-items:baseline;margin:.25rem 0;break-inside:avoid}
@@ -54,7 +54,7 @@ ${["critical", "high", "medium", "low", "info", "question"].map(s => `.${s}{colo
 .pill{display:inline-block;font-size:.72rem;font-weight:600;padding:.08rem .5rem;border-radius:999px;background:var(--info-bg);color:var(--info);white-space:nowrap}
 .pill.examined,.pill.done{background:#ecfdf5;color:#047857}.pill.partly,.pill.partial,.pill.limited{background:var(--medium-bg);color:var(--medium)}
 .pill.declined,.pill.failed,.pill.stopped,.pill.regressed{background:var(--critical-bg);color:var(--critical)}
-.method,.tech{padding-left:1.1rem}.method li,.tech li{margin:.3rem 0}
+.method,.tech{padding-left:1.1rem}.method a{text-decoration:underline;text-underline-offset:2px}.method li,.tech li{margin:.3rem 0}
 .finding{border:1px solid var(--line);border-left:4px solid var(--info);border-radius:10px;margin:1.1rem 0;background:#fff}
 ${["critical", "high", "medium", "low", "info", "question"].map(s => `.finding.sev-${s}{border-left-color:var(--${s})}`).join("")}
 .finding .head{padding:.85rem 1.1rem .1rem}
@@ -82,7 +82,7 @@ pre code{display:block}.ln{display:inline-block;width:3.4em;padding-right:.9em;t
 .filters button{font:inherit;color:var(--accent);padding:.3rem .7rem;border:1px solid var(--line);border-radius:6px;background:#fff;cursor:pointer}
 .filters output{margin-left:auto}
 .disclaimer{font-size:.92rem;color:var(--muted)}
-.colophon{margin-top:3rem;padding-top:1rem;border-top:1px solid var(--line);font-size:.78rem;color:var(--faint)}
+.colophon{margin-top:3rem;padding-top:1rem;border-top:1px solid var(--line);font-size:.78rem;color:var(--muted)}
 @page{size:A4;margin:16mm 15mm 18mm}
 @media print{
 .filters{display:none}.body>summary{display:none}
