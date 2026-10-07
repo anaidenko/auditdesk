@@ -14,6 +14,7 @@ import { type SdkHarness, sdkHarness } from "@/test/sdk";
 
 import type { Effort } from "../agent/request";
 import { NUDGE, REOPEN } from "../agent/run-aspect";
+import type { AgentContext } from "../agent/tools";
 import { Masker } from "../masker";
 import { MemorySink } from "../memory-sink";
 import { readPlanUsage, recordPlanUsage } from "../plan-usage";
@@ -50,6 +51,7 @@ async function setup(
         firstMessage?: string;
         model?: string;
         effort?: Effort;
+        roots?: AgentContext["roots"];
     } = {}
 ) {
     const h = await sdkHarness(responses, { reply: o.reply, keepModel: o.keepModel, headers: o.headers });
@@ -67,6 +69,7 @@ async function setup(
         masker: new Masker((o.secrets ?? []).map(value => ({ value, rule: "generic-api-key" }))),
         repoMap: "map",
         sink,
+        ...(o.roots ? { roots: o.roots } : {}),
         state: { finished: null, reported: [], fatal: null }
     };
     const run = () =>
@@ -106,6 +109,33 @@ describe("runAspectSdk", { timeout: 60_000 }, () => {
         expect(sink.calls).toHaveLength(3);
         expect(sink.calls.every(c => c.costUsd !== null && c.costUsd > 0)).toBe(true);
         expect(sink.events.some(e => e.startsWith("Security: read_file "))).toBe(true);
+    });
+
+    it("runs the seams pass across repositories: paths start with the repository, and the finding is under none", async () => {
+        const web = await makeRepo({ "src/api.ts": "export const getUser = id => fetch(`/api/users/${id}`);\n" });
+        const api = await makeRepo({ "src/routes.ts": 'app.get("/api/users/:id", handler);\n' });
+        const evidence = [
+            { file: "web/src/api.ts", start_line: 1, end_line: 1 },
+            { file: "api/src/routes.ts", start_line: 1, end_line: 1 }
+        ];
+        const { sink, h, run } = await setup(
+            [tool("list_files", { dir: ".", glob: "" }), tool("report_finding", finding({ evidence })), finish()],
+            {
+                clone: web,
+                roots: [
+                    { name: "web", clonePath: web, repositoryId: "r-web" },
+                    { name: "api", clonePath: api, repositoryId: "r-api" }
+                ]
+            }
+        );
+        expect((await run()).status).toBe("done");
+        expect(body(h, 1)).toContain("web/ (repository)\\napi/ (repository)");
+        expect(sink.findings).toHaveLength(1);
+        expect(sink.findings[0].repositoryId).toBeNull();
+        expect(sink.findings[0].evidence.map(e => [e.file, e.snippet?.trim()])).toEqual([
+            ["web/src/api.ts", "export const getUser = id => fetch(`/api/users/${id}`);"],
+            ["api/src/routes.ts", 'app.get("/api/users/:id", handler);']
+        ]);
     });
 
     // Claude Code adds a billing line to the system prompt whose suffix follows the first message;

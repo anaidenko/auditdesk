@@ -44,8 +44,9 @@ describe.skipIf(!present)("the own fixture's answer key", () => {
         }
     });
 
-    it("plants defects for every v1 aspect, each under an item of its aspect's checklist", async () => {
-        expect(new Set(key.entries.map(e => e.aspect))).toEqual(new Set(ASPECTS.map(a => a.key)));
+    it("plants defects for every aspect of one repository, each under an item of its aspect's checklist", async () => {
+        // The own fixture is one repository, so the seams between repositories have nothing to find in it.
+        expect(new Set(key.entries.map(e => e.aspect))).toEqual(new Set(ASPECTS.map(a => a.key).filter(k => k !== "seams")));
         const all = new Set((await Promise.all(ASPECTS.map(a => loadChecklist(a.key)))).flatMap(c => c.items.map(i => i.id)));
         for (const e of key.entries) {
             expect(

@@ -15,7 +15,9 @@ Local only: it binds 127.0.0.1 and has no login. The design is in [docs/design.m
   finds is masked in everything the model or the client sees.
 - **One agent per aspect:** security always, plus dependencies, architecture, data model, code
   quality and tests, production readiness, LLM integrations and multi-tenancy as chosen. Each
-  works from a checklist with stable item IDs and reads the code through read-only tools.
+  works from a checklist with stable item IDs and reads the code through read-only tools. With
+  several repositories, a seams pass reads them together: the front end's calls against the
+  back end's routes, auth across both, CORS, validation only on the client, secrets in the bundle.
 - **Stack detection** from manifests and schemas, confirmed or edited by the auditor, suggests
   the conditional aspects; an AI-built mode adds checks for code written largely by AI tools.
 - **Review:** accept, edit, merge, reject or exclude every finding; only accepted or edited ones

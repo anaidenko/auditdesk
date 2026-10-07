@@ -81,6 +81,40 @@ describe("review", () => {
         expect(rows.map(r => r.status)).toEqual(["rejected", "excluded"]);
     });
 
+    it("merges a repository's finding into a seams finding under its repository's name, and refuses the reverse", async () => {
+        const { project, repo: web } = await projectWithRepo("/tmp/web");
+        const api = await prisma.repository.create({
+            data: { projectId: project.id, source: "/tmp/api", branch: "main", createdAt: new Date(Date.now() + 1000) }
+        });
+        const seam = await createFinding(project.id, null, {
+            ...sampleFinding(web.id, {
+                aspect: "seams",
+                checklistItem: "SEA-02",
+                evidence: [{ file: "web/src/api.ts", startLine: 3, endLine: 3 }]
+            }),
+            repositoryId: null
+        });
+        const route = await createFinding(
+            project.id,
+            null,
+            sampleFinding(api.id, { evidence: [{ file: "src/routes.ts", startLine: 7, endLine: 8 }] })
+        );
+        const other = await createFinding(
+            project.id,
+            null,
+            sampleFinding(api.id, { evidence: [{ file: "src/admin.ts", startLine: 1, endLine: 1 }] })
+        );
+        await expect(merge(seam.id, other.label)).rejects.toThrow(
+            `${seam.label} cites every repository by name; merge ${other.label} into it instead.`
+        );
+        expect(await status(seam.id)).toBe("unreviewed");
+        await merge(route.id, seam.label);
+        expect((await prisma.finding.findUniqueOrThrow({ where: { id: seam.id } })).evidence).toEqual([
+            { file: "web/src/api.ts", startLine: 3, endLine: 3 },
+            { file: "api/src/routes.ts", startLine: 7, endLine: 8 }
+        ]);
+    });
+
     it("merges without repeating evidence the target already shows", async () => {
         const { project, repo } = await projectWithRepo();
         const add = (evidence: { file: string; startLine: number; endLine: number }[]) =>

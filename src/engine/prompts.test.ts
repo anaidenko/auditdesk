@@ -34,6 +34,13 @@ describe("prompts", () => {
         expect(text).toContain("Aspects in this run: Security, Multi-tenancy.");
     });
 
+    it("words the prompt for an agent of one repository and for the seams pass across several", () => {
+        expect(SYSTEM_PROMPT).toContain("of one repository, or for the seams between repositories, of several");
+        expect(SYSTEM_PROMPT).not.toMatch(/for this repository/);
+        const checklist = parseChecklist("seams", "# Seams\n\n## SEA-01 A\n");
+        expect(aspectMessage({ checklist, findingIndex: [], budgetTokens: 20000 })).toContain("# Findings already filed\n");
+    });
+
     it("says when no findings are filed yet", () => {
         const checklist = parseChecklist("security", "# Security\n\n## SEC-01 A\n");
         expect(aspectMessage({ checklist, findingIndex: [], budgetTokens: 20000 })).toContain("None yet.");

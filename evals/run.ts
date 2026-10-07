@@ -7,7 +7,7 @@ import { join, resolve } from "node:path";
 import { DEFAULT_EFFORT, DEFAULT_MODEL, type Effort } from "@/engine/agent/request";
 import type { AgentOutcome, AspectRunner } from "@/engine/agent/run-aspect";
 import type { Coverage } from "@/engine/agent/tools";
-import { ASPECTS, aspectTitle } from "@/engine/aspects";
+import { ASPECTS, SEAMS, aspectTitle } from "@/engine/aspects";
 import { git } from "@/engine/git";
 import { MemorySink } from "@/engine/memory-sink";
 import { EFFORTS, MODEL_CHOICES } from "@/engine/models";
@@ -186,6 +186,12 @@ class EvalSink extends MemorySink implements PipelineSink {
     async recheckFindings() {}
 }
 
+/** What an eval run audits: --aspect, or the fixture's list; "all" leaves out the seams pass, since every fixture is one repository. */
+export function evalAspects(spec: FixtureSpec, aspect?: string): string[] {
+    if (aspect) return [aspect];
+    return !spec.aspects || spec.aspects === "all" ? ASPECTS.map(a => a.key).filter(k => k !== SEAMS) : spec.aspects;
+}
+
 /**
  * One eval run (design § 5, § 11): prepares the fixture at its pinned commit, checks the key fits it,
  * runs the audit bare with an in-memory sink, grades the findings against the key and writes the
@@ -196,7 +202,7 @@ export async function runEval(o: EvalOptions, deps: EvalDeps): Promise<{ file: s
     const spec = (deps.fixtures ?? loadFixtures()).find(f => f.name === o.fixture);
     if (!spec) throw new Error(`No fixture named ${o.fixture} in evals/fixtures.yaml`);
     const key = (deps.loadKey ?? loadKey)(spec.name);
-    const aspects = o.aspect ? [o.aspect] : !spec.aspects || spec.aspects === "all" ? ASPECTS.map(a => a.key) : spec.aspects;
+    const aspects = evalAspects(spec, o.aspect);
     const empty = aspects.filter(a => grade([], key, { aspects: [a] }).total === 0);
     if (empty.length) throw new Error(`No key entry of ${spec.name} is in scope for ${empty.join(", ")}: nothing to measure.`);
     const prepared = await prepareFixture(

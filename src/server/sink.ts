@@ -2,14 +2,16 @@ import "server-only";
 
 import type { AgentOutcome } from "@/engine/agent/run-aspect";
 import { freshTokens } from "@/engine/budget";
-import { findingLabel, indexLine, scannerDuplicates } from "@/engine/findings";
+import { cites, findingLabel, indexLine, scannerDuplicates } from "@/engine/findings";
 import type { PipelineSink } from "@/engine/pipeline";
 import type { EarlierFinding, RecheckResult } from "@/engine/recheck";
 import type { ToolVersions } from "@/engine/scanners/types";
+import { shortSha } from "@/engine/short-sha";
 import type { StackProfile } from "@/engine/stack";
 import {
     type CallRecord,
     type Evidence,
+    type IndexFilter,
     type NewFinding,
     type References,
     SEVERITIES,
@@ -97,9 +99,10 @@ export class PrismaSink implements PipelineSink {
         return label;
     }
 
-    async findingIndex(repositoryId: string, filter: { aspect?: string; source?: "scanner" | "agent" } = {}) {
-        const rows = await prisma.finding.findMany({
+    async findingIndex(repositoryId: string | null, filter: IndexFilter = {}) {
+        const found = await prisma.finding.findMany({
             where: {
+                projectId: this.projectId,
                 repositoryId,
                 status: { in: [...INDEXED] },
                 ...(filter.aspect && { aspect: filter.aspect }),
@@ -107,6 +110,7 @@ export class PrismaSink implements PipelineSink {
             },
             orderBy: { number: "asc" }
         });
+        const rows = filter.cites ? found.filter(r => cites(r.evidence as never, filter.cites!)) : found;
         return rows.map(r => {
             const line = indexLine({
                 label: findingLabel(r.number),
@@ -117,7 +121,7 @@ export class PrismaSink implements PipelineSink {
             });
             if (r.status === "rejected") return `${line} (rejected by the auditor: ${r.statusReason}; do not report it again)`;
             // Fixed at a re-audit: the same problem in other code is a new finding, not a duplicate.
-            if (r.recheck === "fixed") return `${line} (fixed at ${r.recheckedSha?.slice(0, 7)}; file it again if it is back)`;
+            if (r.recheck === "fixed") return `${line} (fixed at ${shortSha(r.recheckedSha ?? "")}; file it again if it is back)`;
             return line;
         });
     }
@@ -160,9 +164,10 @@ export class PrismaSink implements PipelineSink {
         return folded;
     }
 
-    async earlierFindings(repositoryId: string, sha: string): Promise<EarlierFinding[]> {
+    async earlierFindings(repositoryId: string | null, sha: string): Promise<EarlierFinding[]> {
         const rows = await prisma.finding.findMany({
             where: {
+                projectId: this.projectId,
                 repositoryId,
                 kind: "finding",
                 status: { in: [...REPORTABLE] },
@@ -174,9 +179,18 @@ export class PrismaSink implements PipelineSink {
             include: { run: { select: { commits: true } } },
             orderBy: { number: "asc" }
         });
-        // A finding filed at this very commit has nothing to re-check.
+        // A finding filed at this very commit has nothing to re-check; a seams finding's commit is every
+        // repository's, joined in the project's order as the pipeline joins them (JSONB keeps no key order).
+        const order = repositoryId
+            ? [repositoryId]
+            : (await prisma.repository.findMany({ where: { projectId: this.projectId }, orderBy: { createdAt: "asc" } })).map(r => r.id);
+        const commitOf = (commits: Record<string, string> | null) =>
+            order
+                .map(id => commits?.[id])
+                .filter(Boolean)
+                .join("+");
         return rows
-            .filter(r => (r.run?.commits as Record<string, string> | null)?.[repositoryId] !== sha)
+            .filter(r => commitOf(r.run?.commits as Record<string, string> | null) !== sha)
             .map(r => ({
                 id: r.id,
                 label: findingLabel(r.number),
@@ -257,8 +271,9 @@ export class PrismaSink implements PipelineSink {
         ]);
     }
 
-    async supersedeUnreviewed(repositoryId: string, aspect: string) {
-        const where = { repositoryId, aspect, source: "agent" as const, status: "unreviewed" as const };
+    async supersedeUnreviewed(repositoryId: string | null, aspect: string) {
+        // The project too: the seams pass's findings have no repository to scope them.
+        const where = { projectId: this.projectId, repositoryId, aspect, source: "agent" as const, status: "unreviewed" as const };
         await prisma.$transaction(async tx => {
             const ids = (await tx.finding.findMany({ where, select: { id: true } })).map(r => r.id);
             // A scanner finding folded into one of them comes back to the review; nothing else would file it again.

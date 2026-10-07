@@ -25,6 +25,11 @@ export interface AgentContext {
     sink: AuditSink;
     /** The agent's budget share; the engines set it from their input. */
     share?: { usd: number; tokens: number };
+    /**
+     * The repositories a cross-repository agent reads (the seams pass), each path starting with
+     * its name; its findings belong to no single repository.
+     */
+    roots?: { name: string; clonePath: string; repositoryId: string }[];
     state: {
         finished: { summary: string; coverage: Coverage[] } | null;
         reported: string[];
@@ -142,16 +147,28 @@ export function toolSpecs(ctx: AgentContext): ToolSpec[] {
                 glob: z.string().describe('Such as "**/*.ts", or an empty string.')
             }),
             readOnly: true,
-            run: guard(ctx, async ({ dir, glob }) => listFiles(ctx.clonePath, { dir, glob: glob || undefined }))
+            run: guard(ctx, async ({ dir, glob }) => {
+                if (!ctx.roots) return listFiles(ctx.clonePath, { dir, glob: glob || undefined });
+                if (!atRoot(dir) || glob)
+                    return across(ctx, atRoot(dir) ? null : dir, glob, (root, rel, g, prefix) =>
+                        listFiles(root, { dir: rel, glob: g, prefix })
+                    );
+                return ctx.roots.map(r => `${r.name}/ (repository)`).join("\n");
+            })
         }),
         spec({
             name: "read_file",
             description: "Read a line range of a file, with line numbers. At most 400 lines per call.",
             inputSchema: z.strictObject({ path: z.string(), start_line: z.number().int(), end_line: z.number().int() }),
             readOnly: true,
-            run: guard(ctx, async ({ path, start_line, end_line }) =>
-                readFileRange(ctx.clonePath, path, start_line, end_line, line => ctx.masker.mask(line))
-            )
+            run: guard(ctx, async ({ path, start_line, end_line }) => {
+                const at = inRoot(ctx, path);
+                if (at.prefix && at.rel === ".") throw new ToolError(`${at.prefix.slice(0, -1)} is a repository; use list_files.`);
+                return prefixed(
+                    at.prefix,
+                    await named(at, () => readFileRange(at.clonePath, at.rel, start_line, end_line, line => ctx.masker.mask(line)))
+                );
+            })
         }),
         spec({
             name: "grep",
@@ -161,9 +178,11 @@ export function toolSpecs(ctx: AgentContext): ToolSpec[] {
                 glob: z.string().describe("Limits the files searched, or an empty string.")
             }),
             readOnly: true,
-            run: guard(ctx, async ({ pattern, glob }) =>
-                grepFiles(ctx.clonePath, pattern, { glob: glob || undefined, mask: line => ctx.masker.mask(line) })
-            )
+            run: guard(ctx, async ({ pattern, glob }) => {
+                const search = (root: string, _rel: string | undefined, g: string | undefined, prefix?: string) =>
+                    grepFiles(root, pattern, { glob: g, prefix, mask: line => ctx.masker.mask(line) });
+                return ctx.roots ? across(ctx, null, glob, search) : search(ctx.clonePath, undefined, glob || undefined);
+            })
         }),
         spec({
             name: "repo_map",
@@ -178,7 +197,11 @@ export function toolSpecs(ctx: AgentContext): ToolSpec[] {
             inputSchema: z.strictObject({ aspect: z.string().describe("Such as security or dependencies.") }),
             readOnly: true,
             run: guard(ctx, async ({ aspect }) => {
-                const rows = await ctx.sink.findingIndex(ctx.repositoryId, { source: "scanner", aspect });
+                const repos = ctx.roots ?? [{ name: "", clonePath: ctx.clonePath, repositoryId: ctx.repositoryId }];
+                const rows: string[] = [];
+                for (const r of repos)
+                    for (const row of await ctx.sink.findingIndex(r.repositoryId, { source: "scanner", aspect }))
+                        rows.push(r.name ? `${r.name}: ${row}` : row);
                 return rows.length ? rows.join("\n") : `No scanner findings for ${aspect}.`;
             })
         }),
@@ -197,6 +220,62 @@ export function toolSpecs(ctx: AgentContext): ToolSpec[] {
             run: guard(ctx, async input => finishAspect(ctx, input))
         })
     ].map(counted);
+}
+
+const atRoot = (dir: string) => ["", ".", "./", "/"].includes(dir.trim());
+
+/** A path of a cross-repository agent, in its repository's clone; a single repository's as it is. */
+function inRoot(ctx: AgentContext, path: string): { clonePath: string; rel: string; prefix: string; repositoryId: string } {
+    if (!ctx.roots) return { clonePath: ctx.clonePath, rel: path, prefix: "", repositoryId: ctx.repositoryId };
+    const [head, ...rest] = path.replace(/^\.?\/+/, "").split("/");
+    const root = ctx.roots.find(r => r.name === head);
+    if (!root) throw new ToolError(`Start the path with a repository's name: ${ctx.roots.map(r => `${r.name}/`).join(", ")}.`);
+    return { clonePath: root.clonePath, rel: rest.join("/") || ".", prefix: `${root.name}/`, repositoryId: root.repositoryId };
+}
+
+/** Puts the repository's name before each path a file tool printed, leaving its notes as they are. */
+const prefixed = (prefix: string, out: string) =>
+    prefix
+        ? out
+              .split("\n")
+              .map(l => (/^(…|\(|No files\.|No matches)/.test(l) || /^\d+\| /.test(l) ? l : `${prefix}${l}`))
+              .join("\n")
+        : out;
+
+/** A file tool's error in the agent's own path, its repository's name first. */
+async function named<T>(at: { rel: string; prefix: string }, run: () => Promise<T>): Promise<T> {
+    try {
+        return await run();
+    } catch (e) {
+        if (!(e instanceof ToolError) || !at.prefix || at.rel === ".") throw e;
+        // The path as a word of the message: a short one ("e") also occurs inside its words.
+        const path = new RegExp(`(^|\\s)${at.rel.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}(?=$|\\s|[.;:,](?:\\s|$))`, "g");
+        throw new ToolError(e.message.replace(path, `$1${at.prefix}${at.rel}`));
+    }
+}
+
+/**
+ * Runs a file tool on each repository a cross-repository agent reads, or on the one a directory or
+ * a glob names first, and joins what they printed. The glob is matched with each path's repository
+ * name and without it.
+ */
+async function across(
+    ctx: AgentContext,
+    dir: string | null,
+    glob: string,
+    tool: (root: string, rel: string | undefined, glob: string | undefined, prefix: string) => Promise<string>
+): Promise<string> {
+    const head = glob.split("/")[0];
+    const roots = dir
+        ? [inRoot(ctx, dir)]
+        : ctx.roots!.filter(r => !ctx.roots!.some(x => x.name === head) || r.name === head).map(r => inRoot(ctx, `${r.name}/`));
+    const outs = await Promise.all(
+        roots.map(async r =>
+            prefixed(r.prefix, await named(r, () => tool(r.clonePath, dir ? r.rel : undefined, glob || undefined, r.prefix)))
+        )
+    );
+    const found = outs.filter(o => !/^(No files\.|No matches)/.test(o));
+    return found.length ? found.join("\n") : outs[0];
 }
 
 /** The API engine's declaration: strict tools on the SDK's tool runner. */
@@ -221,7 +300,9 @@ async function reportFinding(ctx: AgentContext, input: z.infer<typeof findingInp
 
     const evidence = [];
     for (const e of input.evidence) {
-        const { abs, rel } = await resolveInClone(ctx.clonePath, e.file);
+        const at = inRoot(ctx, e.file);
+        const { abs, rel: inClone } = await resolveInClone(at.clonePath, at.rel);
+        const rel = `${at.prefix}${inClone}`;
         const text = await readFile(abs, "utf8").catch(() => {
             throw new ToolError(`${rel} is a directory or unreadable; evidence must name a file.`);
         });
@@ -231,7 +312,7 @@ async function reportFinding(ctx: AgentContext, input: z.infer<typeof findingInp
         const snippet = snippetOf(lines, e.start_line, e.end_line, line => ctx.masker.mask(line));
         evidence.push({ file: rel, startLine: e.start_line, endLine: e.end_line, snippet });
     }
-    const base = { repositoryId: ctx.repositoryId, aspect: ctx.aspect, checklistItem: input.checklist_item, evidence };
+    const base = { repositoryId: ctx.roots ? null : ctx.repositoryId, aspect: ctx.aspect, checklistItem: input.checklist_item, evidence };
     const finding: NewFinding = ctx.masker.maskDeep({
         ...base,
         agentRunId: ctx.agentRunId,

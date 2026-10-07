@@ -1,9 +1,13 @@
+import { SEAMS, aspectTitle } from "../aspects";
 import { limitedReview } from "../coverage";
 import { compareFindings } from "../findings";
 import type { Ref } from "../references";
+import { shortSha } from "../short-sha";
 import { type ModelAccess, SEVERITIES } from "../types";
 
 import type { ReportData, ReportFinding } from "./types";
+
+const SEAMS_TITLE = aspectTitle(SEAMS);
 
 // The app's palette (zinc, an indigo accent) on paper: light only, system fonts, nothing fetched.
 const CSS = `
@@ -261,7 +265,7 @@ function since(d: ReportData, findings: ReportFinding[]): string {
         `${s.added} new`
     ];
     return `<section id="since"><h2>Since the last audit</h2>
-<p>Re-audited at ${s.commits.map(c => `${e(c.sha.slice(0, 7))} (${e(c.repository)})`).join(", ")}.</p>
+<p>Re-audited at ${s.commits.map(c => `${e(shortSha(c.sha))} (${e(c.repository)})`).join(", ")}.</p>
 <p>${counts.join(" · ")}.</p>
 ${s.changed.length ? `<p>Code changed since, not yet verified: ${s.changed.map(e).join(", ")}.</p>` : ""}
 <h3>Fixed</h3>
@@ -298,6 +302,9 @@ export function renderReport(d: ReportData): string {
         for (let i = 2; [...ids.values()].includes(id); i++) id = `${base}-${i}`;
         ids.set(n, id);
     }
+    const seamsLegend = d.seamsPaths?.length
+        ? `<p class="muted">Each path starts with its repository: ${d.seamsPaths.map(p => `<code>${e(p.path)}/</code> is ${e(p.repository)}`).join(", ")}.</p>\n`
+        : "";
     // A repository with nothing accepted keeps its heading, or a reader might take it for unaudited.
     const groups = manyRepos ? names.map(n => ({ name: n, list: findings.filter(f => f.repository === n) })) : [];
     const option = (v: string, label = v) => `<option value="${e(v)}">${e(label)}</option>`;
@@ -439,7 +446,7 @@ ${
         ? groups
               .map(
                   g =>
-                      `<div class="repo-group">${repoHead(g.name)}\n${g.list.length ? g.list.map(finding).join("\n") : `<p class="muted">No findings were accepted for this repository.</p>`}</div>`
+                      `<div class="repo-group">${repoHead(g.name)}\n${g.name === SEAMS_TITLE ? seamsLegend : ""}${g.list.length ? g.list.map(finding).join("\n") : `<p class="muted">No findings were accepted for this repository.</p>`}</div>`
               )
               .join("\n")
         : findings.map(finding).join("\n")

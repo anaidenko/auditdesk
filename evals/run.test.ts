@@ -13,7 +13,7 @@ import { finding, finish, text, tool } from "@/test/agent-messages";
 import { makeSampleRepo } from "@/test/sample-repo";
 
 import type { AnswerKey } from "./fixtures";
-import { type EvalOptions, type EvalResult, matrixCap, parseEvalArgs, runEval, unfinished } from "./run";
+import { type EvalOptions, type EvalResult, evalAspects, matrixCap, parseEvalArgs, runEval, unfinished } from "./run";
 
 const KEY: AnswerKey = {
     fixture: "sample",
@@ -231,6 +231,20 @@ describe("runEval", () => {
         expect(run.result.agents.map(a => [a.aspect, a.status])).toEqual([["quality", "done"]]);
         expect(run.result.grade.total).toBe(1);
         expect(run.text).toContain("- **Aspects:** quality");
+    });
+});
+
+describe("evalAspects", () => {
+    it("reads all as every aspect but the seams pass, since a fixture is one repository", () => {
+        const all = evalAspects({ name: "own", sha: "x", aspects: "all" });
+        expect(all).not.toContain("seams");
+        expect(all).toEqual(["security", "dependencies", "architecture", "data", "quality", "production", "llm", "tenancy"]);
+        expect(evalAspects({ name: "own", sha: "x" })).toEqual(all);
+    });
+
+    it("takes --aspect or the fixture's list as given", () => {
+        expect(evalAspects({ name: "j", sha: "x", aspects: ["security", "llm"] })).toEqual(["security", "llm"]);
+        expect(evalAspects({ name: "j", sha: "x", aspects: "all" }, "quality")).toEqual(["quality"]);
     });
 });
 
