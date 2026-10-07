@@ -135,6 +135,56 @@ describe("recheck", () => {
         ).toEqual(["changed"]);
     });
 
+    const place = (key: string, snippet: string, file = "src/gone.ts") => ({ file, startLine: 1, endLine: 1, snippet, key });
+
+    it("calls a Semgrep finding of several places fixed once none is left, and changed with the count left otherwise", async () => {
+        const group = earlier({
+            source: "scanner",
+            checklistItem: "SEC-15",
+            fingerprint: "grp",
+            evidence: [place("p1", "serveIndex(a)"), place("p2", "serveIndex(b)")]
+        });
+        expect(await run([group])).toMatchObject([{ status: "fixed", places: { left: 0, of: 2 } }]);
+        const both = scanned({ fingerprint: "grp", evidence: [place("p1", "serveIndex(a)"), place("p2", "serveIndex(b)")] });
+        expect(await run([group], [both])).toMatchObject([{ status: "unchanged", places: { left: 2, of: 2 } }]);
+        const one = scanned({ fingerprint: "p1", evidence: [place("p1", "serveIndex(a)")] });
+        expect(await run([group], [one])).toMatchObject([{ status: "changed", places: { left: 1, of: 2 } }]);
+    });
+
+    it("never calls a secret of several places fixed, and counts the places still reported", async () => {
+        const group = earlier({
+            source: "scanner",
+            checklistItem: "SEC-10",
+            title: "Secrets in the code: 2 generic API keys in one file",
+            fingerprint: "grp",
+            evidence: [place("g1", "k"), place("g2", "k")]
+        });
+        expect(await run([group])).toMatchObject([{ status: "changed", places: { left: 0, of: 2 } }]);
+        const now = scanned({
+            checklistItem: "SEC-10",
+            title: "Secret in the code: generic API key",
+            fingerprint: "g1",
+            evidence: [place("g1", "k")]
+        });
+        expect(await run([group], [now])).toMatchObject([{ status: "changed", places: { left: 1, of: 2 } }]);
+    });
+
+    it("finds a place filed alone before inside a group the scanner files now", async () => {
+        const leak = earlier({
+            source: "scanner",
+            checklistItem: "SEC-10",
+            title: "Secret in the code: Detected a Generic API Key, potentially exposing access.",
+            fingerprint: "g1"
+        });
+        const now = scanned({
+            checklistItem: "SEC-10",
+            title: "Secrets in the code: 2 generic API keys in one file",
+            fingerprint: "grp",
+            evidence: [place("g1", "k"), place("g2", "k")]
+        });
+        expect(await status([leak], [now])).toEqual(["unchanged"]);
+    });
+
     it("keeps Andrii's fix while the cited code stays, and calls it regressed only when it was gone and came back", async () => {
         const fixedWhilePresent = earlier({ recheck: "fixed", recheckGone: false, evidence: [evalBlock] });
         const [kept] = await run([fixedWhilePresent]);

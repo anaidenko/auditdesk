@@ -164,7 +164,11 @@ export async function runAudit(input: AuditInput, deps: AuditDeps): Promise<{ st
     };
     const reportRecheck = async (results: RecheckResult[], what: string) => {
         const news = results.filter(r => !r.keep);
-        const of = (status: RecheckStatus) => news.filter(r => r.status === status).map(r => r.label);
+        const named = (r: RecheckResult) =>
+            r.places && r.places.left < r.places.of && r.status !== "fixed"
+                ? `${r.label}: ${r.places.left} of ${r.places.of} places left`
+                : r.label;
+        const of = (status: RecheckStatus) => news.filter(r => r.status === status).map(named);
         const part = (status: RecheckStatus, words: string, list: boolean) =>
             of(status).length ? `${of(status).length} ${words}${list ? ` (${of(status).join(", ")})` : ""}` : "";
         const parts = [

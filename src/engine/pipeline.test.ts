@@ -207,6 +207,40 @@ describe("runAudit", () => {
         expect(sink.events).toContainEqual("Did not fold the scanner's duplicates: F-004 was already merged or superseded.");
     });
 
+    it("names how many places of a grouped scanner finding are left at a re-check", async () => {
+        const repo = await makeSampleRepo();
+        const ws = await mkdtemp(join(tmpdir(), "ws-"));
+        const first = new TestSink();
+        await audit(first, repo, ws);
+        const concat = first.findings.find(f => f.source === "scanner" && f.explanation.includes("code-string-concat"))!;
+        class Rechecking extends TestSink {
+            override async earlierFindings(r: string | null): Promise<EarlierFinding[]> {
+                if (r === null) return [];
+                return [
+                    {
+                        id: "g",
+                        label: "F-001",
+                        source: "scanner",
+                        fingerprint: "a-group",
+                        title: concat.title,
+                        checklistItem: concat.checklistItem,
+                        references: concat.references,
+                        recheck: null,
+                        recheckDigest: null,
+                        recheckGone: false,
+                        evidence: [
+                            concat.evidence[0],
+                            { file: "src/gone.js", startLine: 1, endLine: 1, snippet: "eval(gone)", key: "k-gone" }
+                        ]
+                    }
+                ];
+            }
+        }
+        const sink = new Rechecking();
+        await audit(sink, repo, ws);
+        expect(sink.events).toContainEqual(expect.stringContaining("1 changed, to verify (F-001: 1 of 2 places left)"));
+    });
+
     it("files a place once, though an earlier finding lists it among several", async () => {
         const repo = await makeSampleRepo();
         const ws = await mkdtemp(join(tmpdir(), "ws-"));
