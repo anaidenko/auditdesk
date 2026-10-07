@@ -30,6 +30,7 @@ describe("the report in a browser", { timeout: 60_000 }, () => {
         const page = await open(
             renderReport(data({ findings: [finding({ evidence: [{ file: "a.ts", startLine: 1, endLine: 30, snippet }] })] }))
         );
+        await page.locator(".finding .body > summary").click();
         const shown = () => page.locator("figure .ln").evaluateAll(els => els.filter(el => el.checkVisibility()).length);
         expect(await shown()).toBe(30);
         expect(await page.locator("figure .cut").isVisible()).toBe(false);
@@ -41,6 +42,7 @@ describe("the report in a browser", { timeout: 60_000 }, () => {
     it("prints ten places of a card and says how many more the HTML report holds", async () => {
         const evidence = Array.from({ length: 13 }, (_, i) => ({ file: `src/f${i}.ts`, startLine: 1, endLine: 1, snippet: `k${i}` }));
         const page = await open(renderReport(data({ findings: [finding({ evidence })] })));
+        await page.locator(".finding .body > summary").click();
         const figures = () => page.locator("figure").evaluateAll(els => els.filter(el => el.checkVisibility()).length);
         expect(await figures()).toBe(10);
         expect(await page.locator(".more > summary").innerText()).toBe("and 3 more places");
@@ -67,6 +69,7 @@ describe("the report in a browser", { timeout: 60_000 }, () => {
 
     it("prints a list of places the reader opened without promising the rest elsewhere", async () => {
         const page = await open(thirteen());
+        await page.locator(".finding .body > summary").click();
         await page.locator(".more > summary").click();
         await page.emulateMedia({ media: "print" });
         expect(await page.locator("figure").evaluateAll(els => els.filter(el => el.checkVisibility()).length)).toBe(13);
@@ -97,12 +100,5 @@ describe("the report in a browser", { timeout: 60_000 }, () => {
             });
         expect(box.title).toBeGreaterThan(200);
         expect(box.overflow).toBeLessThanOrEqual(0);
-    });
-
-    it("prints a card the reader collapsed as collapsed", async () => {
-        const page = await open(renderReport(data()));
-        await page.locator("details#F-001 > summary").click();
-        await page.emulateMedia({ media: "print" });
-        expect(await page.locator("details#F-001 .lead").evaluate(el => el.checkVisibility())).toBe(false);
     });
 });

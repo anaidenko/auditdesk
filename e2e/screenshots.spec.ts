@@ -55,6 +55,6 @@ test("screenshots for the README", async ({ page }) => {
     const file = join(tmpdir(), "auditdesk-sample-report.html");
     writeFileSync(file, html);
     await page.goto(`file://${file}`);
-    await page.locator('details[id^="F-"]').first().scrollIntoViewIfNeeded();
+    await page.locator('article[id^="F-"]').first().scrollIntoViewIfNeeded();
     await shot("report-finding");
 });

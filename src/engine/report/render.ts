@@ -10,8 +10,7 @@ import type { ReportData, ReportFinding } from "./types";
 const SEAMS_TITLE = aspectTitle(SEAMS);
 
 // The app's palette (zinc, an indigo accent) on paper: light only, system fonts, nothing fetched.
-// In print a card may run onto the next page. Its meta line and summary avoid a break after the title:
-// Chromium 153 then kept the title with its summary at 32 of 32 page offsets, 23 without (2026-10-07).
+// In print a card may run onto the next page; its title, meta line and Recommendation keep together.
 const CSS = `
 :root{--ink:#18181b;--muted:#71717a;--faint:#a1a1aa;--line:#e4e4e7;--wash:#fafafa;--accent:#4f46e5;
 --critical:#b91c1c;--critical-bg:#fef2f2;--high:#c2410c;--high-bg:#fff7ed;--medium:#a16207;--medium-bg:#fefce8;
@@ -57,10 +56,11 @@ ${["critical", "high", "medium", "low", "info", "question"].map(s => `.${s}{colo
 .method,.tech{padding-left:1.1rem}.method li,.tech li{margin:.3rem 0}
 .finding{border:1px solid var(--line);border-left:4px solid var(--info);border-radius:10px;margin:1.1rem 0;background:#fff}
 ${["critical", "high", "medium", "low", "info", "question"].map(s => `.finding.sev-${s}{border-left-color:var(--${s})}`).join("")}
-.finding>summary{display:flex;gap:.7rem;align-items:baseline;padding:.85rem 1.1rem;cursor:pointer;list-style:none;font-weight:600}
-.finding>summary::-webkit-details-marker{display:none}
-.finding .body{padding:0 1.1rem 1rem;border-top:1px solid var(--line)}
-.meta{font-size:.82rem;color:var(--muted);margin-top:.8rem}
+.finding .head{padding:.85rem 1.1rem .1rem}
+.finding .title{display:flex;gap:.7rem;align-items:baseline;margin:0;font-weight:600}
+.finding .body{padding:0 1.1rem;border-top:1px solid var(--line)}.finding .body[open]{padding-bottom:1rem}
+.body>summary{cursor:pointer;padding:.55rem 0;font-size:.82rem;font-weight:600;color:var(--accent)}
+.meta{font-size:.82rem;color:var(--muted);margin-top:.3rem}
 .lead{font-size:1.02rem}
 .pair{display:grid;grid-template-columns:1fr 1fr;gap:1.2rem}.pair.one{grid-template-columns:1fr}
 .prose{white-space:pre-wrap}
@@ -90,7 +90,7 @@ section{margin-top:2.2rem}
 section#findings,section#questions{margin-top:0;break-before:page}
 h2,h3,h4,summary,figcaption{break-after:avoid}
 .finding{-webkit-box-decoration-break:clone;box-decoration-break:clone}.more[open]>summary .print-only{display:none}
-.finding>summary,.finding .lead,.pair,.callout,figure{break-inside:avoid}.finding .meta{break-after:avoid}.rest{display:none}
+.finding .title,.finding .lead,.pair,.callout,figure{break-inside:avoid}.finding .title,.finding .meta{break-after:avoid}.rest{display:none}
 .risks li,.gaps li{break-inside:avoid}
 a{color:inherit}
 }
@@ -263,19 +263,21 @@ function finding(f: ReportFinding): string {
         f.likelihood || f.impact
             ? `<div class="pair${f.likelihood && f.impact ? "" : " one"}">${f.likelihood ? `<div><h4>Likelihood</h4><p>${e(f.likelihood)}</p></div>` : ""}${f.impact ? `<div><h4>Impact</h4><p>${e(f.impact)}</p></div>` : ""}</div>`
             : "";
-    return `<details open id="${e(f.label)}" class="finding sev-${e(severityOf(f))}" data-sev="${e(severityOf(f))}" data-aspect="${e(f.aspect)}" data-repo="${e(f.repository)}">
-<summary>${badge(f)}<span class="fid">${e(f.label)}</span><span>${e(f.title)}</span></summary>
-<div class="body">
+    return `<article id="${e(f.label)}" class="finding sev-${e(severityOf(f))}" data-sev="${e(severityOf(f))}" data-aspect="${e(f.aspect)}" data-repo="${e(f.repository)}">
+<div class="head">
+<p class="title">${badge(f)}<span class="fid">${e(f.label)}</span><span>${e(f.title)}</span></p>
 <p class="meta">${e(meta)}${RECHECK_PILL[f.recheck ?? ""] ?? ""}</p>
+<div class="callout"><h4>Recommendation</h4><p class="prose">${e(f.recommendation)}</p></div>
+</div>
+<details class="body"><summary>Details and evidence</summary>
 <p class="lead">${e(f.summary)}</p>
 ${pair}
 <h4>Details</h4>
 <p class="prose">${e(f.explanation)}</p>
 ${f.evidence.length ? `<h4>Evidence</h4>\n${places(f.evidence)}` : ""}
-<div class="callout"><h4>Recommendation</h4><p class="prose">${e(f.recommendation)}</p></div>
 ${refs.length ? `<div class="refs"><h4>References</h4>${refs.map(r => `<p>${r}</p>`).join("")}</div>` : ""}
-</div>
-</details>`;
+</details>
+</article>`;
 }
 
 /** The re-audit's comparison with the findings reported before it (design § 9). */

@@ -217,19 +217,39 @@ describe("renderReport", () => {
         expect(html).toMatch(/<span class="ln">42<\/span>two/);
     });
 
-    it("prints on A4, with every finding open", () => {
+    it("prints on A4", () => {
         const html = renderReport(data({ questions: [finding({ label: "F-003", severity: null })] }));
         expect(html).toMatch(/@page\s*\{[^}]*size:\s*A4/);
-        expect(html).toContain("<details");
-        expect(html.match(/<details(?! open)/g)).toBeNull();
+    });
+
+    it("shows a card's head and Recommendation, and keeps the rest in a body closed on screen", () => {
+        const html = renderReport(data({ findings: [finding({ recommendation: "Use parameterised queries.", summary: "One line." })] }));
+        const card = between(html, 'id="F-001"', "</article>");
+        const [head, body] = card.split('<details class="body">');
+        expect(head).toContain('<p class="title">');
+        expect(head).toContain('<p class="meta">');
+        expect(head).toContain("Use parameterised queries.");
+        expect(html.split("Use parameterised queries.").length - 1).toBe(1);
+        expect(body).toMatch(/^<summary>Details and evidence<\/summary>\n<p class="lead">One line\.<\/p>/);
+        expect(body).toContain("<h4>Details</h4>");
+        expect(body).toContain("<h4>Evidence</h4>");
+        expect(body).toContain("<h4>References</h4>");
+        expect(html.match(/<details[^>]* open/g)).toBeNull();
+    });
+
+    it("gives an open question the same card", () => {
+        const html = renderReport(data({ questions: [finding({ label: "F-009", severity: null })] }));
+        expect(between(html, '<section id="questions">', "</section>")).toMatch(
+            /<article id="F-009" class="finding sev-question"[^>]*>\n<div class="head">[\s\S]*<details class="body">/
+        );
     });
 
     // On the naidenko.dev report (E.9) a card's title sat alone at the foot of a page.
     it("lets a card run onto the next page, keeping its title with its summary", () => {
         const print = between(renderReport(data()), "@media print{", "</style>");
         expect(print).not.toMatch(/\.finding\{[^}]*break-inside:avoid/);
-        expect(print).toContain(".finding .meta{break-after:avoid}");
-        expect(print).toContain(".finding>summary,.finding .lead,.pair,.callout,figure{break-inside:avoid}");
+        expect(print).toContain(".finding .title,.finding .meta{break-after:avoid}");
+        expect(print).toContain(".finding .title,.finding .lead,.pair,.callout,figure{break-inside:avoid}");
     });
 
     it("sums up an aspect whose agent examined every item in one line", () => {
@@ -299,8 +319,8 @@ describe("renderReport", () => {
     it("lists ten places on a card and the rest under 'and N more places'", () => {
         const evidence = Array.from({ length: 13 }, (_, i) => ({ file: `src/f${i}.ts`, startLine: 1, endLine: 1, snippet: `k${i}` }));
         const html = renderReport(data({ findings: [finding({ evidence })] }));
-        const from = html.indexOf('open id="F-001"');
-        const card = html.slice(from, html.indexOf('<div class="callout">', from));
+        const from = html.indexOf('id="F-001"');
+        const card = html.slice(from, html.indexOf("</article>", from));
         const [shown, more] = card.split('<details class="more">');
         expect(shown.split("<figure>").length - 1).toBe(10);
         expect(more.split("<figure>").length - 1).toBe(3);
@@ -336,8 +356,8 @@ describe("renderReport", () => {
         );
         const body = html.slice(html.indexOf('<section id="findings">'));
         expect(body.indexOf('<h3 class="repo" id="repo-web">web</h3>')).toBeGreaterThan(0);
-        expect(body.indexOf('open id="F-002"')).toBeLessThan(body.indexOf('<h3 class="repo" id="repo-api">api</h3>'));
-        expect(body.indexOf('<h3 class="repo" id="repo-api">api</h3>')).toBeLessThan(body.indexOf('open id="F-001"'));
+        expect(body.indexOf('id="F-002"')).toBeLessThan(body.indexOf('<h3 class="repo" id="repo-api">api</h3>'));
+        expect(body.indexOf('<h3 class="repo" id="repo-api">api</h3>')).toBeLessThan(body.indexOf('id="F-001"'));
         const toc = between(html, '<nav class="toc">', "</nav>");
         expect(toc.indexOf('<a href="#repo-web">web (1)</a>')).toBeLessThan(toc.indexOf('<a href="#repo-api">api (1)</a>'));
         expect(toc).not.toContain("F-00");
@@ -363,8 +383,8 @@ describe("renderReport", () => {
         );
         const body = html.slice(html.indexOf('<section id="findings">'));
         const heading = '<h3 class="repo" id="repo-Seams-between-repositories">Seams between repositories</h3>';
-        expect(body.indexOf('open id="F-002"')).toBeLessThan(body.indexOf(heading));
-        expect(body.indexOf(heading)).toBeLessThan(body.indexOf('open id="F-001"'));
+        expect(body.indexOf('id="F-002"')).toBeLessThan(body.indexOf(heading));
+        expect(body.indexOf(heading)).toBeLessThan(body.indexOf('id="F-001"'));
         expect(between(html, '<nav class="toc">', "</nav>")).toContain(
             '<a href="#repo-Seams-between-repositories">Seams between repositories (1)</a>'
         );
@@ -389,7 +409,7 @@ describe("renderReport", () => {
         expect(seams).toContain(
             '<p class="muted">Each path starts with its repository: <code>web-main/</code> is acme/web, <code>web-2/</code> is partner/web.</p>'
         );
-        expect(seams.indexOf("Each path starts")).toBeLessThan(seams.indexOf('open id="F-001"'));
+        expect(seams.indexOf("Each path starts")).toBeLessThan(seams.indexOf('id="F-001"'));
     });
 
     it("adds no repository headings for a single repository", () => {
@@ -427,7 +447,7 @@ describe("renderReport", () => {
                 ]
             })
         );
-        const card = between(html, 'id="F-001"', "</details>");
+        const card = between(html, 'id="F-001"', "</article>");
         expect(card).toMatch(
             /Relevant to: <a href="https:\/\/owasp\.org\/Top10\/2025\/A01_2025-Broken_Access_Control\/">A01:2025 Broken Access Control<\/a>/
         );
@@ -465,7 +485,7 @@ describe("renderReport", () => {
                 ]
             })
         );
-        expect(between(html, 'id="F-001"', "</details>")).toContain(
+        expect(between(html, 'id="F-001"', "</article>")).toContain(
             'Relevant to: <a href="https://www.w3.org/TR/WCAG22/#non-text-content">WCAG 2.2 SC 1.1.1 Non-text Content (Level A)</a>; <a href="https://www.w3.org/TR/WCAG22/#name-role-value">WCAG 2.2 SC 4.1.2 Name, Role, Value (Level A)</a>.'
         );
     });
@@ -546,7 +566,7 @@ describe("renderReport", () => {
         expect(filters).toContain('<option value="Security">Security</option>');
         expect(filters).toContain('<option value="api">api</option>');
         expect(filters).toContain('name="q"');
-        expect(html).toMatch(/<details open id="F-001" class="finding sev-high" data-sev="high" data-aspect="Security" data-repo="web">/);
+        expect(html).toMatch(/<article id="F-001" class="finding sev-high" data-sev="high" data-aspect="Security" data-repo="web">/);
         expect(html).toMatch(/<script>[\s\S]*?querySelector[\s\S]*?<\/script>/);
         expect(html).not.toMatch(/<script[^>]+src=/);
         expect(between(html, "@media print{", "</style>")).toMatch(/\.filters\{display:none/);
@@ -560,12 +580,12 @@ describe("renderReport", () => {
         it("counts hours set to zero as hours, as the card does", () => {
             const html = renderReport(data({ findings: [finding({ effort: "S", effortHours: 0 })] }));
             expect(summary(html)).toContain("Estimated effort: 0 h for the finding with hours set.");
-            expect(between(html, 'id="F-001"', "</details>")).toContain("effort S (0 h)");
+            expect(between(html, 'id="F-001"', "</article>")).toContain("effort S (0 h)");
         });
         it("says the findings that can wait still need fixing, and shows Andrii's call on the card", () => {
             const html = renderReport(data({ findings: [finding({ label: "F-001", severity: "critical", fixBeforeSignoff: false })] }));
             expect(summary(html)).toContain("Still to fix, after sign-off.");
-            expect(between(html, 'open id="F-001"', "</details>")).toContain("agreed to fix after sign-off");
+            expect(between(html, 'id="F-001"', "</article>")).toContain("agreed to fix after sign-off");
         });
         it("counts the open questions the team must answer", () => {
             expect(summary(renderReport(data({ questions: [finding({ label: "F-009", severity: null })] })))).toContain(
