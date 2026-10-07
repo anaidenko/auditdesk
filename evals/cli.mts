@@ -44,6 +44,11 @@ const { file, result } = await runEval(o, {
     ...(judgeKey ? { judge: createClient(judgeKey) } : {})
 });
 const usd = result.byModel.reduce((s, m) => s + m.usd, 0);
+const judge = result.judge ? ` + judge $${result.judge.usd.toFixed(2)}` : "";
 console.log(
-    `${file}\nRecall ${result.grade.found}/${result.grade.total}; ${result.grade.leftovers.length} findings outside the key; $${usd.toFixed(2)}.`
+    `${file}\nRecall ${result.grade.found}/${result.grade.total}; ${result.grade.leftovers.length} findings outside the key; agents $${usd.toFixed(2)}${judge}.`
 );
+if (result.aborted) {
+    console.error(`The audit was aborted: ${result.aborted}`);
+    process.exit(1);
+}

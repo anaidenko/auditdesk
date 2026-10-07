@@ -18,6 +18,7 @@ const entry = (over: Partial<KeyEntry> & Pick<KeyEntry, "id">): KeyEntry => ({
 
 const finding = (over: Partial<GradedFinding> & Pick<GradedFinding, "label">): GradedFinding => ({
     kind: "finding",
+    source: "agent",
     aspect: "security",
     checklistItem: "SEC-03",
     title: "t",
@@ -180,5 +181,51 @@ describe("grade", () => {
         expect(g.found).toBe(1);
         expect(g.recall).toBeCloseTo(1 / 3);
         expect(g.missed).toEqual(["K2", "K4"]);
+        expect(g.scoped).toEqual(["K1", "K2", "K4"]);
+    });
+
+    it("grades only the findings of the run's aspects, and lists the rest as outside it", () => {
+        const k = key([
+            entry({ id: "K1" }),
+            entry({ id: "K2", aspect: "dependencies", checklistItem: "DEP-01", file: "package-lock.json" })
+        ]);
+        const g = grade(
+            [
+                finding({ label: "F-001" }),
+                finding({
+                    label: "F-002",
+                    aspect: "dependencies",
+                    checklistItem: "DEP-01",
+                    evidence: [{ file: "package-lock.json", startLine: 9, endLine: 9 }]
+                }),
+                finding({ label: "F-003", aspect: "dependencies", checklistItem: "DEP-02", evidence: [] })
+            ],
+            k,
+            { aspects: ["security"] }
+        );
+        expect(g.matched).toEqual([{ key: "K1", finding: "F-001" }]);
+        expect(g.outside).toEqual(["F-002", "F-003"]);
+        expect(g.leftovers).toEqual([]);
+    });
+
+    it("credits a range of more than 30 lines only through the judge", () => {
+        const g = grade(
+            [finding({ label: "F-001", evidence: [{ file: "src/orders.ts", startLine: 1, endLine: 400 }] })],
+            key([entry({ id: "K1" }), entry({ id: "K2", startLine: 90, endLine: 90 })])
+        );
+        expect(g.matched).toEqual([]);
+        expect(g.leftovers).toEqual(["F-001"]);
+    });
+
+    it("counts what the agents found apart from what the scanners found", () => {
+        const g = grade(
+            [
+                finding({ label: "F-001", source: "scanner" }),
+                finding({ label: "F-002", evidence: [{ file: "b.ts", startLine: 8, endLine: 8 }] })
+            ],
+            key([entry({ id: "K1" }), entry({ id: "K2", file: "b.ts" }), entry({ id: "K3", file: "c.ts" })])
+        );
+        expect(g.found).toBe(2);
+        expect(g.foundByAgents).toBe(1);
     });
 });

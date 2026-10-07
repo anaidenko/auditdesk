@@ -5,6 +5,7 @@ import type { AnswerKey, KeyEntry } from "./fixtures";
 export interface GradedFinding {
     label: string;
     kind: "finding" | "question";
+    source: "agent" | "scanner";
     aspect: string;
     checklistItem: string | null;
     title: string;
@@ -21,17 +22,25 @@ export interface Grade {
     /** Findings that match nothing: false findings, unless the judge or Andrii says otherwise. */
     leftovers: string[];
     questionsIgnored: number;
+    /** Findings of aspects the run did not choose (a scanner's, on a single-aspect run): not graded. */
+    outside: string[];
     /** Entries the run's aspects could find, and how many of them were. */
+    scoped: string[];
     total: number;
     found: number;
+    /** Entries found by an agent's finding, whatever the scanners found. */
+    foundByAgents: number;
     recall: number;
     missed: string[];
 }
 
-const aspectOf = (item: string) => ASPECTS.find(a => item.startsWith(`${a.prefix}-`))?.key;
+/** A cited range longer than this locates nothing by itself: a whole file would match every entry in it. */
+export const WIDE = 30;
+
+const aspectOf = (item: string | null) => (item === null ? undefined : ASPECTS.find(a => item.startsWith(`${a.prefix}-`))?.key);
 const norm = (file: string) => file.replace(/^\.\//, "");
 
-function places(e: KeyEntry) {
+export function places(e: KeyEntry) {
     return [...(e.file ? [{ file: e.file, startLine: e.startLine!, endLine: e.endLine! }] : []), ...(e.also ?? [])];
 }
 
@@ -50,8 +59,11 @@ export function grade(findings: GradedFinding[], key: AnswerKey, o: { slack?: nu
         known: [],
         leftovers: [],
         questionsIgnored: 0,
+        outside: [],
+        scoped: [],
         total: 0,
         found: 0,
+        foundByAgents: 0,
         recall: 0,
         missed: []
     };
@@ -75,6 +87,10 @@ export function grade(findings: GradedFinding[], key: AnswerKey, o: { slack?: nu
     };
 
     for (const f of findings) {
+        if (o.aspects && !o.aspects.includes(f.aspect) && !o.aspects.includes(aspectOf(f.checklistItem) ?? "")) {
+            g.outside.push(f.label);
+            continue;
+        }
         const allows = (e: KeyEntry) => f.checklistItem !== null && [e.checklistItem, ...(e.alsoItems ?? [])].includes(f.checklistItem);
         const hits = new Set(
             key.entries.filter(e => allows(e) && (e.kind === "absence" || (e.kind === "question" && f.kind === "question"))).map(e => e.id)
@@ -82,6 +98,7 @@ export function grade(findings: GradedFinding[], key: AnswerKey, o: { slack?: nu
         const onPlace = new Set<string>();
         if (f.kind === "finding")
             for (const ev of f.evidence) {
+                if (ev.endLine - ev.startLine + 1 > WIDE) continue;
                 const near = nearest(located.filter(allows), ev);
                 for (const id of near) hits.add(id);
                 if (!near.length) for (const id of nearest(located, ev)) onPlace.add(id);
@@ -103,8 +120,12 @@ export function grade(findings: GradedFinding[], key: AnswerKey, o: { slack?: nu
 
     const scoped = key.entries.filter(inScope);
     const foundIds = new Set(g.matched.map(m => m.key));
+    const source = new Map(findings.map(f => [f.label, f.source]));
+    const byAgents = new Set(g.matched.filter(m => source.get(m.finding) === "agent").map(m => m.key));
+    g.scoped = scoped.map(e => e.id);
     g.total = scoped.length;
     g.found = scoped.filter(e => foundIds.has(e.id)).length;
+    g.foundByAgents = scoped.filter(e => byAgents.has(e.id)).length;
     g.recall = g.total ? g.found / g.total : 0;
     g.missed = scoped.filter(e => !foundIds.has(e.id)).map(e => e.id);
     return g;
