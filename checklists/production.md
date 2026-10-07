@@ -13,14 +13,14 @@ hygiene.
 ## PRD-01 Configuration and secrets
 
 Every environment variable listed in an example file (`.env.example`) and validated at
-start-up; secrets supplied by the platform or a secret manager, not baked into images or
-bundles; secrets read at import time, which breaks builds and tests; one configuration per
-environment.
+start-up; secrets supplied by the platform or a secret manager; secrets read at import time,
+which breaks builds and tests; one configuration per environment. A secret in the code, the
+history, a bundle or an image is SEC-10's.
 
 ## PRD-02 Logging
 
 Structured logs with levels; a request or correlation ID carried through; background jobs
-logged too; no passwords, tokens or personal data in logs (also SEC-13); where the logs go.
+logged too; where the logs go. Passwords, tokens or personal data in logs are SEC-13's.
 
 ## PRD-03 Error tracking and monitoring
 

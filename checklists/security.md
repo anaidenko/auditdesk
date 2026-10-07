@@ -73,13 +73,14 @@ Dockerfiles or CI files, default or shared credentials.
 
 ## SEC-11 Security headers and transport
 
-Content-Security-Policy, HSTS, frame protection, `X-Content-Type-Options`, cookies without
-Secure, HTTP URLs to the app's own APIs, TLS verification turned off.
+Content-Security-Policy, HSTS, frame protection, `X-Content-Type-Options`, HTTP URLs to the
+app's own APIs, TLS verification turned off. Cookie flags are SEC-02's.
 
 ## SEC-12 Rate limiting and abuse
 
 Expensive or enumerable endpoints without limits (login, reset, search, export, AI calls) and
-uploads without size caps. Pagination belongs to DAT-03.
+uploads without size caps. Pagination belongs to DAT-03. While LLM integrations runs, limits on
+the calls to a model are LLM-04's.
 
 ## SEC-13 Logging and error exposure
 
