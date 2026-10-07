@@ -160,9 +160,10 @@ severity counts, a summary (what to fix before sign-off and what can wait, one l
 with its aspect and effort, and the estimated effort), scope and method (each aspect's coverage
 in a line, the items not fully examined, what was not run or not covered), each finding in full,
 signs of AI-generated code, open questions, technical details (models that served calls, scanner
-versions, rulesets, budgets) and a disclaimer. Filters and search work in the browser; a printout
-is always whole, with twelve lines of each excerpt and ten places of each finding, and a card
-runs on across a page break with its title kept by its summary.
+versions, rulesets, budgets) and a disclaimer. Filters and search work in the browser and never
+hide anything from a printout. A printout shows twelve lines of an excerpt and ten places of a
+finding, each with a note of what the HTML adds, and a card runs on across a page break with its
+title kept by its summary.
 
 Each finding links what it is relevant to, never claiming compliance: its OWASP Top 10:2025
 category, ASVS 5.0.0 sections or requirements, its CWE when the agent named one, advisories for
