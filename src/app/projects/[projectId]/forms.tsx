@@ -84,8 +84,20 @@ export function StartRunForm({
             effort: String(fd.get("effort")) as Effort
         });
     };
-    // A box ticked by a new suggestion, or values a browser restored, change the form without a change event.
-    useLayoutEffect(() => read(form.current), [chosen, suggested, repositories, state]);
+    // React sets a box's `checked` when it mounts, after which a new `defaultChecked` no longer moves
+    // it: a suggestion that arrives later (a detection on this page) ticks its box here, leaving the
+    // rest of the form as Andrii left it.
+    const offered = useRef(suggested);
+    // A box ticked that way, or values a browser restored, change the form without a change event.
+    useLayoutEffect(() => {
+        const f = form.current;
+        for (const key of suggested.filter(k => !offered.current.includes(k))) {
+            const box = f?.querySelector<HTMLInputElement>(`input[name="aspects"][value="${key}"]`);
+            if (box) box.checked = true;
+        }
+        offered.current = suggested;
+        read(f);
+    }, [chosen, suggested, repositories, state]);
     const picked = pickStats(costStats, live.model, live.effort);
     const estimate = repositories ? estimateRun(picked.stats, agentCount(repositories, live.aspects), live.usd, picked.basis) : null;
     return (
