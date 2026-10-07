@@ -157,6 +157,12 @@ All eight runs are of one Auditdesk commit (`0f36ca8`); the earlier Sonnet `low`
 folder ($0.06) predates sending back an agent that looked at little. The own fixture was then at
 `2aff7d0`; its key has grown since, with the aspects added after.
 
+All eleven aspects on the own fixture, at Sonnet 5.5 `high` with an $11 and 550,000-token cap
+(2026-10-07, fixture at `32aee95`): 28 of its 38 key entries found, all by the agents, with 4
+findings outside the key, for $2.31 in 14 minutes. The eight-aspect run before it found 18 of the
+then 25 entries for $1.55. The run's Auditdesk commit (`966b7a8`) adds Semgrep grouping to the
+scanners; the agents, prompts and checklists are those of `main`.
+
 ## Live checks
 
 `pnpm tsx scripts/smoke.mts` sends two small requests with the agent's exact request shape and
