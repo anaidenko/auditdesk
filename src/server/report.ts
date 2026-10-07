@@ -6,6 +6,7 @@ import { ASPECTS, SEAMS, aspectTitle } from "@/engine/aspects";
 import { loadChecklist } from "@/engine/checklists";
 import { workspaceDir } from "@/engine/config";
 import { findingLabel } from "@/engine/findings";
+import { pathNames } from "@/engine/pipeline";
 import { loadReferences, referencesFor } from "@/engine/references";
 import type { ReportData, ReportFinding } from "@/engine/report/types";
 import type { ToolVersions } from "@/engine/scanners/types";
@@ -179,6 +180,10 @@ export async function loadReportData(projectId: string, o: { includeCost?: boole
             sha: r.commitSha ?? "not cloned",
             notCovered: (r.stack as StackProfile | null)?.notCovered ?? []
         })),
+        // A seams finding's paths start with the pipeline's name for each repository, not the report's.
+        ...(rows.some(r => r.aspect === SEAMS) && {
+            seamsPaths: [...pathNames(project.repositories)].map(([id, path]) => ({ path, repository: names.get(id)! }))
+        }),
         aiBuilt: project.aiBuilt,
         aspects,
         itemTitles,

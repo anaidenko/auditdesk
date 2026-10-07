@@ -248,6 +248,27 @@ describe("renderReport", () => {
         expect(html).toContain('<option value="Seams between repositories">');
     });
 
+    it("says which repository each path of a seams finding starts with", () => {
+        const html = renderReport(
+            data({
+                repositories: [
+                    { name: "acme/web", branch: "main", sha: "0123456789abcdef", notCovered: [] },
+                    { name: "partner/web", branch: "main", sha: "fedcba9876543210", notCovered: [] }
+                ],
+                findings: [finding({ label: "F-001", repository: "Seams between repositories" })],
+                seamsPaths: [
+                    { path: "web-main", repository: "acme/web" },
+                    { path: "web-2", repository: "partner/web" }
+                ]
+            })
+        );
+        const seams = html.slice(html.indexOf('id="repo-Seams-between-repositories"'));
+        expect(seams).toContain(
+            '<p class="muted">Each path starts with its repository: <code>web-main/</code> is acme/web, <code>web-2/</code> is partner/web.</p>'
+        );
+        expect(seams.indexOf("Each path starts")).toBeLessThan(seams.indexOf('open id="F-001"'));
+    });
+
     it("adds no repository headings for a single repository", () => {
         expect(renderReport(data())).not.toContain('class="repo"');
     });

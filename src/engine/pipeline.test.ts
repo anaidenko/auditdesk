@@ -351,6 +351,26 @@ describe("the seams pass", () => {
             { id: "r-web", source: await makeSampleRepo(), branch: "main" },
             { id: "r-api", source: await makeSampleRepo(), branch: "main" }
         ];
+        await sink.createFinding({
+            repositoryId: null,
+            agentRunId: null,
+            aspect: "seams",
+            kind: "finding",
+            checklistItem: "SEA-01",
+            title: "Reviewed before the re-run",
+            severity: "medium",
+            likelihood: null,
+            impact: null,
+            summary: "s",
+            explanation: "e",
+            recommendation: "r",
+            effort: "S",
+            evidence: [],
+            references: {},
+            tags: [],
+            source: "agent",
+            fingerprint: "reviewed"
+        });
         await audit(
             sink,
             repositories[0].source,
@@ -361,6 +381,7 @@ describe("the seams pass", () => {
         expect(inputs.map(i => i.ctx.aspect)).toEqual(["seams"]);
         expect(inputs[0].ctx.roots).toHaveLength(2);
         expect(sink.superseded).toEqual([[null, "seams"]]);
+        expect(inputs[0].firstMessage).toContain("F-001 [medium] SEA-01 - Reviewed before the re-run");
     });
 
     it("gives the seams pass its earlier findings, and each repository's agents those that cite it", async () => {
@@ -685,5 +706,40 @@ describe("the cached prefix", () => {
         expect(calls).toEqual(["gitleaks:api", "gitleaks:web", "osv:web", "semgrep:web"]);
         expect(inputs.map(i => `${i.ctx.repositoryId}:${i.ctx.aspect}`)).toEqual(["web:security"]);
         expect(sink.findings.every(f => f.repositoryId === "web")).toBe(true);
+    });
+
+    it("re-runs the seams pass after gitleaks alone on every repository, filing nothing from the scanners", async () => {
+        const recorded = replayRunner("src/test/fixtures/scanners");
+        const calls: string[] = [];
+        const counting: ScannerRunner = {
+            ...recorded,
+            run: async (tool, args, mounts) => {
+                calls.push(`${tool}:${mounts[0].host.includes("/web@") ? "web" : "api"}`);
+                return recorded.run(tool, args, mounts);
+            }
+        };
+        const sink = new TestSink();
+        const { inputs, runAspect } = capturing();
+        const [api, web] = [await makeSampleRepo(), await makeSampleRepo()];
+        await audit(
+            sink,
+            api,
+            await mkdtemp(join(tmpdir(), "ws-")),
+            {
+                repositories: [
+                    { id: "api", source: api, branch: "main" },
+                    { id: "web", source: web, branch: "main" }
+                ],
+                aspects: ["security", "seams"],
+                only: { repositoryId: "api", aspect: "seams" }
+            },
+            runAspect,
+            { scanners: counting }
+        );
+        expect(calls).toEqual(["gitleaks:api", "gitleaks:web"]);
+        expect(inputs.map(i => i.ctx.aspect)).toEqual(["seams"]);
+        expect(inputs[0].ctx.roots).toHaveLength(2);
+        expect(sink.findings).toEqual([]);
+        expect(sink.events.some(e => e.startsWith("Scanners filed"))).toBe(false);
     });
 });

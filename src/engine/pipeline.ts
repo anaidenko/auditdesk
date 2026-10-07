@@ -36,8 +36,10 @@ export interface PipelineSink extends AuditSink {
      * `raised` is the scanner's higher severity, which the agent's finding takes.
      */
     foldScannerDuplicates(repositoryId: string, agentRunId: string): Promise<{ from: string; into: string; raised?: SeverityName }[]>;
-    /** The repository's reported findings from runs at another commit, which a full run re-checks (design § 9). */
-    /** With null, the seams pass's findings, at every repository's commit joined by "+". */
+    /**
+     * The repository's reported findings from runs at another commit, which a full run re-checks
+     * (design § 9); with null, the seams pass's findings, at every repository's commit joined by "+".
+     */
     earlierFindings(repositoryId: string | null, sha: string): Promise<EarlierFinding[]>;
     recheckFindings(results: RecheckResult[], sha: string): Promise<void>;
 }
@@ -114,13 +116,14 @@ export async function runAudit(input: AuditInput, deps: AuditDeps): Promise<{ st
 
     // Every repository is cloned and scanned before any agent starts: the brief reaches every agent,
     // so it is masked with the secrets gitleaks found in all of them (design § 6). A re-run of one
-    // repository runs gitleaks alone on the others.
-    const scanned: { repo: AuditInput["repositories"][number]; sha: string; clonePath: string; scan: ScanResults }[] = [];
+    // repository runs gitleaks alone on the others; a re-run of the seams pass, on all of them, since
+    // it reads each repository's map and files nothing from the scanners. `scan` is null then.
+    const seamsOnly = input.only?.aspect === SEAMS;
+    const scanned: { repo: AuditInput["repositories"][number]; sha: string; clonePath: string; scan: ScanResults | null }[] = [];
     const masks: { value: string; rule: string }[] = [];
     for (const repo of input.repositories) {
         if (await sink.stopRequested()) return { stopped: true };
-        // A re-run of the seams pass reads every repository, so each is cloned and scanned again.
-        const target = !input.only || input.only.aspect === SEAMS || input.only.repositoryId === repo.id;
+        const target = !input.only || seamsOnly || input.only.repositoryId === repo.id;
         await sink.progress(`Cloning ${repo.source} at ${repo.branch}…`);
         const { sha, clonePath } = await cloneRepository({
             source: repo.source,
@@ -130,10 +133,11 @@ export async function runAudit(input: AuditInput, deps: AuditDeps): Promise<{ st
             projectId: input.projectId,
             repositoryId: repo.id
         });
-        if (!target) {
+        if (!target || seamsOnly) {
             await sink.progress("Running gitleaks, so this repository's secrets stay out of the brief…");
             const leaks = await runGitleaks({ clonePath, runner: deps.scanners, configDir: join(runDir, "gitleaks") });
             masks.push(...(await leakMasks(clonePath, leaks)));
+            if (seamsOnly) scanned.push({ repo, sha, clonePath, scan: null });
             continue;
         }
         await sink.repositoryCloned(repo.id, sha, clonePath);
@@ -193,49 +197,52 @@ export async function runAudit(input: AuditInput, deps: AuditDeps): Promise<{ st
     }
 
     for (const { repo, sha, clonePath, scan } of scanned) {
-        const inTree = new Set<string>();
-        for (const leak of scan.leaks) if (await leakInTree(clonePath, leak)) inTree.add(`${leak.File}:${leak.StartLine}:${leak.Commit}`);
-        const known = await sink.knownFingerprints(repo.id);
-        const lockEntries = await osvEvidence(clonePath, scan.osv, l => masker.mask(l));
-        const scannerFindings = [
-            ...normaliseGitleaks(scan.leaks, {
-                repositoryId: repo.id,
-                masker,
-                inTree: l => inTree.has(`${l.File}:${l.StartLine}:${l.Commit}`)
-            }),
-            ...normaliseOsv(scan.osv, { repositoryId: repo.id, locate: p => lockEntries.get(p) ?? null }),
-            // Semgrep's own `extra.lines` reads "requires login" without a Semgrep account: the code comes from the clone.
-            ...normaliseSemgrep(
-                await Promise.all(
-                    scan.semgrep.map(async r => ({
-                        ...r,
-                        extra: {
-                            ...r.extra,
-                            lines: (await readSnippet(clonePath, r.path, r.start.line, r.end.line, l => masker.mask(l))) ?? ""
-                        }
-                    }))
-                ),
-                { repositoryId: repo.id, masker }
-            )
-        ];
-        let filed = 0;
-        for (const f of scannerFindings) {
-            if (known.has(f.fingerprint)) continue;
-            known.add(f.fingerprint);
-            await sink.createFinding(f);
-            filed++;
-        }
-        await sink.progress(
-            `Scanners filed ${count(filed, "new finding", "new findings")} (${count(scan.leaks.length, "secret", "secrets")} masked from here on).`
-        );
+        if (scan) {
+            const inTree = new Set<string>();
+            for (const leak of scan.leaks)
+                if (await leakInTree(clonePath, leak)) inTree.add(`${leak.File}:${leak.StartLine}:${leak.Commit}`);
+            const known = await sink.knownFingerprints(repo.id);
+            const lockEntries = await osvEvidence(clonePath, scan.osv, l => masker.mask(l));
+            const scannerFindings = [
+                ...normaliseGitleaks(scan.leaks, {
+                    repositoryId: repo.id,
+                    masker,
+                    inTree: l => inTree.has(`${l.File}:${l.StartLine}:${l.Commit}`)
+                }),
+                ...normaliseOsv(scan.osv, { repositoryId: repo.id, locate: p => lockEntries.get(p) ?? null }),
+                // Semgrep's own `extra.lines` reads "requires login" without a Semgrep account: the code comes from the clone.
+                ...normaliseSemgrep(
+                    await Promise.all(
+                        scan.semgrep.map(async r => ({
+                            ...r,
+                            extra: {
+                                ...r.extra,
+                                lines: (await readSnippet(clonePath, r.path, r.start.line, r.end.line, l => masker.mask(l))) ?? ""
+                            }
+                        }))
+                    ),
+                    { repositoryId: repo.id, masker }
+                )
+            ];
+            let filed = 0;
+            for (const f of scannerFindings) {
+                if (known.has(f.fingerprint)) continue;
+                known.add(f.fingerprint);
+                await sink.createFinding(f);
+                filed++;
+            }
+            await sink.progress(
+                `Scanners filed ${count(filed, "new finding", "new findings")} (${count(scan.leaks.length, "secret", "secrets")} masked from here on).`
+            );
 
-        // Before the agents, so a run stopped or failed later still has its re-check.
-        if (!input.only) {
-            const earlier = await sink.earlierFindings(repo.id, sha);
-            if (earlier.length) {
-                const results = await recheck(earlier, { scanners: scannerFindings, read: file => readMasked(clonePath, file) });
-                await sink.recheckFindings(results, sha);
-                await reportRecheck(results, `against ${shortSha(sha)}`);
+            // Before the agents, so a run stopped or failed later still has its re-check.
+            if (!input.only) {
+                const earlier = await sink.earlierFindings(repo.id, sha);
+                if (earlier.length) {
+                    const results = await recheck(earlier, { scanners: scannerFindings, read: file => readMasked(clonePath, file) });
+                    await sink.recheckFindings(results, sha);
+                    await reportRecheck(results, `against ${shortSha(sha)}`);
+                }
             }
         }
 

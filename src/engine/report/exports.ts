@@ -1,3 +1,4 @@
+import { SEAMS, aspectTitle } from "../aspects";
 import { compareFindings } from "../findings";
 import type { Ref } from "../references";
 import type { SeverityName } from "../types";
@@ -68,7 +69,17 @@ export function sarif(d: ReportData, repository: string): SarifLog {
         ...Object.entries(d.itemTitles ?? {}),
         ...d.aspects.flatMap(a => a.coverage.filter(c => c.title).map(c => [c.item, c.title] as const))
     ]);
-    const findings = bySeverity(d.findings.filter(f => f.repository === repo.name));
+    // A seams finding cites several repositories: each one's upload gets it with its own locations.
+    const seamsPrefix = d.seamsPaths?.find(p => p.repository === repo.name)?.path;
+    const own = (f: ReportFinding): ReportFinding | null => {
+        if (f.repository === repo.name) return f;
+        if (!seamsPrefix || f.aspect !== aspectTitle(SEAMS)) return null;
+        const evidence = f.evidence
+            .filter(e => e.file.startsWith(`${seamsPrefix}/`))
+            .map(e => ({ ...e, file: e.file.slice(seamsPrefix.length + 1) }));
+        return evidence.length ? { ...f, evidence } : null;
+    };
+    const findings = bySeverity(d.findings.map(own).filter(f => f !== null));
     const rules = [...new Set(findings.map(f => f.checklistItem ?? "other"))].map((id): SarifRule => {
         const rule = { id, name: id, shortDescription: { text: titles.get(id) ?? id } };
         if (!SECURITY_ITEM.test(id)) return rule;

@@ -68,7 +68,9 @@ engine (imports nothing from Next.js): workspace, scanners, masker, repository m
 6. **The seams pass,** when it is ticked and the project has more than one repository: one agent
    reads every repository at once, each path starting with the repository's name, with all their
    maps and the findings already filed, and reports what shows where they meet. Its findings
-   belong to no single repository; the report gives them their own section.
+   belong to no single repository: the report gives them their own section and says which
+   repository each path names, a re-audit re-checks them in every clone, and the SARIF of each
+   repository they cite carries them with that repository's locations.
 
 ## Aspects
 

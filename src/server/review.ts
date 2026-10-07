@@ -2,6 +2,7 @@ import "server-only";
 
 import { ASPECTS } from "@/engine/aspects";
 import { compareFindings, findingLabel } from "@/engine/findings";
+import { pathNames } from "@/engine/pipeline";
 import type { Evidence, SeverityName } from "@/engine/types";
 import { FindingStatus, RecheckStatus } from "@/generated/prisma/enums";
 import { prisma } from "@/server/db";
@@ -73,6 +74,15 @@ export async function merge(sourceId: string, targetLabel: string, o: { onlyUnre
     if (target.status === "merged") throw new Error(`${targetLabel} was itself merged; merge into the finding it went to.`);
     if (target.status === "rejected" || target.status === "excluded" || target.status === "superseded")
         throw new Error(`${targetLabel} is ${target.status}; merge into a finding that stays in the review.`);
+    // A seams finding's paths start with their repository's name; a repository's own paths do not.
+    if (!source.repositoryId && target.repositoryId)
+        throw new Error(
+            `${findingLabel(source.number)} cites every repository by name; merge ${findingLabel(target.number)} into it instead.`
+        );
+    const prefix =
+        source.repositoryId && !target.repositoryId
+            ? `${pathNames(await prisma.repository.findMany({ where: { projectId: source.projectId }, orderBy: { createdAt: "asc" } })).get(source.repositoryId)}/`
+            : "";
     await prisma.$transaction(async tx => {
         // Conditional, so a second press (or a stale page) cannot add the evidence twice.
         const { count } = await tx.finding.updateMany({
@@ -83,9 +93,9 @@ export async function merge(sourceId: string, targetLabel: string, o: { onlyUnre
         const fresh = await tx.finding.findUniqueOrThrow({ where: { id: target.id } });
         const kept = fresh.evidence as unknown as Evidence[];
         // A range the target already shows would print the same code twice in the report.
-        const added = (source.evidence as unknown as Evidence[]).filter(
-            e => !kept.some(k => k.file === e.file && k.startLine <= e.startLine && e.endLine <= k.endLine)
-        );
+        const added = (source.evidence as unknown as Evidence[])
+            .map(e => ({ ...e, file: `${prefix}${e.file}` }))
+            .filter(e => !kept.some(k => k.file === e.file && k.startLine <= e.startLine && e.endLine <= k.endLine));
         await tx.finding.update({ where: { id: target.id }, data: { evidence: [...kept, ...added] as object[] } });
     });
 }

@@ -164,6 +164,10 @@ describe("the seams between repositories", () => {
         const d = await loadReportData(project.id);
         expect(d.findings.map(x => [x.repository, x.aspect])).toEqual([["Seams between repositories", "Seams between repositories"]]);
         expect(d.aspects.map(a => a.title)).toEqual(["Seams between repositories"]);
+        expect(d.seamsPaths).toEqual([
+            { path: "web", repository: "web" },
+            { path: "api", repository: "api" }
+        ]);
     });
 
     it("lists the seams pass after every repository's aspects, once, whichever repository its agent ran under", async () => {

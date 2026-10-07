@@ -34,6 +34,8 @@ export interface ReportData {
     auditor: string | null;
     /** Names are unique within a report; `notCovered` lists languages the audit could not analyse. */
     repositories: { name: string; branch: string; sha: string; notCovered: string[] }[];
+    /** The name a seams finding's path starts with, per repository; present when there are seams findings. */
+    seamsPaths?: { path: string; repository: string }[];
     aspects: { title: string; status: string; note: string | null; coverage: { item: string; title: string; status: string }[] }[];
     servedModels: string[];
     /** The accesses of the runs whose calls are in the report: which terms the client's code went under. */
