@@ -35,5 +35,9 @@ const upstream = Object.fromEntries(
 );
 const challenges = (parse(readFileSync(MAPS[name], "utf8")) as { challenges: ChallengeMap }).challenges;
 const entries = buildKey(upstream, prepared.lineMap, challenges, prepared.path);
-writeFileSync(`evals/answers/${name}-fixture.yaml`, keyYaml(name, entries));
+writeFileSync(
+    `evals/answers/${name}-fixture.yaml`,
+    keyYaml(name, entries, { upstreamSha: prepared.upstreamSha, preparedSha: prepared.preparedSha })
+);
 console.log(`${entries.length} entries from ${marked.length} marked files; prepared ${prepared.preparedSha} from ${prepared.upstreamSha}.`);
+if (prepared.removedImports.length) console.log(`Imports of deleted modules removed:\n  ${prepared.removedImports.join("\n  ")}`);

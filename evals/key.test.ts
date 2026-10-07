@@ -28,7 +28,7 @@ const MAP = {
 async function prepared() {
     const tree = await makeRepo({ "routes/app.js": APP, "notes.sol": "x // vuln-code-snippet vuln-line solidityChallenge\n" });
     const upstream = readFileSync(`${tree}/routes/app.js`, "utf8");
-    const lineMap = await stripAnswers(tree, { deletePaths: [], statementPatterns: [] });
+    const { lineMap } = await stripAnswers(tree, { deletePaths: [], statementPatterns: [] });
     return { tree, lineMap, upstream: { "routes/app.js": upstream, "notes.sol": "x // vuln-code-snippet vuln-line solidityChallenge\n" } };
 }
 
@@ -64,7 +64,7 @@ describe("buildKey", () => {
     it("keys challenges marked on the same lines under one item as one defect", async () => {
         const tree = await makeRepo({ "routes/login.js": "db.query(q) // vuln-code-snippet vuln-line adminChallenge benderChallenge\n" });
         const upstream = { "routes/login.js": readFileSync(`${tree}/routes/login.js`, "utf8") };
-        const lineMap = await stripAnswers(tree, { deletePaths: [], statementPatterns: [] });
+        const { lineMap } = await stripAnswers(tree, { deletePaths: [], statementPatterns: [] });
         const map = {
             adminChallenge: { ...MAP.loginChallenge, title: "SQL injection in the login query" },
             benderChallenge: { ...MAP.loginChallenge, title: "SQL injection in the login query" }
@@ -74,17 +74,60 @@ describe("buildKey", () => {
         expect(key[0]).toMatchObject({ file: "routes/login.js", startLine: 1, endLine: 1, checklistItem: "SEC-04" });
     });
 
-    it("skips a marked line the prep removed, with its file or alone", async () => {
+    it("refuses a mapped challenge whose marked lines the prep removed, with its file or alone", async () => {
         const files = {
             "routes/app.js": "db.query(q) // vuln-code-snippet vuln-line keptChallenge\n",
             "routes/verify.js": "check() // vuln-code-snippet vuln-line goneChallenge\n",
             "lib/x.js": "x()\nchallengeUtils.solveIf(c, () => {\n  return y // vuln-code-snippet vuln-line solvedChallenge\n})\n"
         };
         const tree = await makeRepo(files);
-        const lineMap = await stripAnswers(tree, { deletePaths: ["routes/verify.js"], statementPatterns: [/challengeUtils\.solveIf\(/] });
+        const { lineMap } = await stripAnswers(tree, {
+            deletePaths: ["routes/verify.js"],
+            statementPatterns: [/challengeUtils\.solveIf\(/]
+        });
         const challenge = { ...MAP.loginChallenge };
-        const key = buildKey(files, lineMap, { keptChallenge: challenge, goneChallenge: challenge, solvedChallenge: challenge }, tree);
-        expect(key.map(e => e.id)).toEqual(["JS-keptChallenge"]);
+        expect(buildKey(files, lineMap, { keptChallenge: challenge }, tree).map(e => e.id)).toEqual(["JS-keptChallenge"]);
+        expect(() =>
+            buildKey(files, lineMap, { keptChallenge: challenge, goneChallenge: challenge, solvedChallenge: challenge }, tree)
+        ).toThrow(/goneChallenge, solvedChallenge/);
+    });
+
+    it("carries a challenge's other items, and keeps challenges on one line apart when their items differ", async () => {
+        const tree = await makeRepo({
+            "routes/chat.js": "tool(z.number()) // vuln-code-snippet vuln-line injectChallenge greedyChallenge\n"
+        });
+        const upstream = { "routes/chat.js": readFileSync(`${tree}/routes/chat.js`, "utf8") };
+        const { lineMap } = await stripAnswers(tree, { deletePaths: [], statementPatterns: [] });
+        const key = buildKey(
+            upstream,
+            lineMap,
+            {
+                injectChallenge: { aspect: "llm", checklistItem: "LLM-01", severity: "high", title: "Injection" },
+                greedyChallenge: {
+                    aspect: "llm",
+                    checklistItem: "LLM-02",
+                    alsoItems: ["LLM-03"],
+                    severity: "medium",
+                    title: "Any discount"
+                }
+            },
+            tree
+        );
+        expect(key.map(e => [e.id, e.checklistItem, e.alsoItems])).toEqual([
+            ["JS-greedyChallenge", "LLM-02", ["LLM-03"]],
+            ["JS-injectChallenge", "LLM-01", undefined]
+        ]);
+    });
+
+    it("leaves out a challenge the map marks as no defect, with its reason", async () => {
+        const { tree, lineMap, upstream } = await prepared();
+        const key = buildKey(
+            upstream,
+            lineMap,
+            { ...MAP, searchChallenge: { ...MAP.searchChallenge, skip: "Not a defect by the fixture's own fix." } },
+            tree
+        );
+        expect(key.map(e => e.id)).toEqual(["JS-loginChallenge"]);
     });
 
     it("keys only languages v1 covers", async () => {
@@ -92,11 +135,13 @@ describe("buildKey", () => {
         expect(buildKey(upstream, lineMap, MAP, tree).map(e => e.id)).toEqual(["JS-loginChallenge", "JS-searchChallenge"]);
     });
 
-    it("regenerates byte-identical YAML from the same input", async () => {
+    it("regenerates byte-identical YAML from the same input, naming the trees it was read from", async () => {
         const a = await prepared();
         const b = await prepared();
-        expect(keyYaml("juice-shop", buildKey(b.upstream, b.lineMap, MAP, b.tree))).toBe(
-            keyYaml("juice-shop", buildKey(a.upstream, a.lineMap, MAP, a.tree))
-        );
+        const shas = { upstreamSha: "a".repeat(40), preparedSha: "b".repeat(40) };
+        const yaml = keyYaml("juice-shop", buildKey(b.upstream, b.lineMap, MAP, b.tree), shas);
+        expect(yaml).toBe(keyYaml("juice-shop", buildKey(a.upstream, a.lineMap, MAP, a.tree), shas));
+        expect(yaml).toContain(`upstreamSha: ${"a".repeat(40)}`);
+        expect(yaml).toContain(`preparedSha: ${"b".repeat(40)}`);
     });
 });

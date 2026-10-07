@@ -27,7 +27,7 @@ const SNAPSHOT_ENV = {
 export async function prepareFixture(
     f: { name: string; url: string; sha: string; rules: StripRules },
     workspaceDir: string
-): Promise<{ path: string; upstreamSha: string; preparedSha: string; lineMap: LineMap }> {
+): Promise<{ path: string; upstreamSha: string; preparedSha: string; lineMap: LineMap; removedImports: string[] }> {
     const base = join(workspaceDir, "evals");
     await mkdir(base, { recursive: true });
     const upstream = join(base, `${f.name}-upstream`);
@@ -51,11 +51,11 @@ export async function prepareFixture(
     await run("tar", ["-xf", tar, "-C", path]);
     await rm(tar);
     await git(["init", "--quiet", "-b", "main"], path);
-    await git(["add", "-A"], path);
+    await git(["add", "-A", "--force"], path);
     await run("git", ["-c", "commit.gpgsign=false", "commit", "--quiet", "-m", `Snapshot of ${f.name} at ${f.sha}`], {
         cwd: path,
         env: { ...process.env, ...SNAPSHOT_ENV }
     });
-    const lineMap = await stripAnswers(path, f.rules);
-    return { path, upstreamSha: f.sha, preparedSha: await commitPrepared(path), lineMap };
+    const { lineMap, removedImports } = await stripAnswers(path, f.rules);
+    return { path, upstreamSha: f.sha, preparedSha: await commitPrepared(path), lineMap, removedImports };
 }

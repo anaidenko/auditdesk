@@ -1,5 +1,5 @@
-import { readFileSync } from "node:fs";
-import { isAbsolute, resolve } from "node:path";
+import { existsSync, readFileSync } from "node:fs";
+import { isAbsolute, join, resolve } from "node:path";
 import { parse } from "yaml";
 
 import type { SeverityName } from "@/engine/types";
@@ -47,6 +47,9 @@ export interface KeyEntry {
 
 export interface AnswerKey {
     fixture: string;
+    /** A generated key's trees: `pnpm eval` refuses a prep that gives another prepared SHA. */
+    upstreamSha?: string;
+    preparedSha?: string;
     entries: KeyEntry[];
     /** True issues of the fixture that were not planted; a finding that names one is not false. */
     known: { checklistItem: string; title: string; file?: string }[];
@@ -65,4 +68,26 @@ export function fixturePath(f: FixtureSpec): string {
 
 export function loadKey(fixture: string): AnswerKey {
     return parse(readFileSync(resolve(root, `evals/answers/${fixture}-fixture.yaml`), "utf8")) as AnswerKey;
+}
+
+/**
+ * Why a key cannot grade a prepared tree: it was generated from another prepared commit, or a
+ * location's line no longer holds its anchor. Empty when the key fits.
+ */
+export function keyProblems(key: AnswerKey, tree: string, preparedSha: string): string[] {
+    const problems: string[] = [];
+    if (key.preparedSha && key.preparedSha !== preparedSha)
+        problems.push(
+            `The key was generated from the prepared tree ${key.preparedSha}, and this prep gives ${preparedSha}: run pnpm eval:key --fixture ${key.fixture}.`
+        );
+    for (const e of key.entries) {
+        const at = [...(e.file ? [{ file: e.file, startLine: e.startLine!, anchor: e.anchor! }] : []), ...(e.also ?? [])];
+        for (const p of at) {
+            const path = join(tree, p.file);
+            const line = existsSync(path) ? readFileSync(path, "utf8").split("\n")[p.startLine - 1] : undefined;
+            if (line === undefined || !line.includes(p.anchor))
+                problems.push(`${e.id}: ${p.file}:${p.startLine} does not hold "${p.anchor}"`);
+        }
+    }
+    return problems;
 }

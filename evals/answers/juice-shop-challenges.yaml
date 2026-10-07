@@ -1,16 +1,18 @@
 # Juice Shop v20.2.0's coding challenges that mark a vulnerable line in TypeScript or JavaScript,
 # each with the checklist item an auditor following Auditdesk's checklists would file it under.
-# Written once from the marked code (2026-10-07); Andrii reviews it before the baseline run.
+# Written once from the marked code (2026-10-07) and checked against Juice Shop's own fixes
+# (data/static/codefixes/*.info.yml) after the code review; Andrii reviews it before the baseline
+# run. alsoItems: items an auditor may as rightly file it under. skip: left out of the key, why.
 # The challenges marked only in Solidity, Terraform or YAML are outside v1's coverage.
 challenges:
-    accessLogDisclosureChallenge: { aspect: security, checklistItem: SEC-13, severity: medium, title: "Server access logs are served to anyone" }
+    accessLogDisclosureChallenge: { aspect: security, checklistItem: SEC-13, alsoItems: [SEC-03], severity: medium, title: "Server access logs are served to anyone" }
     adminSectionChallenge: { aspect: security, checklistItem: SEC-03, severity: medium, title: "The admin section is guarded only by a client-side route" }
     changeProductChallenge: { aspect: security, checklistItem: SEC-03, severity: high, title: "Products can be changed without authorization" }
-    chatbotGreedyInjectionChallenge: { aspect: llm, checklistItem: LLM-01, severity: medium, title: "The chatbot can be talked into handing out what it should not" }
+    chatbotGreedyInjectionChallenge: { aspect: llm, checklistItem: LLM-02, alsoItems: [LLM-03], severity: medium, title: "The coupon tool accepts any discount the model asks for" }
     chatbotPromptInjectionChallenge: { aspect: llm, checklistItem: LLM-01, severity: high, title: "User input reaches the chatbot's instructions" }
     dbSchemaChallenge: { aspect: security, checklistItem: SEC-04, severity: critical, title: "SQL injection in product search exposes the schema" }
     directoryListingChallenge: { aspect: security, checklistItem: SEC-08, severity: medium, title: "A directory of files is listed and served to anyone" }
-    exposedMetricsChallenge: { aspect: security, checklistItem: SEC-13, severity: low, title: "Application metrics are exposed without authentication" }
+    exposedMetricsChallenge: { aspect: security, checklistItem: SEC-03, alsoItems: [SEC-13], severity: low, title: "Application metrics are served to anyone" }
     forgedReviewChallenge: { aspect: security, checklistItem: SEC-03, severity: medium, title: "A review's author is taken from the request" }
     localXssChallenge: { aspect: security, checklistItem: SEC-05, severity: high, title: "Search input is rendered as trusted HTML" }
     loginAdminChallenge: { aspect: security, checklistItem: SEC-04, severity: critical, title: "SQL injection in the login query" }
@@ -22,9 +24,9 @@ challenges:
     registerAdminChallenge: { aspect: security, checklistItem: SEC-09, severity: critical, title: "Registration accepts a role from the request body" }
     resetPasswordMortyChallenge: { aspect: security, checklistItem: SEC-12, severity: medium, title: "The password reset's rate limit trusts a client header" }
     restfulXssChallenge: { aspect: security, checklistItem: SEC-05, severity: high, title: "Product descriptions are rendered as trusted HTML" }
-    scoreBoardChallenge: { aspect: security, checklistItem: SEC-03, severity: info, title: "A hidden route is reachable by anyone who finds it" }
+    scoreBoardChallenge: { aspect: security, checklistItem: SEC-03, severity: info, title: "A hidden route is reachable by anyone who finds it", skip: "Juice Shop's own fix leaves the code unchanged: by its account, not a defect." }
     tokenSaleChallenge: { aspect: security, checklistItem: SEC-03, severity: info, title: "A hidden route is reachable by anyone who finds it" }
     unionSqlInjectionChallenge: { aspect: security, checklistItem: SEC-04, severity: critical, title: "SQL injection in product search reads other tables" }
-    weakPasswordChallenge: { aspect: security, checklistItem: SEC-01, severity: high, title: "Passwords are hashed with a fast, unsalted hash" }
+    weakPasswordChallenge: { aspect: security, checklistItem: SEC-01, severity: high, title: "Any password is accepted, however short or common" }
     web3SandboxChallenge: { aspect: security, checklistItem: SEC-03, severity: info, title: "A hidden route is reachable by anyone who finds it" }
     xssBonusChallenge: { aspect: security, checklistItem: SEC-05, severity: high, title: "Search input is rendered as trusted HTML" }

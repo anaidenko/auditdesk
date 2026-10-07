@@ -30,6 +30,19 @@ describe("prepareFixture", () => {
         expect(execFileSync("git", ["status", "--porcelain"], { cwd: again.path, encoding: "utf8" })).toBe("");
     });
 
+    it("keeps a tracked file that the fixture's own .gitignore names", async () => {
+        const source = await makeRepo({ ".gitignore": "vendor/*.js\n", "app.ts": "export {}\n" });
+        execFileSync("mkdir", ["-p", join(source, "vendor")]);
+        execFileSync("cp", [join(source, "app.ts"), join(source, "vendor/three.js")]);
+        execFileSync("git", ["add", "-f", "vendor/three.js"], { cwd: source });
+        execFileSync("git", ["-c", "user.name=t", "-c", "user.email=t@t", "-c", "commit.gpgsign=false", "commit", "-qm", "vendor"], {
+            cwd: source
+        });
+        const sha = execFileSync("git", ["rev-parse", "HEAD"], { cwd: source, encoding: "utf8" }).trim();
+        const prepared = await prepareFixture({ name: "demo", url: source, sha, rules }, await mkdtemp(join(tmpdir(), "ws-")));
+        expect(execFileSync("git", ["ls-files"], { cwd: prepared.path, encoding: "utf8" })).toContain("vendor/three.js");
+    });
+
     it("refuses a commit the source does not have", async () => {
         const source = await makeRepo({ "a.ts": "x\n" });
         await expect(
