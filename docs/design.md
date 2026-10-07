@@ -3,7 +3,7 @@
 Auditdesk is a local web app for auditing a client's codebase. It clones the repositories, runs
 deterministic scanners, has Claude investigate each chosen aspect with read-only tools, lets the
 auditor accept, edit or reject every finding, and exports a client-ready report as HTML and PDF.
-An eval, being built, measures how many known defects the agents find, and at what cost.
+An eval measures how many known defects the agents find, and at what cost.
 
 It is not a pull-request reviewer for a team's daily flow. It is a workbench for an engagement:
 a few repositories, a brief from the client, a report a founder can read and engineers can act
@@ -138,15 +138,18 @@ An eval runs the engine directly, without the server, on fixtures cloned at pinn
   defect; each key entry carries an anchor its first line must hold, other places the same
   defect shows, and the true issues that were not planted, so a correct finding on them is not
   counted as false.
-- **OWASP Juice Shop** at a pinned release, for comparison: its answer markers are to be
-  stripped before the run and its key generated from them. It is public and likely known to the
-  model.
+- **OWASP Juice Shop** at a pinned release, for comparison. Its answers are removed before the
+  run: the fixes, the tutorials, the translated hints, the specs and the code that scores a
+  solve; every challenge is renamed to an opaque token, and the prep fails if a name survives or
+  a script stops parsing. Its key is generated from the markers and bound to the prepared commit.
+  It is public and likely known to the model.
 
-Grading is deterministic on file, overlapping lines and checklist item, with a judge only for the
-leftovers. The metrics are recall, false findings, cost and duration per model and effort.
+Grading is deterministic on file, overlapping lines and checklist item, with a judge only for
+what it cannot place. The metrics are recall (and the agents' share of it), false findings, cost
+and duration per model and effort.
 
-Status: the fixture and its answer key exist. Juice Shop's prep and key, the harness and the
-first scores come next, and this section will quote them.
+Status: the fixtures, their keys and the harness exist; the first scores come next, and this
+section will quote them.
 
 ## The tool's own security
 
