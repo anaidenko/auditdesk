@@ -40,8 +40,8 @@ describe("runSnapshot", () => {
         await call("claude-sonnet-5", 0.05, true);
         const snap = await runSnapshot(run.id, BigInt(0));
         expect(snap.byModel).toEqual([
-            { model: "claude-sonnet-5-5", calls: 2, freshTokens: 2600, usd: 0.3, fallback: false },
-            { model: "claude-sonnet-5", calls: 1, freshTokens: 1300, usd: 0.05, fallback: true }
+            { model: "claude-sonnet-5-5", calls: 2, freshTokens: 2600, usd: 0.3, fallback: false, unpriced: false },
+            { model: "claude-sonnet-5", calls: 1, freshTokens: 1300, usd: 0.05, fallback: true, unpriced: false }
         ]);
     });
 });

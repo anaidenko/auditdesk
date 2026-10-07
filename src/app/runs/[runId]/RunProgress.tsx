@@ -15,7 +15,7 @@ function Stat({ label, children }: { label: string; children: React.ReactNode })
     return (
         <div className="rounded-xl border border-zinc-200 bg-white px-5 py-4 shadow-sm">
             <div className="text-xs font-medium tracking-wide text-zinc-500 uppercase">{label}</div>
-            <div className="mt-2 flex min-h-8 items-center gap-3">{children}</div>
+            <div className="mt-2 flex min-h-8 flex-wrap items-center gap-x-3 gap-y-1">{children}</div>
         </div>
     );
 }
@@ -57,13 +57,15 @@ export function RunProgress({ runId }: { runId: string }) {
                 <Stat label={snap.modelAccess === "claude_plan" ? "Spend (API-equivalent, not billed)" : "Spend"}>
                     <span className="text-2xl font-semibold tracking-tight tabular-nums">${snap.spendUsd.toFixed(2)}</span>
                     {snap.unpriced && <span className="text-xs text-amber-700">+ unpriced calls</span>}
-                    {snap.byModel.map(m => (
-                        <span key={m.model} data-testid="served-by" className="block text-xs text-zinc-500 tabular-nums">
-                            {m.model}
-                            {m.fallback ? " (fallback)" : ""} · {m.calls} {m.calls === 1 ? "call" : "calls"} ·{" "}
-                            {m.freshTokens.toLocaleString("en-US")} tokens · ${m.usd.toFixed(2)}
-                        </span>
-                    ))}
+                    <span className="basis-full space-y-0.5">
+                        {snap.byModel.map(m => (
+                            <span key={m.model} data-testid="served-by" className="block text-xs text-zinc-500 tabular-nums">
+                                {m.model}
+                                {m.fallback ? " (fallback)" : ""} · {m.calls} {m.calls === 1 ? "call" : "calls"} ·{" "}
+                                {m.freshTokens.toLocaleString("en-US")} fresh tokens · {m.unpriced ? "unpriced" : `$${m.usd.toFixed(2)}`}
+                            </span>
+                        ))}
+                    </span>
                 </Stat>
                 <Stat label="Findings">
                     <span className="text-2xl font-semibold tracking-tight tabular-nums">{snap.findings}</span>

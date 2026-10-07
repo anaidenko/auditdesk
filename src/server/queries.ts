@@ -1,5 +1,6 @@
 import "server-only";
 
+import { freshTokens } from "@/engine/budget";
 import type { ModelAccess } from "@/engine/types";
 import { prisma } from "@/server/db";
 
@@ -23,7 +24,7 @@ export interface RunSnapshot {
     spendUsd: number;
     unpriced: boolean;
     /** Per model that served calls, a fallback target included (design § 8). */
-    byModel: { model: string; calls: number; freshTokens: number; usd: number; fallback: boolean }[];
+    byModel: { model: string; calls: number; freshTokens: number; usd: number; fallback: boolean; unpriced: boolean }[];
     findings: number;
     terminal: boolean;
 }
@@ -41,9 +42,16 @@ function byServingModel(
 ): RunSnapshot["byModel"] {
     const rows = new Map<string, RunSnapshot["byModel"][number]>();
     for (const c of calls) {
-        const row = rows.get(c.servedModel) ?? { model: c.servedModel, calls: 0, freshTokens: 0, usd: 0, fallback: false };
+        const row = rows.get(c.servedModel) ?? { model: c.servedModel, calls: 0, freshTokens: 0, usd: 0, fallback: false, unpriced: false };
         row.calls++;
-        row.freshTokens += c.inputTokens + c.cacheWrite5mTokens + c.cacheWrite1hTokens + c.outputTokens;
+        row.freshTokens += freshTokens({
+            input: c.inputTokens,
+            cacheWrite5m: c.cacheWrite5mTokens,
+            cacheWrite1h: c.cacheWrite1hTokens,
+            output: c.outputTokens,
+            cacheRead: 0
+        });
+        row.unpriced ||= c.costUsd === null;
         row.usd = Math.round((row.usd + Number(c.costUsd ?? 0)) * 1e6) / 1e6;
         row.fallback ||= c.fallback;
         rows.set(c.servedModel, row);
