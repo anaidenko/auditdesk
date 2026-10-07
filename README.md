@@ -31,8 +31,9 @@ Local only: it binds 127.0.0.1 and has no login. The design is in [docs/design.m
   report opens with what changed since the last audit.
 - **The report:** one self-contained HTML file with filters and search, and a PDF. A summary of
   what to fix before sign-off and what can wait, scope and coverage, each finding with its
-  evidence, and links to the OWASP Top 10:2025, ASVS 5.0.0, CWE, Cheat Sheets and WCAG 2.2 it is
-  relevant to.
+  recommendation in view and its details and evidence a click away (Expand all opens every card;
+  print and the PDF show them all), and links to the OWASP Top 10:2025, ASVS 5.0.0, CWE, Cheat
+  Sheets and WCAG 2.2 it is relevant to.
 - **Exports:** besides the report, SARIF 2.1.0 for code scanning, one file per repository, and the
   accepted findings as issue drafts: a CSV for Linear's CLI importer ("Linear (CSV)") or another
   tracker's, or JSON that `pnpm issues:gh` turns into GitHub issues through the `gh` CLI. It
@@ -44,7 +45,7 @@ Local only: it binds 127.0.0.1 and has no login. The design is in [docs/design.m
 
 ![Review: each finding with its evidence and the auditor's decision](docs/screenshots/findings.png)
 
-![A finding in the report: severity, evidence with line numbers, the recommendation and its references](docs/screenshots/report-finding.png)
+![Findings in the report: the first card open on its details, evidence with line numbers and references; the next collapsed to its title and recommendation](docs/screenshots/report-finding.png)
 
 ## Stack
 

@@ -125,8 +125,8 @@ test("tour of the features", async ({ page }) => {
     await shot("08-report-cover");
     await part("09-report-summary", "section#summary");
     await part("10-report-scope-and-cost", "section#scope");
-    await page.evaluate(() => document.querySelectorAll('details[id^="F-"]').forEach(d => d.setAttribute("open", "")));
-    await part("11-report-finding-references", 'details[id^="F-"]');
+    await page.evaluate(() => document.querySelectorAll(".finding > .body").forEach(d => d.setAttribute("open", "")));
+    await part("11-report-finding-references", 'article[id^="F-"]');
     await page.locator('.filters select[name="sev"]').selectOption("critical");
     await part("12-report-filters", "section#findings");
 });

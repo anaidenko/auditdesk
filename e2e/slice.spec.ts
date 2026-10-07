@@ -341,8 +341,8 @@ test("opened from disk with the network off, the report's severity filter hides 
     await expect(page.locator(".filters output")).toHaveText("2 of 2 findings shown");
     await page.locator('.filters select[name="sev"]').selectOption("critical");
     await expect(page.locator(".filters output")).toHaveText("1 of 2 findings shown");
-    await expect(page.locator("details.finding", { hasText: "User input reaches eval" })).toBeHidden();
-    await expect(page.locator("details.finding", { hasText: "Generic API Key" })).toBeVisible();
+    await expect(page.locator("article.finding", { hasText: "User input reaches eval" })).toBeHidden();
+    await expect(page.locator("article.finding", { hasText: "Generic API Key" })).toBeVisible();
     expect(requests).toEqual([]);
 });
 
