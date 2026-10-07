@@ -37,4 +37,15 @@ describe("the report in a browser", { timeout: 60_000 }, () => {
         expect(await shown()).toBe(12);
         expect(await page.locator("figure .cut").innerText()).toBe("18 more lines in the HTML report");
     });
+
+    it("prints ten places of a card and says how many more the HTML report holds", async () => {
+        const evidence = Array.from({ length: 13 }, (_, i) => ({ file: `src/f${i}.ts`, startLine: 1, endLine: 1, snippet: `k${i}` }));
+        const page = await open(renderReport(data({ findings: [finding({ evidence })] })));
+        const figures = () => page.locator("figure").evaluateAll(els => els.filter(el => el.checkVisibility()).length);
+        expect(await figures()).toBe(10);
+        expect(await page.locator(".more > summary").innerText()).toBe("and 3 more places");
+        await page.emulateMedia({ media: "print" });
+        expect(await figures()).toBe(10);
+        expect(await page.locator(".more > summary").innerText()).toBe("and 3 more places in the HTML report");
+    });
 });

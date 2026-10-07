@@ -69,6 +69,7 @@ pre{margin:0;padding:.6rem 0;background:#fcfcfd;overflow-x:auto;white-space:pre-
 pre code{display:block}.ln{display:inline-block;width:3.4em;padding-right:.9em;text-align:right;color:var(--faint);user-select:none}
 .callout{background:#eef2ff;border:1px solid #e0e7ff;border-radius:8px;padding:.15rem .95rem .6rem;margin:1rem 0 .4rem}.callout h4{color:var(--accent)}
 .refs{font-size:.82rem;color:var(--muted)}
+.more>summary{cursor:pointer;margin:.4rem 0;font-size:.82rem;color:var(--accent)}
 .cut{margin:0;padding:.3rem .7rem;font-size:.75rem;color:var(--muted);border-top:1px solid var(--line)}
 @media screen{.off{display:none!important}}
 @media screen{.print-only{display:none}}
@@ -149,6 +150,17 @@ function evidence(ev: ReportFinding["evidence"][number]): string {
     const where = ev.startLine === ev.endLine ? `line ${ev.startLine}` : `lines ${ev.startLine}–${ev.endLine}`;
     const cut = rest > 0 ? `<p class="cut print-only">${plural(rest, "more line", "more lines")} in the HTML report</p>` : "";
     return `<figure><figcaption>${e(ev.file)} · ${where}</figcaption>${ev.snippet ? `<pre><code>${code}</code></pre>${cut}` : ""}</figure>`;
+}
+
+/** The places a card lists before "and N more": a scanner finding of one rule can cite dozens. */
+const SHOWN_PLACES = 10;
+
+function places(list: ReportFinding["evidence"]): string {
+    const more = list.slice(SHOWN_PLACES);
+    const rest = more.length
+        ? `\n<details class="more"><summary>and ${plural(more.length, "more place", "more places")}<span class="print-only"> in the HTML report</span></summary>\n${more.map(evidence).join("\n")}\n</details>`
+        : "";
+    return `${list.slice(0, SHOWN_PLACES).map(evidence).join("\n")}${rest}`;
 }
 
 // The report's one script: it filters and searches the findings and questions in the browser,
@@ -257,7 +269,7 @@ function finding(f: ReportFinding): string {
 ${pair}
 <h4>Details</h4>
 <p class="prose">${e(f.explanation)}</p>
-${f.evidence.length ? `<h4>Evidence</h4>\n${f.evidence.map(evidence).join("\n")}` : ""}
+${f.evidence.length ? `<h4>Evidence</h4>\n${places(f.evidence)}` : ""}
 <div class="callout"><h4>Recommendation</h4><p class="prose">${e(f.recommendation)}</p></div>
 ${refs.length ? `<div class="refs"><h4>References</h4>${refs.map(r => `<p>${r}</p>`).join("")}</div>` : ""}
 </div>

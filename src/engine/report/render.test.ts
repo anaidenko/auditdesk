@@ -298,6 +298,17 @@ describe("renderReport", () => {
         expect(between(html, '<nav class="toc"', "</nav>")).toContain('<a href="#technical">Technical details</a>');
     });
 
+    it("lists ten places on a card and the rest under 'and N more places'", () => {
+        const evidence = Array.from({ length: 13 }, (_, i) => ({ file: `src/f${i}.ts`, startLine: 1, endLine: 1, snippet: `k${i}` }));
+        const html = renderReport(data({ findings: [finding({ evidence })] }));
+        const from = html.indexOf('open id="F-001"');
+        const card = html.slice(from, html.indexOf('<div class="callout">', from));
+        const [shown, more] = card.split('<details class="more">');
+        expect(shown.split("<figure>").length - 1).toBe(10);
+        expect(more.split("<figure>").length - 1).toBe(3);
+        expect(more).toContain('<summary>and 3 more places<span class="print-only"> in the HTML report</span></summary>');
+    });
+
     it("names a one-line range as one line", () => {
         const html = renderReport(
             data({ findings: [finding({ evidence: [{ file: "pnpm-lock.yaml", startLine: 9, endLine: 9, snippet: "x" }] })] })
