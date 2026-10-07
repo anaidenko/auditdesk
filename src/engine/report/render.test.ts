@@ -101,6 +101,20 @@ describe("renderReport", () => {
         expect(print).toMatch(/\.finding\{[^}]*break-inside:avoid/);
     });
 
+    it("names a one-line range as one line", () => {
+        const html = renderReport(
+            data({ findings: [finding({ evidence: [{ file: "pnpm-lock.yaml", startLine: 9, endLine: 9, snippet: "x" }] })] })
+        );
+        expect(html).toContain("pnpm-lock.yaml · line 9<");
+        expect(html).not.toContain("lines 9–9");
+    });
+
+    it("gives Impact the full width when there is no Likelihood", () => {
+        const html = renderReport(data({ findings: [finding({ likelihood: null, impact: "All users' data." })] }));
+        expect(html).toMatch(/<div class="pair one"><div><h4>Impact<\/h4>/);
+        expect(html).toMatch(/\.pair\.one\{grid-template-columns:1fr\}/);
+    });
+
     // The cover names a single repository; a column repeating it wrapped in the PDF (R.3).
     it("shows the repository column only when the audit spans more than one repository", () => {
         const head = (html: string) => between(html, "<thead>", "</thead>");
