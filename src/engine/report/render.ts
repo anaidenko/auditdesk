@@ -77,6 +77,7 @@ pre code{display:block}.ln{display:inline-block;width:3.4em;padding-right:.9em;t
 .filters{display:flex;flex-wrap:wrap;gap:.6rem 1rem;align-items:end;margin:1rem 0;padding:.8rem 1rem;border:1px solid var(--line);border-radius:10px;font-size:.82rem;color:var(--muted)}
 .filters label{display:flex;flex-direction:column;gap:.25rem}
 .filters select,.filters input{font:inherit;color:var(--ink);padding:.3rem .5rem;border:1px solid var(--line);border-radius:6px;background:#fff}
+.filters button{font:inherit;color:var(--accent);padding:.3rem .7rem;border:1px solid var(--line);border-radius:6px;background:#fff;cursor:pointer}
 .filters output{margin-left:auto}
 .disclaimer{font-size:.92rem;color:var(--muted)}
 .colophon{margin-top:3rem;padding-top:1rem;border-top:1px solid var(--line);font-size:.78rem;color:var(--faint)}
@@ -164,24 +165,38 @@ function places(list: ReportFinding["evidence"]): string {
     return `${list.slice(0, SHOWN_PLACES).map(evidence).join("\n")}${rest}`;
 }
 
-// The report's one script: it filters and searches the findings and questions in the browser,
-// reaching nothing outside the file. It hides with a class that only the screen honours, so a
-// printout is always complete.
-const FILTER_SCRIPT = `(()=>{const f=document.querySelector(".filters");if(!f)return;
-const rank={critical:0,high:1,medium:2,low:3,info:4,question:5};
+// The report's one script, reaching nothing outside the file. It opens a card's details from its
+// toggle, Expand all, a link to the card or a search that matches inside them; a search closes
+// again the ones it opened. It filters and searches the findings and questions with a class that
+// only the screen honours, so a printout is always complete.
+const FILTER_SCRIPT = `(()=>{const bodies=[...document.querySelectorAll(".finding>.body")];
+const f=document.querySelector(".filters");const all=f&&f.querySelector(".all");
+const label=()=>{if(all)all.textContent=bodies.every(b=>b.open)?"Collapse all":"Expand all"};
+document.addEventListener("toggle",ev=>{if(bodies.includes(ev.target))label()},true);
+if(all)all.addEventListener("click",()=>{const v=!bodies.every(b=>b.open);for(const b of bodies){b.open=v;delete b.dataset.found}label()});
+document.addEventListener("click",ev=>{const s=ev.target.closest&&ev.target.closest(".finding>.body>summary");if(s)delete s.parentElement.dataset.found});
+let apply=()=>{};
+if(f){const rank={critical:0,high:1,medium:2,low:3,info:4,question:5};
 const cards=[...document.querySelectorAll("section#findings .finding")];
 const questions=[...document.querySelectorAll("section#questions .finding")];
 const groups=[...document.querySelectorAll("section#findings .repo-group")];
 const val=n=>{const el=f.querySelector("[name="+n+"]");return el?el.value:""};
-const apply=()=>{const min=val("sev"),asp=val("aspect"),repo=val("repo"),q=val("q").trim().toLowerCase();const active=!!(min||asp||repo||q);const shown=new Set();let asked=0;
+apply=()=>{const min=val("sev"),asp=val("aspect"),repo=val("repo"),q=val("q").trim().toLowerCase();const active=!!(min||asp||repo||q);const shown=new Set();let asked=0;
 const ok=c=>(!min||rank[c.dataset.sev]<=rank[min])&&(!asp||c.dataset.aspect===asp)&&(!repo||c.dataset.repo===repo)&&(!q||c.textContent.toLowerCase().includes(q));
 for(const c of cards){const v=ok(c);c.classList.toggle("off",!v);if(v)shown.add(c.id)}
 for(const c of questions){const v=ok(c);c.classList.toggle("off",!v);if(v)asked++}
 if(q)for(const m of document.querySelectorAll(".finding .more"))if([...m.querySelectorAll("figure")].some(x=>x.textContent.toLowerCase().includes(q)))m.open=true;
+for(const c of[...cards,...questions]){const b=c.querySelector(":scope>.body");if(!b)continue;
+const hit=!!q&&!c.classList.contains("off")&&[...b.children].some(x=>x.tagName!=="SUMMARY"&&x.textContent.toLowerCase().includes(q));
+if(hit&&!b.open){b.open=true;b.dataset.found=""}else if(!hit&&"found"in b.dataset){b.open=false;delete b.dataset.found}}
 for(const g of groups)g.classList.toggle("off",active&&![...g.querySelectorAll(".finding")].some(c=>shown.has(c.id)));
 f.querySelector("output").textContent=shown.size+" of "+cards.length+" findings"+(questions.length?" and "+asked+" of "+questions.length+(questions.length===1?" question":" questions"):"")+" shown";};
-const reveal=()=>{const t=location.hash&&document.getElementById(decodeURIComponent(location.hash.slice(1)));if(t&&t.closest(".off")){f.reset();apply();t.scrollIntoView()}};
-f.addEventListener("input",apply);window.addEventListener("hashchange",reveal);apply();reveal();})();`;
+f.addEventListener("input",apply);apply()}
+const reveal=id=>{const t=id&&document.getElementById(id);if(!t)return;if(f&&t.closest(".off")){f.reset();apply();t.scrollIntoView()}
+const b=t.matches(".finding")&&t.querySelector(":scope>.body");if(b){b.open=true;delete b.dataset.found}};
+const fromHash=()=>reveal(decodeURIComponent(location.hash.slice(1)));
+document.addEventListener("click",ev=>{const a=ev.target.closest&&ev.target.closest('a[href^="#"]');if(a)reveal(decodeURIComponent(a.getAttribute("href").slice(1)))});
+window.addEventListener("hashchange",fromHash);fromHash();label();})();`;
 
 const SIZES = [
     ["S", "small", "under 2 hours"],
@@ -344,6 +359,7 @@ export function renderReport(d: ReportData): string {
 <label>Aspect <select name="aspect">${option("", "All")}${[...new Set(findings.map(f => f.aspect))].map(a => option(a)).join("")}</select></label>
 ${manyRepos ? `<label>Repository <select name="repo">${option("", "All")}${names.map(n => option(n)).join("")}</select></label>` : ""}
 <label>Search <input name="q" type="search" placeholder="Words in a finding"></label>
+<button type="button" class="all">Expand all</button>
 <output></output>
 </form>`;
     const repoHead = (n: string) => `<h3 class="repo" id="${e(ids.get(n)!)}">${e(n)}</h3>`;

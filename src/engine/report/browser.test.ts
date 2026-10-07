@@ -1,4 +1,7 @@
-import { type Browser, chromium } from "playwright-core";
+import { mkdtempSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { type Browser, type Page, chromium } from "playwright-core";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import { reportData as data, reportFinding as finding } from "@/test/report-data";
@@ -17,6 +20,48 @@ describe("the report in a browser", { timeout: 60_000 }, () => {
         await page.setContent(html, { waitUntil: "load" });
         return page;
     };
+
+    const bodies = (page: Page) => page.locator(".finding > .body").evaluateAll(els => els.map(d => (d as HTMLDetailsElement).open));
+    const toggle = (page: Page) => page.locator(".filters button.all");
+
+    it("opens each card's details on demand, and every one with Expand all", async () => {
+        const page = await open(renderReport(data()));
+        expect(await bodies(page)).toEqual([false, false]);
+        expect(await page.locator("#F-001 .callout").isVisible()).toBe(true);
+        expect(await page.locator("#F-001 .lead").isVisible()).toBe(false);
+        await toggle(page).click();
+        expect(await bodies(page)).toEqual([true, true]);
+        await expect.poll(() => toggle(page).textContent()).toBe("Collapse all");
+        await toggle(page).click();
+        expect(await bodies(page)).toEqual([false, false]);
+        await expect.poll(() => toggle(page).textContent()).toBe("Expand all");
+        for (const id of ["F-001", "F-002"]) await page.locator(`#${id} .body > summary`).click();
+        await expect.poll(() => toggle(page).textContent()).toBe("Collapse all");
+    });
+
+    it("opens the card a link points at, on load, on a click and on a click repeated", async () => {
+        const file = join(mkdtempSync(join(tmpdir(), "report-")), "r.html");
+        writeFileSync(file, renderReport(data()));
+        const page = await browser.newPage();
+        await page.goto(`file://${file}#F-002`);
+        expect(await bodies(page)).toEqual([false, true]);
+        await page.locator('#summary a[href="#F-001"]').click();
+        expect(await bodies(page)).toEqual([true, true]);
+        await page.locator("#F-001 .body > summary").click();
+        await page.locator('#summary a[href="#F-001"]').click();
+        expect(await bodies(page)).toEqual([true, true]);
+    });
+
+    it("opens a body the search matches inside, and closes it when the search moves on", async () => {
+        const page = await open(
+            renderReport(data({ findings: [finding({ label: "F-001", explanation: "zebra" }), finding({ label: "F-002" })] }))
+        );
+        await page.locator("#F-002 .body > summary").click();
+        await page.locator('.filters input[name="q"]').fill("zebra");
+        expect(await bodies(page)).toEqual([true, true]);
+        await page.locator('.filters input[name="q"]').fill("");
+        expect(await bodies(page)).toEqual([false, true]);
+    });
 
     it("counts the findings the filters show", async () => {
         const page = await open(renderReport(data()));

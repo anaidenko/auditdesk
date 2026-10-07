@@ -566,6 +566,7 @@ describe("renderReport", () => {
         expect(filters).toContain('<option value="Security">Security</option>');
         expect(filters).toContain('<option value="api">api</option>');
         expect(filters).toContain('name="q"');
+        expect(filters).toContain('<button type="button" class="all">Expand all</button>');
         expect(html).toMatch(/<article id="F-001" class="finding sev-high" data-sev="high" data-aspect="Security" data-repo="web">/);
         expect(html).toMatch(/<script>[\s\S]*?querySelector[\s\S]*?<\/script>/);
         expect(html).not.toMatch(/<script[^>]+src=/);
