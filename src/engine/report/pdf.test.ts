@@ -22,7 +22,9 @@ describe("renderPdf", { timeout: 60_000 }, () => {
         );
         const html = renderReport(reportData({ findings: long }));
         const noScript = html.replace(/<script>[\s\S]*?<\/script>/, "");
-        expect(pages(await renderPdf(html))).toBeGreaterThan(pages(await renderPdf(noScript)) + 2);
+        const printed = pages(await renderPdf(html));
+        expect(printed).toBeGreaterThan(pages(await renderPdf(noScript)));
+        expect(printed).toBe(pages(await renderPdf(html.replaceAll('<details class="body">', '<details class="body" open>'))));
     });
 
     it("refuses every request the page makes: the report is one self-contained file", async () => {

@@ -48,8 +48,98 @@ describe("the report in a browser", { timeout: 60_000 }, () => {
         await page.locator('#summary a[href="#F-001"]').click();
         expect(await bodies(page)).toEqual([true, true]);
         await page.locator("#F-001 .body > summary").click();
+        expect(await bodies(page)).toEqual([false, true]);
         await page.locator('#summary a[href="#F-001"]').click();
         expect(await bodies(page)).toEqual([true, true]);
+    });
+
+    it("leaves the filters alone when a link is opened in a new tab", async () => {
+        const page = await open(renderReport(data()));
+        await page.locator('.filters select[name="sev"]').selectOption("critical");
+        await page.locator('#summary a[href="#F-002"]').click({ modifiers: ["ControlOrMeta"] });
+        expect(await page.locator('.filters select[name="sev"]').inputValue()).toBe("critical");
+        expect(await bodies(page)).toEqual([false, false]);
+    });
+
+    const zebras = () =>
+        renderReport(
+            data({
+                findings: [
+                    finding({ label: "F-001", explanation: "zebra" }),
+                    finding({ label: "F-002", explanation: "zebra" }),
+                    finding({ label: "F-003", severity: "low", explanation: "zebra" })
+                ]
+            })
+        );
+    const search = (page: Page, q: string) => page.locator('.filters input[name="q"]').fill(q);
+
+    it("keeps closed a body the reader closed during a search when another filter changes, until the search changes", async () => {
+        const page = await open(zebras());
+        await search(page, "zebra");
+        expect(await bodies(page)).toEqual([true, true, true]);
+        await page.locator("#F-001 .body > summary").click();
+        await page.locator('.filters select[name="sev"]').selectOption("high");
+        expect(await bodies(page)).toEqual([false, true, false]);
+        await search(page, "zebr");
+        expect(await bodies(page)).toEqual([true, true, false]);
+    });
+
+    it("keeps every body closed after Collapse all when another filter changes", async () => {
+        const page = await open(zebras());
+        await search(page, "zebra");
+        await toggle(page).click();
+        expect(await bodies(page)).toEqual([false, false, false]);
+        await page.locator('.filters select[name="sev"]').selectOption("high");
+        expect(await bodies(page)).toEqual([false, false, false]);
+    });
+
+    it("leaves open a body the search opened once the reader has used it: its toggle, a link, Expand all", async () => {
+        const toggled = await open(zebras());
+        await search(toggled, "zebra");
+        await toggled.locator("#F-001 .body > summary").click();
+        await toggled.locator("#F-001 .body > summary").click();
+        await search(toggled, "");
+        expect(await bodies(toggled)).toEqual([true, false, false]);
+        const linked = await open(zebras());
+        await search(linked, "zebra");
+        await linked.locator('#summary a[href="#F-002"]').click();
+        await search(linked, "");
+        expect(await bodies(linked)).toEqual([false, true, false]);
+        const expanded = await open(zebras());
+        await expanded.locator('.filters select[name="sev"]').selectOption("high");
+        await search(expanded, "zebra");
+        await expect.poll(() => toggle(expanded).textContent()).toBe("Expand all");
+        await toggle(expanded).click();
+        await search(expanded, "");
+        expect(await bodies(expanded)).toEqual([true, true, true]);
+    });
+
+    it("searches the cards' own words: not the toggle's label, not a card the filters hide", async () => {
+        const page = await open(
+            renderReport(
+                data({
+                    findings: [
+                        finding({ label: "F-001", evidence: [] }),
+                        finding({ label: "F-002", severity: "low", explanation: "zebra" })
+                    ]
+                })
+            )
+        );
+        await search(page, "evidence");
+        expect(await page.locator(".filters output").textContent()).toBe("1 of 2 findings shown");
+        await search(page, "details and");
+        expect(await page.locator(".filters output").textContent()).toBe("0 of 2 findings shown");
+        expect(await bodies(page)).toEqual([false, false]);
+        await page.locator('.filters select[name="sev"]').selectOption("high");
+        await search(page, "zebra");
+        expect(await bodies(page)).toEqual([false, false]);
+    });
+
+    it("names each card and each toggle after the finding", async () => {
+        const page = await open(renderReport(data()));
+        expect(await page.getByRole("article", { name: /F-001.*Raw SQL/ }).count()).toBe(1);
+        expect(await page.locator("#F-001 .body > summary").evaluate(s => s.textContent)).toBe("Details and evidence for F-001");
+        expect(await page.locator("#F-001 .body > summary").innerText()).toContain("Details and evidence");
     });
 
     it("opens a body the search matches inside, and closes it when the search moves on", async () => {
@@ -126,11 +216,14 @@ describe("the report in a browser", { timeout: 60_000 }, () => {
         await page.locator('.filters input[name="q"]').fill("src/f12");
         expect(await page.locator(".more").evaluate(d => (d as HTMLDetailsElement).open)).toBe(true);
         expect(await page.locator(".filters output").textContent()).toBe("1 of 1 findings shown");
+        await page.locator('.filters input[name="q"]').fill("");
+        expect(await page.locator(".more").evaluate(d => (d as HTMLDetailsElement).open)).toBe(false);
     });
 
     it("prints every card expanded, then gives the reader back the cards they had open", async () => {
         const page = await open(renderReport(data()));
         await page.locator("#F-002 .body > summary").click();
+        await page.evaluate(() => dispatchEvent(new Event("beforeprint")));
         await page.evaluate(() => dispatchEvent(new Event("beforeprint")));
         expect(await bodies(page)).toEqual([true, true]);
         await page.emulateMedia({ media: "print" });

@@ -226,11 +226,13 @@ describe("renderReport", () => {
         const html = renderReport(data({ findings: [finding({ recommendation: "Use parameterised queries.", summary: "One line." })] }));
         const card = between(html, 'id="F-001"', "</article>");
         const [head, body] = card.split('<details class="body">');
-        expect(head).toContain('<p class="title">');
-        expect(head).toContain('<p class="meta">');
+        expect(head).toContain('<p class="title" id="F-001-title">');
+        expect(head).toContain('<p class="meta">security · SEC-04 · effort S</p>');
         expect(head).toContain("Use parameterised queries.");
         expect(html.split("Use parameterised queries.").length - 1).toBe(1);
-        expect(body).toMatch(/^<summary>Details and evidence<\/summary>\n<p class="lead">One line\.<\/p>/);
+        expect(body).toMatch(
+            /^<summary>Details and evidence<span class="vh"> for F-001<\/span><\/summary>\n<p class="lead">One line\.<\/p>/
+        );
         expect(body).toContain("<h4>Details</h4>");
         expect(body).toContain("<h4>Evidence</h4>");
         expect(body).toContain("<h4>References</h4>");
@@ -245,7 +247,7 @@ describe("renderReport", () => {
     });
 
     // On the naidenko.dev report (E.9) a card's title sat alone at the foot of a page.
-    it("lets a card run onto the next page, keeping its title with its summary", () => {
+    it("lets a card run onto the next page, keeping its title, meta line and Recommendation together", () => {
         const print = between(renderReport(data()), "@media print{", "</style>");
         expect(print).not.toMatch(/\.finding\{[^}]*break-inside:avoid/);
         expect(print).toContain(".finding .title,.finding .meta{break-after:avoid}");
@@ -567,7 +569,9 @@ describe("renderReport", () => {
         expect(filters).toContain('<option value="api">api</option>');
         expect(filters).toContain('name="q"');
         expect(filters).toContain('<button type="button" class="all">Expand all</button>');
-        expect(html).toMatch(/<article id="F-001" class="finding sev-high" data-sev="high" data-aspect="Security" data-repo="web">/);
+        expect(html).toMatch(
+            /<article id="F-001" class="finding sev-high" data-sev="high" data-aspect="Security" data-repo="web" aria-labelledby="F-001-title">/
+        );
         expect(html).toMatch(/<script>[\s\S]*?querySelector[\s\S]*?<\/script>/);
         expect(html).not.toMatch(/<script[^>]+src=/);
         expect(between(html, "@media print{", "</style>")).toMatch(/\.filters\{display:none/);

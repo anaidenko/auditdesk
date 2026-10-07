@@ -10,7 +10,8 @@ import type { ReportData, ReportFinding } from "./types";
 const SEAMS_TITLE = aspectTitle(SEAMS);
 
 // The app's palette (zinc, an indigo accent) on paper: light only, system fonts, nothing fetched.
-// In print a card may run onto the next page; its title, meta line and Recommendation keep together.
+// In print a card may run onto the next page; its title, meta line and Recommendation keep together:
+// none of them split at 64 page offsets, one line apart (Chromium of playwright-core 1.63, 2026-10-07).
 const CSS = `
 :root{--ink:#18181b;--muted:#71717a;--faint:#a1a1aa;--line:#e4e4e7;--wash:#fafafa;--accent:#4f46e5;
 --critical:#b91c1c;--critical-bg:#fef2f2;--high:#c2410c;--high-bg:#fff7ed;--medium:#a16207;--medium-bg:#fefce8;
@@ -59,6 +60,7 @@ ${["critical", "high", "medium", "low", "info", "question"].map(s => `.finding.s
 .finding .head{padding:.85rem 1.1rem .1rem}
 .finding .title{display:flex;gap:.7rem;align-items:baseline;margin:0;font-weight:600}
 .finding .body{padding:0 1.1rem;border-top:1px solid var(--line)}.finding .body[open]{padding-bottom:1rem}
+.vh{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
 .body>summary{cursor:pointer;padding:.55rem 0;font-size:.82rem;font-weight:600;color:var(--accent)}
 .meta{font-size:.82rem;color:var(--muted);margin-top:.3rem}
 .lead{font-size:1.02rem}
@@ -165,41 +167,44 @@ function places(list: ReportFinding["evidence"]): string {
     return `${list.slice(0, SHOWN_PLACES).map(evidence).join("\n")}${rest}`;
 }
 
-// The report's one script, reaching nothing outside the file. It opens a card's details from its
-// toggle, Expand all, a link to the card or a search that matches inside them; a search closes
-// again the ones it opened. Print opens every card and gives the reader's state back after;
-// Chromium fires the same two events around page.pdf(), so the PDF prints them open too. It filters and searches the findings and questions with a class that
-// only the screen honours, so a printout is always complete.
+// The report's one script, reaching nothing outside the file. Expand all, a link to a card and a
+// search that matches inside a card open its details; the search closes again what it opened,
+// unless the reader used it since, and leaves closed what the reader closed under the same words.
+// Print opens every card and gives the reader's state back after; Chromium fires the same two
+// events around page.pdf(), so the PDF prints them open too. Filters hide with a class that only
+// the screen honours, so a printout is always complete.
 const FILTER_SCRIPT = `(()=>{const bodies=[...document.querySelectorAll(".finding>.body")];
 let kept=null;
 addEventListener("beforeprint",()=>{if(!kept)kept=bodies.map(b=>b.open);for(const b of bodies)b.open=true});
 addEventListener("afterprint",()=>{if(kept)bodies.forEach((b,i)=>{b.open=kept[i]});kept=null});
-const f=document.querySelector(".filters");const all=f&&f.querySelector(".all");
+const f=document.querySelector(".filters");const all=f&&f.querySelector(".all");let cur="";
 const label=()=>{if(all)all.textContent=bodies.every(b=>b.open)?"Collapse all":"Expand all"};
 document.addEventListener("toggle",ev=>{if(bodies.includes(ev.target))label()},true);
-if(all)all.addEventListener("click",()=>{const v=!bodies.every(b=>b.open);for(const b of bodies){b.open=v;delete b.dataset.found}label()});
-document.addEventListener("click",ev=>{const s=ev.target.closest&&ev.target.closest(".finding>.body>summary");if(s)delete s.parentElement.dataset.found});
+if(all)all.addEventListener("click",()=>{const v=!bodies.every(b=>b.open);for(const b of bodies){b.open=v;delete b.dataset.found;if(v)delete b.dataset.shut;else b.dataset.shut=cur}label()});
+document.addEventListener("click",ev=>{const s=ev.target.closest&&ev.target.closest(".finding details>summary");if(!s)return;const d=s.parentElement;delete d.dataset.found;if(d.open)d.dataset.shut=cur;else delete d.dataset.shut});
 let apply=()=>{};
 if(f){const rank={critical:0,high:1,medium:2,low:3,info:4,question:5};
 const cards=[...document.querySelectorAll("section#findings .finding")];
 const questions=[...document.querySelectorAll("section#questions .finding")];
 const groups=[...document.querySelectorAll("section#findings .repo-group")];
 const val=n=>{const el=f.querySelector("[name="+n+"]");return el?el.value:""};
-apply=()=>{const min=val("sev"),asp=val("aspect"),repo=val("repo"),q=val("q").trim().toLowerCase();const active=!!(min||asp||repo||q);const shown=new Set();let asked=0;
-const ok=c=>(!min||rank[c.dataset.sev]<=rank[min])&&(!asp||c.dataset.aspect===asp)&&(!repo||c.dataset.repo===repo)&&(!q||c.textContent.toLowerCase().includes(q));
+const words=c=>[...c.querySelectorAll(":scope>.head,:scope>.body>:not(summary)")].map(x=>x.textContent).join(" ").toLowerCase();
+apply=()=>{const min=val("sev"),asp=val("aspect"),repo=val("repo"),q=val("q").trim().toLowerCase();cur=q;const active=!!(min||asp||repo||q);const shown=new Set();let asked=0;
+const ok=c=>(!min||rank[c.dataset.sev]<=rank[min])&&(!asp||c.dataset.aspect===asp)&&(!repo||c.dataset.repo===repo)&&(!q||words(c).includes(q));
+const mark=(d,hit)=>{if(hit){if(!d.open&&d.dataset.shut!==q){d.open=true;d.dataset.found=""}}else if("found"in d.dataset){d.open=false;delete d.dataset.found}};
 for(const c of cards){const v=ok(c);c.classList.toggle("off",!v);if(v)shown.add(c.id)}
 for(const c of questions){const v=ok(c);c.classList.toggle("off",!v);if(v)asked++}
-if(q)for(const m of document.querySelectorAll(".finding .more"))if([...m.querySelectorAll("figure")].some(x=>x.textContent.toLowerCase().includes(q)))m.open=true;
-for(const c of[...cards,...questions]){const b=c.querySelector(":scope>.body");if(!b)continue;
-const hit=!!q&&!c.classList.contains("off")&&[...b.children].some(x=>x.tagName!=="SUMMARY"&&x.textContent.toLowerCase().includes(q));
-if(hit&&!b.open){b.open=true;b.dataset.found=""}else if(!hit&&"found"in b.dataset){b.open=false;delete b.dataset.found}}
+for(const c of[...cards,...questions]){const on=!!q&&!c.classList.contains("off");const b=c.querySelector(":scope>.body");
+if(b)mark(b,on&&[...b.children].some(x=>x.tagName!=="SUMMARY"&&x.textContent.toLowerCase().includes(q)));
+for(const m of c.querySelectorAll(".more"))mark(m,on&&[...m.querySelectorAll("figure")].some(x=>x.textContent.toLowerCase().includes(q)))}
 for(const g of groups)g.classList.toggle("off",active&&![...g.querySelectorAll(".finding")].some(c=>shown.has(c.id)));
 f.querySelector("output").textContent=shown.size+" of "+cards.length+" findings"+(questions.length?" and "+asked+" of "+questions.length+(questions.length===1?" question":" questions"):"")+" shown";};
 f.addEventListener("input",apply);apply()}
 const reveal=id=>{const t=id&&document.getElementById(id);if(!t)return;if(f&&t.closest(".off")){f.reset();apply();t.scrollIntoView()}
-const b=t.matches(".finding")&&t.querySelector(":scope>.body");if(b){b.open=true;delete b.dataset.found}};
+const b=t.matches(".finding")&&t.querySelector(":scope>.body");if(b){b.open=true;delete b.dataset.found;delete b.dataset.shut}};
 const fromHash=()=>reveal(decodeURIComponent(location.hash.slice(1)));
-document.addEventListener("click",ev=>{const a=ev.target.closest&&ev.target.closest('a[href^="#"]');if(a)reveal(decodeURIComponent(a.getAttribute("href").slice(1)))});
+document.addEventListener("click",ev=>{if(ev.defaultPrevented||ev.button||ev.metaKey||ev.ctrlKey||ev.shiftKey||ev.altKey)return;
+const a=ev.target.closest&&ev.target.closest('a[href^="#"]');if(a)reveal(decodeURIComponent(a.getAttribute("href").slice(1)))});
 window.addEventListener("hashchange",fromHash);fromHash();label();})();`;
 
 const SIZES = [
@@ -251,7 +256,7 @@ const RECHECK_PILL: Record<string, string> = {
     changed: ` <span class="pill limited">code changed since the last audit</span>`
 };
 
-function finding(f: ReportFinding): string {
+function finding(f: ReportFinding, manyRepos: boolean): string {
     const byDefault = f.severity === "critical" || f.severity === "high";
     const call =
         f.severity !== null && f.fixBeforeSignoff != null && f.fixBeforeSignoff !== byDefault
@@ -259,7 +264,7 @@ function finding(f: ReportFinding): string {
                 ? "agreed to fix before sign-off"
                 : "agreed to fix after sign-off"
             : null;
-    const meta = [f.repository, f.aspect, f.checklistItem, effortText(f), call].filter(Boolean).join(" · ");
+    const meta = [manyRepos ? f.repository : null, f.aspect, f.checklistItem, effortText(f), call].filter(Boolean).join(" · ");
     const link = (r: Ref) => (r.url ? `<a href="${e(r.url)}">${e(r.label)}</a>` : e(r.label));
     const R = f.refs;
     const refs = R
@@ -282,13 +287,13 @@ function finding(f: ReportFinding): string {
         f.likelihood || f.impact
             ? `<div class="pair${f.likelihood && f.impact ? "" : " one"}">${f.likelihood ? `<div><h4>Likelihood</h4><p>${e(f.likelihood)}</p></div>` : ""}${f.impact ? `<div><h4>Impact</h4><p>${e(f.impact)}</p></div>` : ""}</div>`
             : "";
-    return `<article id="${e(f.label)}" class="finding sev-${e(severityOf(f))}" data-sev="${e(severityOf(f))}" data-aspect="${e(f.aspect)}" data-repo="${e(f.repository)}">
+    return `<article id="${e(f.label)}" class="finding sev-${e(severityOf(f))}" data-sev="${e(severityOf(f))}" data-aspect="${e(f.aspect)}" data-repo="${e(f.repository)}" aria-labelledby="${e(f.label)}-title">
 <div class="head">
-<p class="title">${badge(f)}<span class="fid">${e(f.label)}</span><span>${e(f.title)}</span></p>
+<p class="title" id="${e(f.label)}-title">${badge(f)}<span class="fid">${e(f.label)}</span><span>${e(f.title)}</span></p>
 <p class="meta">${e(meta)}${RECHECK_PILL[f.recheck ?? ""] ?? ""}</p>
 <div class="callout"><h4>Recommendation</h4><p class="prose">${e(f.recommendation)}</p></div>
 </div>
-<details class="body"><summary>Details and evidence</summary>
+<details class="body"><summary>Details and evidence<span class="vh"> for ${e(f.label)}</span></summary>
 <p class="lead">${e(f.summary)}</p>
 ${pair}
 <h4>Details</h4>
@@ -333,6 +338,7 @@ export function renderReport(d: ReportData): string {
     const canWait = findings.filter(f => !before(f));
     // The cover names a single repository; a line repeating it only wraps.
     const manyRepos = d.repositories.length > 1;
+    const card = (f: ReportFinding) => finding(f, manyRepos);
     const aside = (f: ReportFinding) => [manyRepos ? f.repository : null, f.aspect, effortText(f)].filter(Boolean).join(" · ");
     const riskList = (list: ReportFinding[], none: string) =>
         list.length
@@ -407,7 +413,7 @@ ${titleList(aiBuilt)}</section>`
     const questions = d.questions.length
         ? `<section id="questions"><h2>Open questions</h2>
 <p class="muted">Points the code alone could not settle; each needs an answer from the team.</p>
-${d.questions.map(finding).join("\n")}</section>`
+${d.questions.map(card).join("\n")}</section>`
         : "";
 
     return `<!doctype html>
@@ -482,10 +488,10 @@ ${
         ? groups
               .map(
                   g =>
-                      `<div class="repo-group">${repoHead(g.name)}\n${g.name === SEAMS_TITLE ? seamsLegend : ""}${g.list.length ? g.list.map(finding).join("\n") : `<p class="muted">No findings were accepted for this repository.</p>`}</div>`
+                      `<div class="repo-group">${repoHead(g.name)}\n${g.name === SEAMS_TITLE ? seamsLegend : ""}${g.list.length ? g.list.map(card).join("\n") : `<p class="muted">No findings were accepted for this repository.</p>`}</div>`
               )
               .join("\n")
-        : findings.map(finding).join("\n")
+        : findings.map(card).join("\n")
 }
 </section>
 ${aiSection}
