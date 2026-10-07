@@ -1,0 +1,348 @@
+# The answer key of the own fixture (auditdesk-fixture, design § 11). It lives here, outside the
+# fixture, so nothing in the fixture points at a defect. Line numbers refer to the commit pinned in
+# evals/fixtures.yaml; each location's anchor is a text its first line holds.
+#
+# kind: finding (located), absence (nothing to point at) or question (what the code cannot show).
+# Matching, for the grader of Phase 2:
+# - a finding matches an entry when any of its evidence ranges overlaps the entry's location or one
+#   of its `also` locations (with a slack of 3 lines), and its checklist item is the entry's or one
+#   of `alsoItems` (items another aspect may own when the run leaves the entry's aspect out);
+# - an absence matches a finding or a question under its item, in any file;
+# - a question matches a question under its item, and counts towards recall like a finding;
+# - known lists true issues that were not planted: a finding under a known item (and in its file,
+#   when one is given) is neither a match nor a false finding.
+fixture: own
+entries:
+  - id: OWN-01
+    aspect: security
+    checklistItem: SEC-03
+    kind: finding
+    severity: high
+    title: Any signed-in customer can read another customer's order by its ID
+    alsoItems:
+      - SEC-16
+    file: src/app/api/orders/[id]/route.ts
+    startLine: 8
+    endLine: 11
+    anchor: const order = await prisma.order.findFirst({
+  - id: OWN-02
+    aspect: security
+    checklistItem: SEC-03
+    kind: finding
+    severity: high
+    title: "Any signed-in user, customers included, can delete products: only the page hides the button"
+    alsoItems:
+      - SEC-16
+    file: src/app/admin/actions.ts
+    startLine: 29
+    endLine: 32
+    anchor: export async function deleteProduct
+    also:
+      - file: src/app/admin/page.tsx
+        startLine: 26
+        endLine: 26
+        anchor: session.role === "admin"
+  - id: OWN-03
+    aspect: security
+    checklistItem: SEC-05
+    kind: finding
+    severity: high
+    title: Product descriptions are rendered as raw HTML
+    file: src/app/products/[id]/page.tsx
+    startLine: 16
+    endLine: 16
+    anchor: dangerouslySetInnerHTML
+  - id: OWN-04
+    aspect: security
+    checklistItem: SEC-07
+    kind: finding
+    severity: high
+    title: The avatar endpoint fetches any URL a user gives it, from the server
+    file: src/app/api/profile/avatar/route.ts
+    startLine: 14
+    endLine: 14
+    anchor: const res = await fetch(parsed.data.url
+  - id: OWN-05
+    aspect: security
+    checklistItem: SEC-10
+    kind: finding
+    severity: critical
+    title: The shipping API secret is shipped to every browser
+    file: src/components/ShippingEstimate.tsx
+    startLine: 12
+    endLine: 12
+    anchor: NEXT_PUBLIC_SHIPPING_API_SECRET
+    also:
+      - file: .env.example
+        startLine: 8
+        endLine: 8
+        anchor: NEXT_PUBLIC_SHIPPING_API_SECRET
+  - id: OWN-06
+    aspect: dependencies
+    checklistItem: DEP-04
+    kind: finding
+    severity: low
+    title: The request package is deprecated and unmaintained
+    file: package.json
+    startLine: 22
+    endLine: 22
+    anchor: '"request": "2.88.2"'
+    also:
+      - file: package-lock.json
+        startLine: 44
+        endLine: 48
+        anchor: '"node_modules/request"'
+      - file: src/lib/shipping.ts
+        startLine: 1
+        endLine: 1
+        anchor: import request from "request";
+  - id: OWN-07
+    aspect: dependencies
+    checklistItem: DEP-06
+    kind: finding
+    severity: medium
+    title: npm install downloads and runs a remote script
+    file: package.json
+    startLine: 13
+    endLine: 13
+    anchor: '"postinstall"'
+  - id: OWN-08
+    aspect: dependencies
+    checklistItem: DEP-02
+    kind: finding
+    severity: medium
+    title: The lock file does not match package.json, so npm ci fails
+    file: package-lock.json
+    startLine: 3
+    endLine: 20
+    anchor: '"version": "0.3.0"'
+  - id: OWN-09
+    aspect: architecture
+    checklistItem: ARC-01
+    kind: finding
+    severity: medium
+    title: A presentational component queries the database for every card
+    file: src/components/ProductCard.tsx
+    startLine: 10
+    endLine: 10
+    anchor: const store = await prisma.store.findUnique
+  - id: OWN-10
+    aspect: architecture
+    checklistItem: ARC-03
+    kind: finding
+    severity: medium
+    title: Order confirmation emails fail silently
+    alsoItems:
+      - ARC-06
+    file: src/lib/email.ts
+    startLine: 5
+    endLine: 11
+    anchor: if (!key) return;
+  - id: OWN-11
+    aspect: architecture
+    checklistItem: ARC-03
+    kind: finding
+    severity: high
+    title: The payments webhook swallows errors and acknowledges lost refunds
+    file: src/app/api/webhooks/payments/route.ts
+    startLine: 14
+    endLine: 22
+    anchor: "    try {"
+  - id: OWN-12
+    aspect: data
+    checklistItem: DAT-02
+    kind: finding
+    severity: medium
+    title: OrderItem.orderId has no index
+    file: prisma/schema.prisma
+    startLine: 85
+    endLine: 92
+    anchor: orderId    String
+    also:
+      - file: prisma/migrations/20250301120000_init/migration.sql
+        startLine: 102
+        endLine: 102
+        anchor: CREATE INDEX "OrderItem_productId_idx"
+  - id: OWN-13
+    aspect: data
+    checklistItem: DAT-03
+    kind: finding
+    severity: medium
+    title: The order list queries each order's items separately
+    file: src/app/api/orders/route.ts
+    startLine: 13
+    endLine: 18
+    anchor: for (const order of orders) {
+  - id: OWN-14
+    aspect: data
+    checklistItem: DAT-04
+    kind: finding
+    severity: high
+    title: Checkout writes the order, the stock and the payment outside one transaction
+    file: src/app/api/checkout/route.ts
+    startLine: 27
+    endLine: 42
+    anchor: const order = await prisma.order.create({
+  - id: OWN-15
+    aspect: quality
+    checklistItem: QUA-02
+    kind: finding
+    severity: medium
+    title: The payments module, refunds included, has no tests
+    file: src/lib/payments.ts
+    startLine: 1
+    endLine: 49
+    anchor: import { createHmac
+    also:
+      - file: src/app/admin/actions.ts
+        startLine: 16
+        endLine: 26
+        anchor: export async function refundOrder
+  - id: OWN-16
+    aspect: quality
+    checklistItem: QUA-03
+    kind: finding
+    severity: medium
+    title: The sign-up form accepts 8-character passwords the server rejects
+    file: src/components/SignupForm.tsx
+    startLine: 14
+    endLine: 14
+    anchor: password.length < 8
+    also:
+      - file: src/lib/validation.ts
+        startLine: 5
+        endLine: 5
+        anchor: "password: z.string().min(10)"
+  - id: OWN-17
+    aspect: production
+    checklistItem: PRD-04
+    kind: absence
+    severity: medium
+    title: No health check for the platform to probe
+  - id: OWN-18
+    aspect: production
+    checklistItem: PRD-01
+    kind: finding
+    severity: medium
+    title: The payments secret is read when the module loads, so builds and tests need it
+    file: src/lib/payments.ts
+    startLine: 6
+    endLine: 6
+    anchor: const secretKey = requireEnv("PAYMENTS_SECRET_KEY");
+  - id: OWN-19
+    aspect: production
+    checklistItem: PRD-06
+    kind: question
+    severity: null
+    title: Are the database and uploaded avatars backed up, and has a restore been tested?
+  - id: OWN-20
+    aspect: production
+    checklistItem: PRD-03
+    kind: question
+    severity: null
+    title: Who is alerted when checkout or the payments webhook starts failing?
+  - id: OWN-21
+    aspect: llm
+    checklistItem: LLM-01
+    kind: finding
+    severity: high
+    title: Customer reviews reach the description prompt, where they can carry instructions
+    alsoItems:
+      - SEC-04
+    file: src/app/api/products/[id]/describe/route.ts
+    startLine: 16
+    endLine: 22
+    anchor: const prompt = [
+  - id: OWN-22
+    aspect: llm
+    checklistItem: LLM-03
+    kind: finding
+    severity: high
+    title: The model's HTML is saved unvalidated and later rendered raw
+    file: src/app/api/products/[id]/describe/route.ts
+    startLine: 30
+    endLine: 30
+    anchor: "data: { descriptionHtml: html }"
+    also:
+      - file: src/app/products/[id]/page.tsx
+        startLine: 16
+        endLine: 16
+        anchor: dangerouslySetInnerHTML
+  - id: OWN-23
+    aspect: llm
+    checklistItem: LLM-04
+    kind: finding
+    severity: medium
+    title: The model call sets no output limit
+    file: src/app/api/products/[id]/describe/route.ts
+    startLine: 25
+    endLine: 28
+    anchor: const completion = await client.chat.completions.create({
+  - id: OWN-24
+    aspect: tenancy
+    checklistItem: TEN-03
+    kind: finding
+    severity: high
+    title: Staff of any store see the whole platform's revenue
+    alsoItems:
+      - SEC-03
+    file: src/app/api/reports/sales/route.ts
+    startLine: 10
+    endLine: 14
+    anchor: SELECT date_trunc
+  - id: OWN-25
+    aspect: tenancy
+    checklistItem: TEN-05
+    kind: finding
+    severity: high
+    title: The top-products cache is shared by every store
+    alsoItems:
+      - SEC-03
+    file: src/lib/catalog.ts
+    startLine: 5
+    endLine: 5
+    anchor: cached("top-products"
+known:
+  - checklistItem: DEP-01
+    title: "osv-scanner: next 15.1.0 in the lock file has published advisories"
+    file: package-lock.json
+  - checklistItem: DEP-01
+    title: "osv-scanner: request 2.88.2 has a published advisory"
+    file: package-lock.json
+  - checklistItem: SEC-11
+    title: No Content-Security-Policy or HSTS headers
+  - checklistItem: SEC-12
+    title: Sign-up has no rate limit
+    file: src/app/api/signup/route.ts
+  - checklistItem: SEC-02
+    title: Role and store live in a 7-day token, so a demoted user keeps rights until it expires
+    file: src/lib/session.ts
+  - checklistItem: ARC-01
+    title: A client component calls the carrier API directly
+    file: src/components/ShippingEstimate.tsx
+  - checklistItem: DAT-03
+    title: "Each ProductCard queries its store: an N+1 on the home page"
+    file: src/components/ProductCard.tsx
+  - checklistItem: QUA-02
+    title: Sessions, password hashing and the webhook signature have no tests
+    file: src/lib/session.ts
+  - checklistItem: QUA-06
+    title: No linter and no CI pipeline
+  - checklistItem: PRD-01
+    title: Environment variables are read lazily and never validated at start-up
+    file: src/lib/env.ts
+  - checklistItem: PRD-02
+    title: Nothing is logged
+  - checklistItem: PRD-03
+    title: No error tracking is wired
+  - checklistItem: PRD-05
+    title: No deploy step runs the migrations
+  - checklistItem: PRD-07
+    title: The in-memory cache breaks with a second instance
+    file: src/lib/cache.ts
+  - checklistItem: LLM-08
+    title: Model calls are not logged with their model, tokens or cost
+    file: src/app/api/products/[id]/describe/route.ts
+  - checklistItem: TEN-07
+    title: Isolation is a storeId filter each query must remember, with no second layer
+    file: src/lib/db.ts

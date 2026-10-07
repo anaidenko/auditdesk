@@ -177,8 +177,8 @@ const AI_PACKAGES: Table = [["lovable-tagger", "lovable-tagger (Lovable)"]];
 
 // Tenant keys as columns or fields. `account` is left out: Auth.js schemas carry `providerAccountId`
 // and per-user Account models that say nothing about tenants.
-const TENANT_KEY = /\b(tenant|organi[sz]ation|org|workspace|team|company)_?id\b/gi;
-const TENANT_MODEL = /^\s*model\s+(Tenant|Organi[sz]ation|Workspace|Team|Company)\b/gm;
+const TENANT_KEY = /\b(tenant|organi[sz]ation|org|workspace|team|company|store|shop)_?id\b/gi;
+const TENANT_MODEL = /^\s*model\s+(Tenant|Organi[sz]ation|Workspace|Team|Company|Store|Shop)\b/gm;
 
 const SQL_MIGRATION = /(^|\/)(migrations?|supabase\/migrations)\/.*\.sql$/i;
 

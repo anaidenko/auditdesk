@@ -28,6 +28,12 @@ describe("prompts", () => {
         expect(text).toContain("120,000 tokens");
     });
 
+    it("names the run's other aspects, after the cache breakpoint, so ownership rules can be followed", () => {
+        const checklist = parseChecklist("security", "# Security\n\n## SEC-01 A\n");
+        const text = aspectMessage({ checklist, findingIndex: [], budgetTokens: 20000, runAspects: ["Security", "Multi-tenancy"] });
+        expect(text).toContain("Aspects in this run: Security, Multi-tenancy.");
+    });
+
     it("says when no findings are filed yet", () => {
         const checklist = parseChecklist("security", "# Security\n\n## SEC-01 A\n");
         expect(aspectMessage({ checklist, findingIndex: [], budgetTokens: 20000 })).toContain("None yet.");
