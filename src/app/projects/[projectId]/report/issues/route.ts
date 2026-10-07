@@ -11,7 +11,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ proj
     return new Response(json ? JSON.stringify(issueDrafts(data), null, 2) : issuesCsv(issueDrafts(data)), {
         headers: {
             "Content-Type": json ? "application/json" : "text/csv; charset=utf-8",
-            "Content-Disposition": `attachment; filename="${reportFileName(data, json ? "json" : "csv")}"`
+            "Content-Disposition": `attachment; filename="${reportFileName(data, json ? "json" : "csv", "issues")}"`
         }
     });
 }

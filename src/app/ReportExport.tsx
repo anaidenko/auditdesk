@@ -1,7 +1,12 @@
 import { Icon, button } from "@/app/ui";
+import { reportRepositoryNames } from "@/server/report";
 
-/** The report downloads, with the run's cost stated only when Andrii ticks it (design § 8). */
-export function ReportExport({ projectId }: { projectId: string }) {
+/**
+ * The report downloads, with the run's cost stated only when Andrii ticks it (design § 8). SARIF is
+ * one file per repository, since an upload goes to one; the button's name and value carry it.
+ */
+export async function ReportExport({ projectId }: { projectId: string }) {
+    const repositories = await reportRepositoryNames(projectId);
     return (
         <form method="get" className="flex flex-wrap items-center gap-2">
             <label className="flex items-center gap-1.5 text-xs text-zinc-600">
@@ -16,14 +21,23 @@ export function ReportExport({ projectId }: { projectId: string }) {
                 <Icon name="download" />
                 PDF report
             </button>
-            <button formAction={`/projects/${projectId}/report/sarif`} className={button.secondary} title="For code-scanning tools and CI">
-                <Icon name="download" />
-                SARIF
-            </button>
+            {repositories.map(name => (
+                <button
+                    key={name}
+                    formAction={`/projects/${projectId}/report/sarif`}
+                    name="repository"
+                    value={name}
+                    className={button.secondary}
+                    title={`${name}'s findings for code scanning and CI`}
+                >
+                    <Icon name="download" />
+                    {repositories.length > 1 ? `SARIF: ${name}` : "SARIF"}
+                </button>
+            ))}
             <button
                 formAction={`/projects/${projectId}/report/issues`}
                 className={button.secondary}
-                title="Issue drafts for a tracker's import"
+                title="Issue drafts for Linear's CSV import or another tracker's"
             >
                 <Icon name="download" />
                 Issues CSV
@@ -33,7 +47,7 @@ export function ReportExport({ projectId }: { projectId: string }) {
                 className="text-xs text-indigo-700 hover:underline"
                 title="For pnpm issues:gh"
             >
-                JSON
+                Issues JSON
             </a>
         </form>
     );

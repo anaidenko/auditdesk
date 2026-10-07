@@ -40,6 +40,10 @@ test("a run from project to downloaded report", async ({ page }) => {
     const pdf = await page.request.get(page.url().replace(/\/findings.*$/, "/report/pdf"));
     expect(pdf.headers()["content-type"]).toBe("application/pdf");
     expect((await pdf.body()).subarray(0, 5).toString()).toBe("%PDF-");
+    const [sarif] = await Promise.all([page.waitForEvent("download"), page.getByRole("button", { name: "SARIF" }).click()]);
+    expect(sarif.suggestedFilename()).toMatch(/^auditdesk-sample-.+-\d{4}-\d{2}-\d{2}\.sarif$/);
+    const log = JSON.parse(readFileSync(await sarif.path(), "utf8"));
+    expect(log.runs[0].results.map((r: { properties: { label: string } }) => r.properties.label)).toEqual([label]);
     // New projects default to Claude plan: the main flow ran the SDK engine against the fake server.
     expect(html).toContain("through the Claude Agent SDK");
 });

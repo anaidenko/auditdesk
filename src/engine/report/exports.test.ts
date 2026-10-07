@@ -35,26 +35,79 @@ const data = () =>
         questions: [reportFinding({ label: "F-003", severity: null, title: "Who rotates the key?" })]
     });
 
+const one = (over: Parameters<typeof reportFinding>[0]) => reportData({ findings: [reportFinding(over)] });
+
 describe("sarif", () => {
-    it("writes SARIF 2.1.0, one run per repository, a result per reported finding and none for a question", () => {
-        const log = sarif(data());
+    it("writes SARIF 2.1.0 for one repository, a result per reported finding and none for a question", () => {
+        const log = sarif(data(), "app");
         expect(log.version).toBe("2.1.0");
-        expect(log.runs.map(r => r.properties.repository)).toEqual(["app", "api"]);
-        expect(log.runs.flatMap(r => r.results.map(x => x.properties.label))).toEqual(["F-001", "F-002"]);
+        expect(log.runs).toHaveLength(1);
+        expect(log.runs[0].properties.repository).toBe("app");
+        expect(log.runs[0].results.map(x => x.properties.label)).toEqual(["F-001"]);
+        expect(sarif(data(), "api").runs[0].results.map(x => x.properties.label)).toEqual(["F-002"]);
         expect(JSON.stringify(log)).not.toContain("Who rotates the key?");
+        expect(() => sarif(data(), "web")).toThrow(/No repository "web"/);
     });
 
-    it("maps severity to level, the item to the rule, and evidence to locations", () => {
-        const [app, api] = sarif(data()).runs;
+    it("maps severity to level, the item to the rule, and evidence to locations under the source root", () => {
+        const [app] = sarif(data(), "app").runs;
         expect(app.results[0]).toMatchObject({
             ruleId: "SEC-04",
             level: "error",
-            locations: [{ physicalLocation: { artifactLocation: { uri: "a.ts" }, region: { startLine: 1, endLine: 2 } } }],
+            locations: [
+                {
+                    physicalLocation: {
+                        artifactLocation: { uri: "a.ts", uriBaseId: "%SRCROOT%" },
+                        region: { startLine: 1, endLine: 2 }
+                    }
+                }
+            ],
             partialFingerprints: { "auditdesk/finding": "F-001" }
         });
         expect(app.tool.driver.rules).toEqual([expect.objectContaining({ id: "SEC-04", shortDescription: { text: "Injection" } })]);
-        expect(api.results[0]).toMatchObject({ ruleId: "SEC-13", level: "note" });
+        expect(sarif(data(), "api").runs[0].results[0]).toMatchObject({ ruleId: "SEC-13", level: "note" });
         expect(app.properties.commit).toBe("0123456789abcdef");
+    });
+
+    it("marks a security rule for GitHub with the highest severity among its results", () => {
+        const d = reportData({
+            findings: [
+                reportFinding({ label: "F-001", severity: "medium" }),
+                reportFinding({ label: "F-002", severity: "critical" }),
+                reportFinding({ label: "F-003", severity: "high", checklistItem: "DEP-01" }),
+                reportFinding({ label: "F-004", severity: "info", checklistItem: "LLM-02" }),
+                reportFinding({ label: "F-005", severity: "high", checklistItem: "QUA-03" })
+            ]
+        });
+        const rules = Object.fromEntries(sarif(d, "app").runs[0].tool.driver.rules.map(r => [r.id, r.properties]));
+        expect(rules["SEC-04"]).toEqual({ "tags": ["security"], "security-severity": "9.5" });
+        expect(rules["DEP-01"]).toEqual({ "tags": ["security"], "security-severity": "8.0" });
+        expect(rules["LLM-02"]).toEqual({ tags: ["security"] });
+        expect(rules["QUA-03"]).toBeUndefined();
+    });
+
+    it("percent-encodes a path that is not a valid URI as it stands", () => {
+        const d = one({ evidence: [{ file: "src/app/[id]/my page%.tsx", startLine: 3, endLine: 3 }] });
+        expect(sarif(d, "app").runs[0].results[0].locations[0].physicalLocation.artifactLocation.uri).toBe(
+            "src/app/%5Bid%5D/my%20page%25.tsx"
+        );
+    });
+
+    it("joins the title and the summary with one full stop, and orders results by severity", () => {
+        const d = reportData({
+            findings: [
+                reportFinding({ label: "F-001", severity: "low", title: "Secrets belong in vaults.", summary: "A key is in the code." }),
+                reportFinding({ label: "F-002", severity: "critical", title: "Raw SQL" })
+            ]
+        });
+        const results = sarif(d, "app").runs[0].results;
+        expect(results.map(r => r.properties.label)).toEqual(["F-002", "F-001"]);
+        expect(results[1].message.text).toBe("Secrets belong in vaults. A key is in the code.");
+    });
+
+    it("describes a rule by the checklist's title even when its aspect did not run", () => {
+        const d = reportData({ itemTitles: { "DEP-01": "Known vulnerabilities" }, findings: [reportFinding({ checklistItem: "DEP-01" })] });
+        expect(sarif(d, "app").runs[0].tool.driver.rules[0].shortDescription.text).toBe("Known vulnerabilities");
     });
 });
 
@@ -70,12 +123,38 @@ describe("issue drafts", () => {
         expect(issueDrafts(data())).toHaveLength(2);
     });
 
-    it("writes a CSV a tracker can import, quoting every field", () => {
+    it("orders the drafts by severity, so the first issue created is the worst", () => {
+        const d = reportData({
+            findings: [reportFinding({ label: "F-001", severity: "low" }), reportFinding({ label: "F-002", severity: "critical" })]
+        });
+        expect(issueDrafts(d).map(i => i.title.slice(0, 5))).toEqual(["F-002", "F-001"]);
+    });
+
+    it("fences a snippet with more backticks than any run inside it", () => {
+        const snippet = 'const p = `Return JSON in\n```json\n{"a": 1}\n```\n`;';
+        const [draft] = issueDrafts(one({ evidence: [{ file: "p.ts", startLine: 1, endLine: 5, snippet }] }));
+        expect(draft.body).toContain("\n````\n" + snippet + "\n````\n");
+    });
+
+    it("escapes Markdown in prose and leaves the model's inline code alone", () => {
+        const [draft] = issueDrafts(
+            one({
+                summary: "a __proto__ key pollutes Object.prototype",
+                explanation: "It puts the name into <div> unescaped, across src/**/*.ts; see `req.query.q` and `a_b_c`.",
+                recommendation: "# Escape it [now]"
+            })
+        );
+        expect(draft.body).toContain(String.raw`a \_\_proto\_\_ key pollutes Object.prototype`);
+        expect(draft.body).toContain(String.raw`into \<div\> unescaped, across src/\*\*/\*.ts; see ` + "`req.query.q` and `a_b_c`.");
+        expect(draft.body).toContain(String.raw`\# Escape it \[now\]`);
+    });
+
+    it("writes a CSV a tracker can import, quoting every field and separating labels as Linear does", () => {
         const csv = issuesCsv(issueDrafts(data()));
         const [header, row] = csv.split("\r\n");
         expect(header).toBe('"Title","Description","Priority","Labels"');
         expect(row.startsWith('"F-001: Raw SQL","**Severity:** critical')).toBe(true);
-        expect(row).toContain('"Urgent","audit,critical,security"');
+        expect(row).toContain('"Urgent","audit, critical, security"');
         expect(csv).toContain('q(""<script>alert(1)</script>"")');
     });
 });

@@ -31,14 +31,33 @@ describe("the SARIF and issue exports", () => {
     it("serves the reported findings as SARIF, and leaves out the unreviewed", async () => {
         const res = await get(sarif, await project(), "sarif");
         expect(res.headers.get("content-type")).toBe("application/sarif+json");
-        expect(res.headers.get("content-disposition")).toMatch(/attachment; filename="auditdesk-acme-\d{4}-\d{2}-\d{2}\.sarif"/);
+        expect(res.headers.get("content-disposition")).toMatch(/attachment; filename="auditdesk-acme-x-\d{4}-\d{2}-\d{2}\.sarif"/);
         const log = await res.json();
         expect(log.runs[0].results.map((r: { message: { text: string } }) => r.message.text)).toEqual([expect.stringMatching(/^Raw SQL/)]);
+    });
+
+    it("serves one repository's SARIF at a time when the project has several", async () => {
+        const id = await project();
+        const api = await prisma.repository.create({ data: { projectId: id, source: "/tmp/api", branch: "main" } });
+        const f = await createFinding(id, null, sampleFinding(api.id, { title: "Open redirect" }));
+        await prisma.finding.update({ where: { id: f.id }, data: { status: "accepted" } });
+        const none = await get(sarif, id, "sarif");
+        expect(none.status).toBe(400);
+        expect(await none.text()).toBe("Name one repository with ?repository=: x, api.");
+        const res = await get(sarif, id, "sarif?repository=api");
+        expect(res.headers.get("content-disposition")).toMatch(/filename="auditdesk-acme-api-\d{4}-\d{2}-\d{2}\.sarif"/);
+        const log = await res.json();
+        expect(log.runs).toHaveLength(1);
+        expect(log.runs[0].results.map((r: { message: { text: string } }) => r.message.text)).toEqual([
+            expect.stringMatching(/^Open redirect/)
+        ]);
+        expect((await get(sarif, id, "sarif?repository=web")).status).toBe(400);
     });
 
     it("serves the reported findings as issue drafts in CSV", async () => {
         const res = await get(issues, await project(), "issues");
         expect(res.headers.get("content-type")).toBe("text/csv; charset=utf-8");
+        expect(res.headers.get("content-disposition")).toMatch(/filename="auditdesk-acme-issues-\d{4}-\d{2}-\d{2}\.csv"/);
         const csv = await res.text();
         expect(csv).toContain('"F-001: Raw SQL"');
         expect(csv).not.toContain("Not reviewed yet");

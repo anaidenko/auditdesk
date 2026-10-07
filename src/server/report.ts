@@ -28,22 +28,33 @@ function repoName(source: string): string {
               .join("/");
 }
 
+/** Names are unique in a report: two repositories of one name are told apart by branch, then by number. */
+function reportNames(repositories: { id: string; source: string; branch: string }[]): Map<string, string> {
+    const names = new Map<string, string>();
+    for (const r of repositories) {
+        const base = repoName(r.source);
+        const clash = repositories.filter(x => repoName(x.source) === base).length > 1;
+        let name = clash ? `${base} (${r.branch})` : base;
+        for (let i = 2; [...names.values()].includes(name); i++) name = `${base} (${r.branch}, ${i})`;
+        names.set(r.id, name);
+    }
+    return names;
+}
+
+/** The project's repositories as the report names them, for a download per repository. */
+export async function reportRepositoryNames(projectId: string): Promise<string[]> {
+    const repositories = await prisma.repository.findMany({ where: { projectId }, orderBy: { createdAt: "asc" } });
+    return [...reportNames(repositories).values()];
+}
+
 /** `includeCost`: Andrii ticked the cost at export (design § 8); otherwise the report states none. */
 export async function loadReportData(projectId: string, o: { includeCost?: boolean } = {}): Promise<ReportData> {
     const project = await prisma.project.findUniqueOrThrow({
         where: { id: projectId },
         include: { repositories: { orderBy: { createdAt: "asc" } } }
     });
-    // Names are unique in a report: two repositories of one name are told apart by branch, then by number.
     const referenceData = loadReferences();
-    const names = new Map<string, string>();
-    for (const r of project.repositories) {
-        const base = repoName(r.source);
-        const clash = project.repositories.filter(x => repoName(x.source) === base).length > 1;
-        let name = clash ? `${base} (${r.branch})` : base;
-        for (let i = 2; [...names.values()].includes(name); i++) name = `${base} (${r.branch}, ${i})`;
-        names.set(r.id, name);
-    }
+    const names = reportNames(project.repositories);
     const rows = await prisma.finding.findMany({ where: { projectId, status: { in: [...REPORTABLE] } }, orderBy: { number: "asc" } });
     const toReport = (r: (typeof rows)[number]): ReportFinding => ({
         label: findingLabel(r.number),
@@ -100,6 +111,10 @@ export async function loadReportData(projectId: string, o: { includeCost?: boole
             return { title: `${checklist.title} (${names.get(a.repositoryId)})`, status: a.status, note: a.note, coverage };
         })
     );
+    const catalogue = await Promise.all(
+        ASPECTS.map(a => loadChecklist(a.key).catch(() => ({ items: [] as { id: string; title: string }[] })))
+    );
+    const itemTitles = Object.fromEntries(catalogue.flatMap(c => c.items.map(i => [i.id, i.title] as const)));
     const served = await prisma.apiCall.findMany({
         where: { run: { projectId } },
         distinct: ["servedModel"],
@@ -126,6 +141,7 @@ export async function loadReportData(projectId: string, o: { includeCost?: boole
         })),
         aiBuilt: project.aiBuilt,
         aspects,
+        itemTitles,
         servedModels: served.map(s => s.servedModel),
         modelAccess: accesses.map(a => a.modelAccess),
         toolVersions: (scanned?.toolVersions as ToolVersions | null) ?? null,
@@ -141,12 +157,14 @@ export async function loadReportData(projectId: string, o: { includeCost?: boole
     };
 }
 
-export function reportFileName(d: ReportData, ext: "html" | "pdf" | "sarif" | "csv" | "json"): string {
-    const slug = d.projectName
-        .toLowerCase()
-        .replace(/[^a-z0-9]+/g, "-")
-        .replace(/^-|-$/g, "");
-    return `auditdesk-${slug}-${d.generatedAt}.${ext}`;
+/** `part` says what a download other than the report holds: the issues, or a SARIF's repository. */
+export function reportFileName(d: ReportData, ext: "html" | "pdf" | "sarif" | "csv" | "json", part?: string): string {
+    const slug = (s: string) =>
+        s
+            .toLowerCase()
+            .replace(/[^a-z0-9]+/g, "-")
+            .replace(/^-|-$/g, "");
+    return `auditdesk-${slug(d.projectName)}${part ? `-${slug(part)}` : ""}-${d.generatedAt}.${ext}`;
 }
 
 /** Each download keeps a copy beside the project's clones (design § 5). */
