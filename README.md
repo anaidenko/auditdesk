@@ -177,4 +177,6 @@ Built by Andrii Naidenko. For an audit of your codebase, get in touch through
 
 ## License
 
-MIT
+PolyForm Noncommercial 1.0.0 ([LICENSE.md](LICENSE.md)): free for noncommercial use. Commercial use,
+including use inside a company or for paid client work, needs a separate licence: get in touch
+through [naidenko.dev](https://naidenko.dev).
