@@ -345,7 +345,7 @@ ${d.questions.map(finding).join("\n")}</section>`
 <p class="lede">${plural(findings.length, "finding", "findings")} and ${plural(d.questions.length, "open question", "open questions")} across ${plural(d.repositories.length, "repository", "repositories")}</p>
 <dl class="facts">
 <div><dt>Date</dt><dd>${e(d.generatedAt)}</dd></div>
-<div><dt>Auditor</dt><dd>${e(d.auditor)}</dd></div>
+${d.auditor ? `<div><dt>Auditor</dt><dd>${e(d.auditor)}</dd></div>` : ""}
 <div class="repos"><dt>Repositories audited (branch, commit)</dt><dd><ul>${repos}</ul></dd></div>
 </dl>
 <div class="tiles">${tiles}</div>
@@ -415,7 +415,7 @@ ${questions}
 <section id="disclaimer"><h2>Disclaimer</h2>
 <p class="disclaimer">An audit finds issues; it does not certify their absence. Findings describe the code at the commits listed above.</p>
 </section>
-<p class="colophon">${e(d.auditor)} · ${e(d.generatedAt)}</p>
+<p class="colophon">${d.auditor ? `${e(d.auditor)} · ` : ""}${e(d.generatedAt)}</p>
 </main>
 <script>${FILTER_SCRIPT}</script>
 </body>
