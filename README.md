@@ -26,6 +26,12 @@ Local only: it binds 127.0.0.1 and has no login. The design is in [docs/design.m
   what to fix before sign-off and what can wait, scope and coverage, each finding with its
   evidence, and links to the OWASP Top 10:2025, ASVS 5.0.0, CWE and Cheat Sheets it is relevant
   to.
+- **Exports:** besides the report, SARIF 2.1.0 for code scanning, one file per repository, and the
+  accepted findings as issue drafts: a CSV for Linear's CLI importer ("Linear (CSV)") or another
+  tracker's, or JSON that `pnpm issues:gh` turns into GitHub issues through the `gh` CLI. It
+  previews them first; `--create` creates them, skips those that exist, and refuses a public
+  repository without `--public`. To upload the SARIF to GitHub, run `github/codeql-action/upload-sarif`
+  after a checkout of the audited commit, so GitHub can compute its own fingerprints.
 - **Cost under control:** caps per run, split between agents; a pre-run estimate from past runs;
   every call priced by the model that served it.
 
@@ -113,6 +119,11 @@ item; with `--judge`, an LLM judge reads what the grader could not place, within
 - **OWASP Juice Shop** v20.2.0, for comparison: the prep removes its coding challenges' answers
   (fixes, tutorials, translated hints, specs, the code that scores a solve) and renames every
   challenge, and `pnpm eval:key` reads its key from the markers.
+
+`--matrix claude-sonnet-5-5:low,claude-opus-5-5:medium` runs several model and effort pairs one
+after another, each with the whole budget; it names the total cap first, checks the plan's reserve
+before each pair, and stops when an audit fails. The **Evals** page plots every result's recall
+against its cost, one chart per fixture and aspect set, and marks a run that did not finish.
 
 A first result, a baseline on Juice Shop at the cheapest model and effort, is in `evals/results/`;
 scores by model and effort follow and will be quoted here.

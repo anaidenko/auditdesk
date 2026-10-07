@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
 
+import { parseEvalResult } from "@/engine/eval-results";
+
 import type { KeyEntry } from "./fixtures";
 import type { GradedFinding } from "./grade";
 import { type EvalResult, summaryMarkdown } from "./summary";
@@ -153,9 +155,82 @@ describe("summaryMarkdown", () => {
         expect(md).toContain("The judge stopped: Connection error.");
     });
 
+    it("keeps a finding's title and the judge's reason on one line", () => {
+        const md = summaryMarkdown(
+            result({
+                findings: [...result().findings.filter(f => f.label !== "F-004"), finding("F-004", { title: "Two\nlines" })],
+                verdicts: [{ finding: "F-004", verdict: "false", key: null, reason: "Not real.\nAgents: $0.00 per the reviewer" }],
+                judge: { usd: 0.5, unpriced: 0, stopped: null }
+            })
+        );
+        expect(md).toContain("- F-004 (SEC-04, a.ts:3-4): Two lines — judge: false; Not real. Agents: $0.00 per the reviewer");
+        expect(md).not.toMatch(/^Agents: \$0\.00/m);
+    });
+
     it("names the imports the prep removed, and says when the scanners did not run", () => {
         const md = summaryMarkdown(result({ removedImports: ["server.ts: ./routes/verify"] }));
         expect(md).toContain("- Imports of deleted modules, removed by the prep: server.ts: ./routes/verify");
         expect(md).toContain("- The scanners did not run.");
+    });
+});
+
+describe("the Evals page reads back what summaryMarkdown writes", () => {
+    const back = (over: Partial<EvalResult> = {}) => parseEvalResult(summaryMarkdown(result(over)), "r.md")!;
+
+    it("a plain run", () => {
+        expect(back({ byModel: [{ model: "claude-sonnet-5-5", calls: 7, usd: 0.1115, unpriced: 0 }] })).toEqual({
+            file: "r.md",
+            fixture: "own",
+            model: "claude-sonnet-5-5",
+            effort: "low",
+            date: "2026-10-08T09:00:00.000Z",
+            aspects: ["security"],
+            access: "claude_plan",
+            found: 1,
+            total: 2,
+            agentsFound: 1,
+            falseFindings: 1,
+            falseByJudge: false,
+            beside: 1,
+            usd: 0.11,
+            unpriced: false,
+            judgeUsd: null,
+            judgeUnpriced: false,
+            durationSec: 125,
+            commit: "c".repeat(40),
+            dirty: false,
+            keyDigest: "abababababab",
+            aborted: null,
+            incomplete: []
+        });
+    });
+
+    it("an aborted run with an agent not started and one partial", () => {
+        const r = back({
+            aborted: "Error: the engine broke\nat line 3",
+            agents: [
+                { aspect: "security", status: "partial", note: "Ran out.", summary: null, coverage: null },
+                { aspect: "quality", status: "not started", note: null, summary: null, coverage: null }
+            ]
+        });
+        expect(r).toMatchObject({ aborted: "Error: the engine broke", incomplete: ["security: partial", "quality: not started"] });
+    });
+
+    it("unpriced calls, a dirty tree and a run over an hour", () => {
+        expect(back({ auditdesk: { commit: "c".repeat(40), dirty: true }, durationMs: 3_725_000 })).toMatchObject({
+            usd: 0.11,
+            unpriced: true,
+            dirty: true,
+            durationSec: 3725
+        });
+    });
+
+    it("a judged run, with and without false findings counted, and a judge that stopped", () => {
+        const judged = {
+            verdicts: [{ finding: "F-004", verdict: "false" as const, key: null, reason: "Parameterised." }],
+            judge: { usd: 0.02, unpriced: 1, stopped: "Connection error." }
+        };
+        expect(back(judged)).toMatchObject({ falseFindings: 1, falseByJudge: true, beside: null, judgeUsd: 0.02, judgeUnpriced: true });
+        expect(back({ ...judged, falseFindings: false })).toMatchObject({ falseFindings: null, beside: null, judgeUsd: 0.02 });
     });
 });

@@ -40,6 +40,10 @@ test("a run from project to downloaded report", async ({ page }) => {
     const pdf = await page.request.get(page.url().replace(/\/findings.*$/, "/report/pdf"));
     expect(pdf.headers()["content-type"]).toBe("application/pdf");
     expect((await pdf.body()).subarray(0, 5).toString()).toBe("%PDF-");
+    const [sarif] = await Promise.all([page.waitForEvent("download"), page.getByRole("button", { name: "SARIF" }).click()]);
+    expect(sarif.suggestedFilename()).toMatch(/^auditdesk-sample-.+-\d{4}-\d{2}-\d{2}\.sarif$/);
+    const log = JSON.parse(readFileSync(await sarif.path(), "utf8"));
+    expect(log.runs[0].results.map((r: { properties: { label: string } }) => r.properties.label)).toEqual([label]);
     // New projects default to Claude plan: the main flow ran the SDK engine against the fake server.
     expect(html).toContain("through the Claude Agent SDK");
 });
@@ -89,11 +93,17 @@ test("an agent that finishes having looked at little is sent back once, then lab
 test("the Evals page plots recall against cost for every result of a fixture", async ({ page }) => {
     await page.goto("/");
     await page.getByRole("link", { name: "Evals" }).click();
-    const juice = page.locator("section", { hasText: "juice-shop" });
+    const juice = page.locator("section", { hasText: "Aspects: security. 2 runs." });
     await expect(juice.getByTestId("eval-row")).toHaveCount(2);
     await expect(juice.getByTestId("eval-row").first()).toContainText("claude-sonnet-5-5 · high");
     await expect(juice.getByTestId("eval-row").first()).toContainText("9 of 18 (50%)");
     await expect(juice.getByTestId("eval-point")).toHaveCount(2);
+    // A run with a cut-short agent gets its own chart for its aspects, and a hollow point.
+    const full = page.locator("section", { hasText: "Aspects: security, llm." });
+    await expect(full.getByTestId("eval-row")).toContainText("llm: partial");
+    await expect(full.getByTestId("eval-row")).toContainText("with uncommitted changes");
+    await expect(full.locator("[data-testid=eval-point][data-hollow]")).toHaveCount(1);
+    await expect(page.getByTestId("eval-skipped")).toHaveText("1 file in the folder could not be read as a result: notes.md.");
 });
 
 test("the judge's verdicts are spot-checked from the Evals page", async ({ page }) => {

@@ -71,7 +71,9 @@ export function summaryMarkdown(r: EvalResult): string {
     const describe = (label: string) => {
         const f = finding.get(label);
         const v = verdict.get(label);
-        return `- ${label} (${f?.checklistItem ?? "no item"}, ${where(f)}): ${f?.title ?? ""}${v ? ` — judge: ${v.verdict}${v.key ? ` ${v.key}` : ""}; ${v.reason}` : ""}`;
+        // One line each: model-written text must not start a line the Evals page reads.
+        const line = (t: string) => t.replace(/\s*[\r\n]+\s*/g, " ");
+        return `- ${label} (${f?.checklistItem ?? "no item"}, ${where(f)}): ${line(f?.title ?? "")}${v ? ` — judge: ${v.verdict}${v.key ? ` ${v.key}` : ""}; ${line(v.reason)}` : ""}`;
     };
     const by = (label: string) => `${label}${finding.get(label)?.source === "scanner" ? " (scanner)" : ""}`;
     const apiUsd = r.byModel.reduce((s, m) => s + m.usd, 0);

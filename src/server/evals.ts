@@ -12,24 +12,41 @@ export function evalResultsDir(): string {
 /** A result row with its judge verdicts and how many of them Andrii has spot-checked. */
 export type EvalHistoryRow = EvalRow & { judged: number; checked: number; agreed: number };
 
-/** Every eval result in the folder, newest first. */
-export async function loadEvalRows(): Promise<EvalHistoryRow[]> {
+/**
+ * Every eval result in the folder, newest first, and the Markdown files that could not be read as
+ * one, so a result in an older format or a stray entry is named instead of dropped. A missing
+ * folder is no results; one that cannot be read is an error.
+ */
+export async function loadEvalRows(): Promise<{ rows: EvalHistoryRow[]; skipped: string[] }> {
     const dir = evalResultsDir();
-    const files = await readdir(dir).catch(() => [] as string[]);
-    const rows = await Promise.all(
+    let files: string[];
+    try {
+        files = await readdir(dir);
+    } catch (e) {
+        if ((e as NodeJS.ErrnoException).code === "ENOENT") return { rows: [], skipped: [] };
+        throw e;
+    }
+    const read = await Promise.all(
         files
             .filter(f => f.endsWith(".md"))
-            .map(async f => {
-                const md = await readFile(join(dir, f), "utf8");
+            .sort()
+            .map(async (f): Promise<{ f: string; row: EvalHistoryRow | null }> => {
+                const md = await readFile(join(dir, f), "utf8").catch(() => "");
                 const row = parseEvalResult(md, f);
-                if (!row) return null;
+                if (!row) return { f, row: null };
                 const verdicts = parseVerdicts(md).map(v => v.label);
-                const checks = await loadChecks(f);
+                const checks = await loadChecks(f).catch(() => ({}) as Record<string, SpotCheck>);
                 const checked = verdicts.filter(l => checks[l]);
-                return { ...row, judged: verdicts.length, checked: checked.length, agreed: checked.filter(l => checks[l].agree).length };
+                return {
+                    f,
+                    row: { ...row, judged: verdicts.length, checked: checked.length, agreed: checked.filter(l => checks[l].agree).length }
+                };
             })
     );
-    return rows.filter((r): r is EvalHistoryRow => r !== null).sort((a, b) => b.date.localeCompare(a.date));
+    return {
+        rows: read.flatMap(r => (r.row ? [r.row] : [])).sort((a, b) => b.date.localeCompare(a.date)),
+        skipped: read.filter(r => !r.row).map(r => r.f)
+    };
 }
 
 export interface SpotCheck {
