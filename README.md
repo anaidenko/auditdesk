@@ -170,6 +170,11 @@ beside the clones, and refuses a request another site started); PostgreSQL is pu
 127.0.0.1 only. The client's code is never installed, built or run, and a pre-commit hook runs
 gitleaks on the staged files.
 
+## Author
+
+Built by Andrii Naidenko. For an audit of your codebase, get in touch through
+[naidenko.dev](https://naidenko.dev).
+
 ## License
 
 MIT
