@@ -1,5 +1,6 @@
 import "server-only";
 
+import { ASPECTS } from "@/engine/aspects";
 import { compareFindings, findingLabel } from "@/engine/findings";
 import type { Evidence, SeverityName } from "@/engine/types";
 import { FindingStatus } from "@/generated/prisma/enums";
@@ -76,7 +77,7 @@ export async function merge(sourceId: string, targetLabel: string) {
     });
 }
 
-export async function listFindings(projectId: string, o: { status?: string; q?: string } = {}) {
+export async function listFindings(projectId: string, o: { status?: string; q?: string; aspect?: string } = {}) {
     const ids = o.q
         ? (
               await prisma.$queryRaw<{ id: string }[]>`
@@ -87,6 +88,7 @@ export async function listFindings(projectId: string, o: { status?: string; q?: 
         where: {
             projectId,
             ...(ids && { id: { in: ids } }),
+            ...(ASPECTS.some(a => a.key === o.aspect) && { aspect: o.aspect }),
             status: isStatus(o.status) ? o.status : { notIn: ["merged", "superseded"] }
         }
     });

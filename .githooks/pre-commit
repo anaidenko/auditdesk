@@ -1,9 +1,15 @@
 #!/bin/sh
-# Scans the staged changes for secrets. Needs Docker running.
+# Scans the staged files for secrets. Needs Docker running.
+#
+# The staged versions are copied into a fresh folder and that folder is scanned. Scanning the
+# repository through a bind mount (`gitleaks git --staged`) read a stale .git/index right after
+# `git add` on Docker Desktop and scanned 0 bytes (2026-10-07).
 if ! docker info >/dev/null 2>&1; then
     echo "pre-commit: Docker is not running, so gitleaks cannot scan the staged files." >&2
     exit 1
 fi
-exec docker run --rm -v "$(pwd)":/repo -w /repo \
-    -e GIT_CONFIG_COUNT=1 -e GIT_CONFIG_KEY_0=safe.directory -e GIT_CONFIG_VALUE_0='*' \
-    ghcr.io/gitleaks/gitleaks:v8.30.1 git --pre-commit --staged --redact --no-banner /repo
+staged=$(mktemp -d "${TMPDIR:-/tmp}/auditdesk-staged.XXXXXX") || exit 1
+trap 'rm -rf "$staged"' EXIT
+git diff --cached --name-only --diff-filter=d -z | xargs -0 git checkout-index --prefix="$staged/" -- || exit 1
+docker run --rm -v "$staged":/staged:ro -v "$(pwd)/.gitleaks.toml":/cfg/gitleaks.toml:ro \
+    ghcr.io/gitleaks/gitleaks:v8.30.1 dir --config /cfg/gitleaks.toml --redact --no-banner /staged

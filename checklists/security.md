@@ -2,7 +2,14 @@
 
 Always on. Examine each item against the repository's own code. Scanner results are leads,
 already filed as findings; report what they missed. When the multi-tenancy aspect is on,
-tenant scoping belongs to it, not to SEC-03.
+tenant scoping belongs to it, not to SEC-03. When the LLM integrations aspect is off, prompt
+injection that reaches tools or data is filed here, under SEC-04.
+
+Severity: critical when anyone who can reach the app, or sign up for it, can exploit it now
+with serious impact (all users' data, remote code execution, a live credential). High when it
+needs modest preconditions (an account with a particular role, an ID that has to be learnt
+first) or harms some users. Medium needs unusual conditions or has limited impact. Low is
+defence in depth.
 
 ## SEC-01 Authentication
 
@@ -21,7 +28,10 @@ fixation, logout and revocation, refresh-token rotation.
 Every handler, Server Action, resolver and socket event checks who the caller is and what they
 may do. Object-level checks: an ID from the request is checked against the caller's rights
 (IDOR). Admin routes are guarded on the server, not only hidden in the UI. Angular and React
-route guards are UX, not authorization.
+route guards are UX, not authorization. Responses that depend on the user are never served
+from a shared cache: Next.js `unstable_cache` or `"use cache"` without the user in the key,
+`fetch` cached by default in Next.js 13 and 14, `Cache-Control: public` on authenticated
+responses, a CDN caching personalised pages.
 
 ## SEC-04 Injection
 
@@ -68,8 +78,8 @@ Secure, HTTP URLs to the app's own APIs, TLS verification turned off.
 
 ## SEC-12 Rate limiting and abuse
 
-Expensive or enumerable endpoints without limits (login, reset, search, export, AI calls),
-unbounded pagination, uploads without size caps.
+Expensive or enumerable endpoints without limits (login, reset, search, export, AI calls) and
+uploads without size caps. Pagination belongs to DAT-03.
 
 ## SEC-13 Logging and error exposure
 

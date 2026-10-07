@@ -23,6 +23,18 @@ describe("startFakeAnthropic", () => {
         expect(fake.requests[0].body).toEqual({ model: "m" });
     });
 
+    it("serves each aspect's agent from that aspect's own recording", async () => {
+        const fake = await startFakeAnthropic({ "Security": [], "Code quality and tests": [toolUse()] });
+        servers.push(fake);
+        const body = {
+            model: "m",
+            messages: [{ role: "user", content: [{ type: "text", text: "# Aspect: Code quality and tests\n\nx" }] }]
+        };
+        const res = await fetch(`${fake.url}/v1/messages`, { method: "POST", body: JSON.stringify(body) });
+        expect(res.status).toBe(200);
+        expect(await res.text()).toContain('"name":"read_file"');
+    });
+
     it("answers anything else with 404 and records it", async () => {
         const fake = await startFakeAnthropic([]);
         servers.push(fake);

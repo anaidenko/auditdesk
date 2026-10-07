@@ -5,6 +5,7 @@ import { useEffect, useState } from "react";
 
 import { stopRun } from "@/app/actions";
 import { RunStatus, button, cx } from "@/app/ui";
+import { aspectTitle } from "@/engine/aspects";
 import type { RunSnapshot } from "@/server/queries";
 
 import { clockTime } from "./clock";
@@ -66,7 +67,7 @@ export function RunProgress({ runId }: { runId: string }) {
                 <ul className="divide-y divide-zinc-100 rounded-xl border border-zinc-200 bg-white shadow-sm">
                     {snap.agents.map(a => (
                         <li key={a.id} className="flex flex-wrap items-center gap-3 px-5 py-3 text-sm">
-                            <span className="font-medium capitalize">{a.aspect}</span>
+                            <span className="font-medium">{aspectTitle(a.aspect)}</span>
                             <RunStatus status={a.status} />
                             {a.note && <span className="text-zinc-500">{a.note}</span>}
                         </li>

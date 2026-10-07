@@ -214,7 +214,7 @@ export async function runAspectSdk(cfg: SdkRunnerConfig, o: AspectInput): Promis
                     else if (m.subtype === "model_refusal_fallback") {
                         declined = null;
                         fellBack = true;
-                        const note = `${ctx.aspect}: declined (${m.api_refusal_category ?? "unspecified"}); retried on ${m.fallback_model}.`;
+                        const note = `${ctx.checklist.title}: declined (${m.api_refusal_category ?? "unspecified"}); retried on ${m.fallback_model}.`;
                         write(() => ctx.sink.progress(note, "warn"));
                     }
                     break;
@@ -243,7 +243,7 @@ export async function runAspectSdk(cfg: SdkRunnerConfig, o: AspectInput): Promis
                     }
                     for (const b of m.message.content)
                         if (b.type === "tool_use") {
-                            const note = `${ctx.aspect}: ${b.name.replace(`mcp__${SERVER}__`, "")} ${JSON.stringify(b.input).slice(0, 120)}`;
+                            const note = `${ctx.checklist.title}: ${b.name.replace(`mcp__${SERVER}__`, "")} ${JSON.stringify(b.input).slice(0, 120)}`;
                             write(() => ctx.sink.progress(note));
                         }
                     break;

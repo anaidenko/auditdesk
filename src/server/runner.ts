@@ -65,7 +65,10 @@ export function defaultDeps(sink: PrismaSink, runAspect: AspectRunner): AuditDep
 }
 
 export async function processJob(job: Job, deps?: (sink: PrismaSink) => AuditDeps): Promise<void> {
-    const run = await prisma.run.findUniqueOrThrow({ where: { id: job.runId }, include: { project: { include: { repositories: true } } } });
+    const run = await prisma.run.findUniqueOrThrow({
+        where: { id: job.runId },
+        include: { project: { include: { repositories: { orderBy: { createdAt: "asc" } } } } }
+    });
     const sink = new PrismaSink(run.id, run.projectId);
     const finish = async (status: "done" | "failed" | "stopped", error: string | null) => {
         await prisma.$transaction([

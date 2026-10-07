@@ -1,16 +1,9 @@
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 
-export const ASPECT_PREFIX: Record<string, string> = {
-    security: "SEC",
-    dependencies: "DEP",
-    architecture: "ARC",
-    data: "DAT",
-    quality: "QUA",
-    production: "PRD",
-    llm: "LLM",
-    tenancy: "TEN"
-};
+import { ASPECTS } from "./aspects";
+
+export const ASPECT_PREFIX: Record<string, string> = Object.fromEntries(ASPECTS.map(a => [a.key, a.prefix]));
 
 export interface Checklist {
     aspect: string;

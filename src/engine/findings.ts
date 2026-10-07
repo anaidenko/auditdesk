@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 
+import { ASPECTS } from "./aspects";
 import { type Evidence, SEVERITIES, type SeverityName } from "./types";
 
 export function findingLabel(n: number): string {
@@ -34,9 +35,20 @@ export function indexLine(f: {
 
 const rank = (s: SeverityName | null) => (s === null ? SEVERITIES.length : SEVERITIES.indexOf(s));
 
+/** The catalogue's position of an aspect named by key or title; one outside it sorts last. */
+function aspectRank(aspect: string): number {
+    const i = ASPECTS.findIndex(a => a.key === aspect || a.title === aspect);
+    return i < 0 ? ASPECTS.length : i;
+}
+
 export function compareFindings(
     a: { severity: SeverityName | null; aspect: string; number: number },
     b: { severity: SeverityName | null; aspect: string; number: number }
 ): number {
-    return rank(a.severity) - rank(b.severity) || a.aspect.localeCompare(b.aspect) || a.number - b.number;
+    return (
+        rank(a.severity) - rank(b.severity) ||
+        aspectRank(a.aspect) - aspectRank(b.aspect) ||
+        a.aspect.localeCompare(b.aspect) ||
+        a.number - b.number
+    );
 }

@@ -2,9 +2,10 @@ import { beforeEach, describe, expect, it } from "vitest";
 
 import type { ReportData } from "@/engine/report/types";
 import { prisma } from "@/server/db";
+import { createFinding } from "@/server/findings";
 import { loadReportData, reportFileName } from "@/server/report";
 import { resetDb } from "@/test/db";
-import { projectWithRepo } from "@/test/factories";
+import { projectWithRepo, sampleFinding } from "@/test/factories";
 
 beforeEach(resetDb);
 
@@ -34,12 +35,12 @@ async function run(projectId: string, status: "done" | "failed", toolVersions: o
     });
 }
 
-async function agent(runId: string, repositoryId: string, status: "done" | "partial", createdAt: Date) {
+async function agent(runId: string, repositoryId: string, status: "done" | "partial", createdAt: Date, aspect = "security") {
     await prisma.agentRun.create({
         data: {
             runId,
             repositoryId,
-            aspect: "security",
+            aspect,
             status,
             tokenShare: 20_000,
             usdShare: 1,
@@ -67,6 +68,48 @@ describe("the report's scope", () => {
         const d = await loadReportData(project.id);
         expect(d.aspects.map(a => a.status)).toEqual(["done"]);
         expect(d.toolVersions?.osvQueriedAt).toBe("2026-10-06T00:00:00Z");
+    });
+});
+
+describe("aspects in the report", () => {
+    it("lists the aspects in the catalogue's order, whatever order their agents finished in", async () => {
+        const { project, repo } = await projectWithRepo("/tmp/app");
+        const r = await run(project.id, "done", VERSIONS, new Date("2026-10-06T10:00:00Z"));
+        await agent(r.id, repo.id, "done", new Date("2026-10-06T10:01:00Z"));
+        await agent(r.id, repo.id, "done", new Date("2026-10-06T10:02:00Z"), "quality");
+        await agent(r.id, repo.id, "done", new Date("2026-10-06T10:03:00Z"), "dependencies");
+        const d = await loadReportData(project.id);
+        expect(d.aspects.map(a => a.title)).toEqual([
+            "Security (app)",
+            "Dependencies and supply chain (app)",
+            "Code quality and tests (app)"
+        ]);
+    });
+
+    it("names a finding's aspect by its title", async () => {
+        const { project, repo } = await projectWithRepo();
+        const f = await createFinding(project.id, null, sampleFinding(repo.id, { aspect: "quality", checklistItem: "QUA-02" }));
+        await prisma.finding.update({ where: { id: f.id }, data: { status: "accepted" } });
+        expect((await loadReportData(project.id)).findings.map(x => x.aspect)).toEqual(["Code quality and tests"]);
+    });
+});
+
+describe("aspects and repositories that changed", () => {
+    it("keeps an aspect no longer in the catalogue in the scope, instead of failing the report", async () => {
+        const { project, repo } = await projectWithRepo("/tmp/app");
+        const r = await run(project.id, "done", VERSIONS, new Date("2026-10-06T10:00:00Z"));
+        await agent(r.id, repo.id, "done", new Date("2026-10-06T10:01:00Z"), "legacy");
+        const d = await loadReportData(project.id);
+        expect(d.aspects.map(a => a.title)).toEqual(["legacy (app)"]);
+    });
+
+    it("lists repositories in the order they were added, whatever was updated since", async () => {
+        const { project, repo } = await projectWithRepo("/tmp/web");
+        await prisma.repository.create({
+            data: { projectId: project.id, source: "/tmp/api", branch: "main", createdAt: new Date(Date.now() + 1000) }
+        });
+        await prisma.repository.update({ where: { id: repo.id }, data: { commitSha: "a".repeat(40) } });
+        expect((await loadReportData(project.id)).repositories.map(r => r.name)).toEqual(["web", "api"]);
     });
 });
 

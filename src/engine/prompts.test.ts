@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { parseChecklist } from "./checklists";
+import { loadChecklist, parseChecklist } from "./checklists";
 import { SYSTEM_PROMPT, aspectMessage, prefixBlocks } from "./prompts";
 
 describe("prompts", () => {
@@ -12,6 +12,12 @@ describe("prompts", () => {
 
     it("keeps the system prompt free of anything that changes between runs", () => {
         expect(SYSTEM_PROMPT).not.toMatch(/\d{4}-\d{2}-\d{2}/);
+    });
+
+    it("grades severity by consequence for every aspect, and leaves the attack scale to security", async () => {
+        expect(SYSTEM_PROMPT).not.toMatch(/attacker/);
+        expect(SYSTEM_PROMPT).toMatch(/every aspect/);
+        expect((await loadChecklist("security")).text).toMatch(/anyone who can reach the app, or sign up for it/);
     });
 
     it("lists the checklist, the filed findings and the budget for the aspect", () => {

@@ -1,3 +1,4 @@
+import { type AspectKey, selectAspects } from "@/engine/aspects";
 import { validateBudget } from "@/engine/budget";
 import type { ModelAccess } from "@/engine/types";
 import { parseSource } from "@/engine/workspace";
@@ -20,11 +21,16 @@ export function parseRepositoryForm(fd: FormData): Parsed<{ source: string; bran
     return { ok: true, value: { source, branch } };
 }
 
-export function parseRunForm(fd: FormData, agents: number): Parsed<{ budgetUsd: number; budgetTokens: number }> {
+export function parseRunForm(
+    fd: FormData,
+    repositories: number
+): Parsed<{ budgetUsd: number; budgetTokens: number; aspects: AspectKey[] }> {
+    const aspects = selectAspects(fd.getAll("aspects").map(String));
+    if (!aspects.ok) return aspects;
     const budgetUsd = Number(fd.get("budgetUsd"));
     const budgetTokens = Math.round(Number(fd.get("budgetKTokens")) * 1000);
-    const error = validateBudget({ usd: budgetUsd, tokens: budgetTokens }, agents);
-    return error ? { ok: false, error } : { ok: true, value: { budgetUsd, budgetTokens } };
+    const error = validateBudget({ usd: budgetUsd, tokens: budgetTokens }, repositories * aspects.value.length);
+    return error ? { ok: false, error } : { ok: true, value: { budgetUsd, budgetTokens, aspects: aspects.value } };
 }
 
 export function parseModelAccess(fd: FormData): Parsed<ModelAccess> {

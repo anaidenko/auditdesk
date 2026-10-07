@@ -107,7 +107,13 @@ export default async function ProjectPage({ params }: { params: Promise<{ projec
 
                 <div className="space-y-6 lg:col-span-2">
                     <Card as="section" title="Runs" description="Scanners, the repository map, then one agent per aspect.">
-                        <StartRunForm projectId={project.id} access={project.modelAccess} defaults={defaults} planUsage={planUsage} />
+                        <StartRunForm
+                            projectId={project.id}
+                            access={project.modelAccess}
+                            defaults={defaults}
+                            chosen={project.runs[0]?.aspects ?? []}
+                            planUsage={planUsage}
+                        />
                         {project.runs.length > 0 && (
                             <ul className="mt-5 space-y-1 border-t border-zinc-100 pt-4">
                                 {project.runs.map(r => (

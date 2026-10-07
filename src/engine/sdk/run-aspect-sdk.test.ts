@@ -46,6 +46,7 @@ async function setup(
         access?: ModelAccess;
         allowPastReserve?: boolean;
         extraEnv?: Record<string, string>;
+        firstMessage?: string;
     } = {}
 ) {
     const h = await sdkHarness(responses, { reply: o.reply, keepModel: o.keepModel, headers: o.headers });
@@ -79,7 +80,7 @@ async function setup(
                 share: o.share ?? { usd: 10, tokens: 1_000_000 },
                 ctx,
                 system: prefixBlocks({ stackProfile: "s", repoMap: "map", brief: "b" }),
-                firstMessage: "Audit security."
+                firstMessage: o.firstMessage ?? "Audit security."
             }
         );
     return { sink, h, ctx, run };
@@ -101,6 +102,21 @@ describe("runAspectSdk", { timeout: 60_000 }, () => {
         expect(sink.findings[0].evidence[0].snippet).toContain("SELECT * FROM u");
         expect(sink.calls).toHaveLength(3);
         expect(sink.calls.every(c => c.costUsd !== null && c.costUsd > 0)).toBe(true);
+        expect(sink.events.some(e => e.startsWith("Security: read_file "))).toBe(true);
+    });
+
+    // Claude Code adds a billing line to the system prompt whose suffix follows the first message;
+    // whether the API caches past it is checked on the first live run with several aspects.
+    it("sends one system prompt and one tool set for every aspect of a repository, but for Claude Code's billing line", async () => {
+        const firstRequest = async (title: string) => {
+            const { h, run } = await setup([finish()], { firstMessage: `# Aspect: ${title}\n\nThe checklist.` });
+            await run();
+            const body = h.fake.requests[0].body as { system: { text: string }[]; tools: unknown[] };
+            return { system: body.system.filter(b => !b.text.startsWith("x-anthropic-billing-header")), tools: body.tools };
+        };
+        const security = await firstRequest("Security");
+        expect(security.system.some(b => b.text.includes("senior software engineer"))).toBe(true);
+        expect(await firstRequest("Code quality and tests")).toEqual(security);
     });
 
     it("sends the default model at low effort, the share as task budget and exactly our seven tools, none deferred", async () => {

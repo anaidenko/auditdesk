@@ -7,6 +7,8 @@ import { CHECKLIST, finding, finish, text, tool } from "@/test/agent-messages";
 import { makeRepo } from "@/test/git-repo";
 import { SAMPLE_KEY } from "@/test/sample-repo";
 
+import { ASPECTS } from "../aspects";
+import { type Checklist, loadChecklist } from "../checklists";
 import { Masker } from "../masker";
 import { MemorySink } from "../memory-sink";
 import { prefixBlocks } from "../prompts";
@@ -15,7 +17,13 @@ import { runAspect } from "./run-aspect";
 
 async function setup(
     responses: BetaMessage[],
-    o: { share?: { usd: number; tokens: number }; secrets?: string[]; files?: Record<string, string> } = {}
+    o: {
+        share?: { usd: number; tokens: number };
+        secrets?: string[];
+        files?: Record<string, string>;
+        checklist?: Checklist;
+        aspect?: string;
+    } = {}
 ) {
     const clonePath = await makeRepo({
         "src/db.js": `const key = "${SAMPLE_KEY}";\ndb.query("SELECT * FROM u WHERE id=" + req.query.id);\n`,
@@ -27,8 +35,8 @@ async function setup(
         clonePath,
         repositoryId: "r",
         agentRunId: "a1",
-        aspect: "security",
-        checklist: CHECKLIST,
+        aspect: o.aspect ?? "security",
+        checklist: o.checklist ?? CHECKLIST,
         masker: new Masker((o.secrets ?? []).map(value => ({ value, rule: "generic-api-key" }))),
         repoMap: "map",
         sink,
@@ -240,6 +248,24 @@ describe("runAspect", () => {
         } as never);
         const { sink, run } = await setup([note, finish()]);
         await run();
-        expect(sink.events.some(e => e.includes("Reading the login route next."))).toBe(true);
+        expect(sink.events).toContain("Security: Reading the login route next.");
+    });
+
+    // Tasks 3.5–3.11: every aspect of the catalogue files a finding under its own items and reports coverage.
+    it.each(ASPECTS.map(a => a.key))("runs the %s aspect: files a finding under its first item and reports full coverage", async aspect => {
+        const checklist = await loadChecklist(aspect);
+        const first = checklist.items[0].id;
+        const { sink, run } = await setup(
+            [
+                tool("report_finding", finding({ checklist_item: first })),
+                tool("finish_aspect", { summary: "ok", coverage: checklist.items.map(i => ({ item: i.id, status: "examined" })) })
+            ],
+            { aspect, checklist }
+        );
+        const outcome = await run();
+        expect(outcome.status).toBe("done");
+        expect(sink.findings.map(f => [f.aspect, f.checklistItem])).toEqual([[aspect, first]]);
+        expect(outcome.coverage.every(c => c.status === "examined")).toBe(true);
+        expect(outcome.coverage).toHaveLength(checklist.items.length);
     });
 });

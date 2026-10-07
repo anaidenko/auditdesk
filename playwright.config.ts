@@ -20,7 +20,8 @@ export default defineConfig({
         timeout: 180_000,
         env: {
             DATABASE_URL: process.env.E2E_DATABASE_URL ?? "postgresql://auditdesk:auditdesk@127.0.0.1:5433/auditdesk_e2e",
-            AUDITDESK_REPLAY_MODEL: "e2e/fixtures/security-run.json",
+            AUDITDESK_DIST_DIR: ".next-e2e",
+            AUDITDESK_REPLAY_MODEL: "e2e/fixtures/aspects-run.json",
             AUDITDESK_SCANNER_REPLAY: "src/test/fixtures/scanners",
             WORKSPACE_DIR: "/tmp/auditdesk-e2e-workspace",
             // Fake credentials, set here so the real ones in .env.local never load (@next/env keeps a defined variable).

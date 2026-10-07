@@ -80,7 +80,7 @@ export async function runAspect(o: AspectInput & { client: Anthropic }): Promise
                 });
                 dropDeclinedPartial(msg.content);
                 for (const b of msg.content)
-                    if (b.type === "thinking" && b.thinking.trim()) await ctx.sink.progress(`${ctx.aspect}: ${b.thinking.trim()}`);
+                    if (b.type === "thinking" && b.thinking.trim()) await ctx.sink.progress(`${ctx.checklist.title}: ${b.thinking.trim()}`);
 
                 // A refusal can cut a tool call off mid-input: never run that turn's tools.
                 if (msg.stop_reason === "refusal") {

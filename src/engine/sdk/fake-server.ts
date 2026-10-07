@@ -2,7 +2,7 @@ import type { BetaMessage } from "@anthropic-ai/sdk/resources/beta/messages/mess
 import { createServer } from "node:http";
 import type { AddressInfo } from "node:net";
 
-import { type CapturedRequest, messageToSse } from "../replay";
+import { type CapturedRequest, type Recording, messageToSse, recordedQueue } from "../replay";
 
 export interface FakeReply {
     status: number;
@@ -34,7 +34,7 @@ const error = (type: string, message: string) => JSON.stringify({ type: "error",
  * rate-limit headers, to a streamed reply.
  */
 export async function startFakeAnthropic(
-    messages: BetaMessage[],
+    messages: Recording,
     o: {
         toolPrefix?: string;
         reply?: (n: number) => FakeReply | null;
@@ -42,7 +42,7 @@ export async function startFakeAnthropic(
         headers?: (n: number) => Record<string, string>;
     } = {}
 ): Promise<FakeAnthropic> {
-    const queue = [...messages];
+    const nextRecorded = recordedQueue(messages);
     const requests: CapturedRequest[] = [];
     const unexpected: string[] = [];
     const server = createServer(async (req, res) => {
@@ -61,12 +61,10 @@ export async function startFakeAnthropic(
             res.writeHead(own.status, { ...json, ...own.headers }).end(own.raw ?? JSON.stringify(own.body ?? {}));
             return;
         }
-        const next = queue.shift();
+        const { message: next, missing } = nextRecorded(body);
         if (!next) {
             // 400, not 500: Claude Code retries a 5xx up to ten times.
-            res.writeHead(400, json).end(
-                error("invalid_request_error", `fake server: no recorded message left for request ${requests.length}`)
-            );
+            res.writeHead(400, json).end(error("invalid_request_error", `fake server: ${missing} for request ${requests.length}`));
             return;
         }
         const kept = o.keepModel?.(requests.length) || !body.model ? next : ({ ...next, model: body.model } as BetaMessage);

@@ -91,6 +91,29 @@ describe("locatePackage", () => {
         expect(locatePackage(YARN, "lodash", "4.17.15")).toEqual({ startLine: 8, endLine: 10 });
     });
 
+    it("does not take a scoped package for the unscoped one of the same name and version", () => {
+        const npm = `{\n    "packages": {\n        "node_modules/@types/debug": {\n            "version": "4.1.12"\n        },\n        "node_modules/debug": {\n            "version": "4.1.12"\n        }\n    }\n}\n`;
+        expect(locatePackage(npm, "debug", "4.1.12")).toEqual({ startLine: 6, endLine: 8 });
+    });
+
+    it("reads pnpm lockfile v5 keys", () => {
+        const v5 =
+            "lockfileVersion: 5.4\n\npackages:\n\n  /braces/3.0.2:\n    resolution: {integrity: sha512-x}\n    engines: {node: '>=8'}\n";
+        expect(locatePackage(v5, "braces", "3.0.2")).toEqual({ startLine: 5, endLine: 7 });
+    });
+
+    it("looks for a pnpm package under packages:, past patchedDependencies", () => {
+        const patched =
+            "lockfileVersion: '9.0'\n\npatchedDependencies:\n  braces@3.0.3:\n    hash: abc\n    path: patches/braces.patch\n\npackages:\n\n  braces@3.0.3:\n    resolution: {integrity: sha512-x}\n";
+        expect(locatePackage(patched, "braces", "3.0.3")).toEqual({ startLine: 10, endLine: 11 });
+    });
+
+    it("reads a yarn entry whose header starts with an alias", () => {
+        const yarn =
+            '"string-width-cjs@npm:string-width@^4.2.0", "string-width@^4.1.0":\n  version "4.2.3"\n  resolved "https://registry.yarnpkg.com/string-width/-/string-width-4.2.3.tgz"\n';
+        expect(locatePackage(yarn, "string-width", "4.2.3")).toEqual({ startLine: 1, endLine: 3 });
+    });
+
     it("returns null for a package the lock file does not hold", () => {
         expect(locatePackage(PNPM, "undici", "7.29.0")).toBeNull();
     });
