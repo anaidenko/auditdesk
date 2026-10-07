@@ -1,0 +1,15 @@
+#!/bin/sh
+# A worktree ready for unit tests and type checks: the branch checked out, node_modules linked to
+# this tree's, and the Prisma client generated. The post-checkout hook cannot do the last step: it
+# runs before node_modules exists, and a worktree has no .env.local, so generation borrows the
+# loopback URL in .env.test (generate never connects). e2e refuses such a worktree
+# (playwright.config.ts).
+#   scripts/worktree.sh <branch> <dir>     an existing branch, or a new one from HEAD
+set -eu
+[ $# -eq 2 ] || { echo "usage: scripts/worktree.sh <branch> <dir>" >&2; exit 2; }
+root=$(git rev-parse --show-toplevel)
+if git show-ref --verify --quiet "refs/heads/$1"; then git worktree add "$2" "$1"; else git worktree add -b "$1" "$2"; fi
+ln -s "$root/node_modules" "$2/node_modules"
+cd "$2"
+DATABASE_URL="${DATABASE_URL:-$(sed -n 's/^DATABASE_URL=//p' .env.test)}" pnpm exec prisma generate >/dev/null
+echo "$2 is on $1, with node_modules linked and the Prisma client generated."

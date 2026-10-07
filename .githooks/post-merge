@@ -2,5 +2,5 @@
 # As post-checkout, for a merge that changes the schema.
 git diff --quiet ORIG_HEAD HEAD -- prisma/schema.prisma 2>/dev/null && exit 0
 echo "post-merge: prisma/schema.prisma changed; running prisma generate." >&2
-pnpm exec prisma generate >/dev/null 2>&1 || echo "post-merge: prisma generate failed; run it by hand." >&2
+DATABASE_URL="${DATABASE_URL:-$(sed -n 's/^DATABASE_URL=//p' .env.test)}" pnpm exec prisma generate >/dev/null 2>&1 || echo "post-merge: prisma generate failed; run it by hand." >&2
 exit 0
