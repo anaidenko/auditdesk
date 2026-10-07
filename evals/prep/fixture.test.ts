@@ -49,6 +49,18 @@ describe("prepareFixture", () => {
         expect(() => execFileSync("git", ["cat-file", "-e", blob], { cwd: prepared.path, stdio: "pipe" })).toThrow();
     });
 
+    it("fetches a new pin from the fixture's current URL when its cached clone came from another", async () => {
+        const old = await makeRepo({ "app.ts": "export {}\n" });
+        const ws = await mkdtemp(join(tmpdir(), "ws-"));
+        const oldSha = execFileSync("git", ["rev-parse", "HEAD"], { cwd: old, encoding: "utf8" }).trim();
+        await prepareFixture({ name: "demo", url: old, sha: oldSha, rules }, ws);
+        const moved = await makeRepo({ "app.ts": "export const moved = 1\n" });
+        const sha = execFileSync("git", ["rev-parse", "HEAD"], { cwd: moved, encoding: "utf8" }).trim();
+        const prepared = await prepareFixture({ name: "demo", url: moved, sha, rules }, ws);
+        expect(readFileSync(join(prepared.path, "app.ts"), "utf8")).toBe("export const moved = 1\n");
+        expect(execFileSync("git", ["remote", "get-url", "origin"], { cwd: prepared.upstreamDir, encoding: "utf8" }).trim()).toBe(moved);
+    });
+
     it("keeps a tracked file that the fixture's own .gitignore names", async () => {
         const source = await makeRepo({ ".gitignore": "vendor/*.js\n", "app.ts": "export {}\n" });
         execFileSync("mkdir", ["-p", join(source, "vendor")]);

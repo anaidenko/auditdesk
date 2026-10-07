@@ -17,7 +17,7 @@ import type { EarlierFinding } from "@/engine/recheck";
 import type { Ruleset, ScannerRunner, ToolVersions } from "@/engine/scanners/types";
 import type { ModelAccess } from "@/engine/types";
 
-import { type AnswerKey, type FixtureSpec, fixturePath, keyProblems, loadFixtures, loadKey } from "./fixtures";
+import { type AnswerKey, type FixtureSpec, keyProblems, loadFixtures, loadKey } from "./fixtures";
 import { type GradedFinding, grade } from "./grade";
 import { judgeLeftovers } from "./judge";
 import { prepareFixture } from "./prep/fixture";
@@ -206,7 +206,7 @@ export async function runEval(o: EvalOptions, deps: EvalDeps): Promise<{ file: s
     const empty = aspects.filter(a => grade([], key, { aspects: [a] }).total === 0);
     if (empty.length) throw new Error(`No key entry of ${spec.name} is in scope for ${empty.join(", ")}: nothing to measure.`);
     const prepared = await prepareFixture(
-        { name: spec.name, url: spec.url ?? fixturePath(spec), sha: spec.sha, rules: spec.rules ? STRIP_RULES[spec.rules] : NO_RULES },
+        { name: spec.name, url: spec.url, sha: spec.sha, rules: spec.rules ? STRIP_RULES[spec.rules] : NO_RULES },
         deps.workspaceDir
     );
     const problems = keyProblems(key, prepared.path, prepared.preparedSha);

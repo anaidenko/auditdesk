@@ -25,6 +25,7 @@ export async function prepareFixture(
     // A partial clone fetches only the blobs of the pinned commit; a local path is copied whole.
     const remote = /^(https?|ssh|git):\/\/|^git@/.test(f.url);
     if (!existsSync(upstream)) await git(["clone", "--quiet", ...(remote ? ["--filter=blob:none"] : []), "--no-checkout", f.url, upstream]);
+    else await git(["remote", "set-url", "origin", f.url], upstream);
     const has = () =>
         git(["cat-file", "-e", `${f.sha}^{commit}`], upstream).then(
             () => true,

@@ -120,8 +120,10 @@ Semgrep rule hashes, the Auditdesk commit). Grading is deterministic on file, li
 item; with `--judge`, an LLM judge reads what the grader could not place, within a cap of its own.
 
 - **Auditdesk's own fixture,** a small Next.js storefront platform with defects planted for every
-  aspect, is a separate repository, to be published alongside this one; its answer key is in
-  `evals/answers/`.
+  aspect, is a repository of its own,
+  [anaidenko/auditdesk-fixture](https://github.com/anaidenko/auditdesk-fixture); its answer key is
+  in `evals/answers/`, and the unit tests clone the fixture to check every entry at the pinned
+  commit.
 - **OWASP Juice Shop** v20.2.0, for comparison: the prep removes its coding challenges' answers
   (fixes, tutorials, translated hints, specs, the code that scores a solve) and renames every
   challenge, and `pnpm eval:key` reads its key from the markers.

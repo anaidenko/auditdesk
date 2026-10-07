@@ -1,32 +1,35 @@
 import { execFileSync as run } from "node:child_process";
-import { existsSync } from "node:fs";
-import { describe, expect, it } from "vitest";
+import { mkdtempSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { beforeAll, describe, expect, it } from "vitest";
 
 import { ASPECTS } from "@/engine/aspects";
 import { loadChecklist } from "@/engine/checklists";
 import { SEVERITIES } from "@/engine/types";
 
-import { type KeyEntry, type KeyLocation, fixturePath, loadFixtures, loadKey } from "./fixtures";
+import { type KeyEntry, type KeyLocation, loadFixtures, loadKey } from "./fixtures";
 
 const own = loadFixtures().find(f => f.name === "own")!;
-const present = existsSync(fixturePath(own));
 
 describe("the fixture list", () => {
-    it("pins the own fixture by a relative path and a full commit", () => {
-        expect(own.path).toMatch(/^\.\.\//);
+    it("pins the own fixture by its public repository and a full commit", () => {
+        expect(own.url).toBe("https://github.com/anaidenko/auditdesk-fixture");
         expect(own.sha).toMatch(/^[0-9a-f]{40}$/);
     });
 });
 
-// The fixture is a sibling repository until it is published (plan, Task 6.5).
-describe.skipIf(!present)("the own fixture's answer key", () => {
+// A full clone, not a partial one: the tests read every file, and a partial clone would fetch each blob apart.
+describe("the own fixture's answer key", () => {
     const key = loadKey("own");
+    let clone = "";
+    beforeAll(() => {
+        clone = join(mkdtempSync(join(tmpdir(), "own-fixture-")), "clone");
+        run("git", ["clone", "--quiet", "--no-checkout", own.url, clone], { stdio: "pipe" });
+    }, 60_000);
     // Read without trimming, or a file's leading blank lines would shift every anchor in it.
-    const show = (file: string) => run("git", ["show", `${own.sha}:${file}`], { cwd: fixturePath(own), encoding: "utf8" });
-    const tree = () =>
-        run("git", ["ls-tree", "-r", "--name-only", own.sha], { cwd: fixturePath(own), encoding: "utf8" })
-            .split("\n")
-            .filter(Boolean);
+    const show = (file: string) => run("git", ["show", `${own.sha}:${file}`], { cwd: clone, encoding: "utf8" });
+    const tree = () => run("git", ["ls-tree", "-r", "--name-only", own.sha], { cwd: clone, encoding: "utf8" }).split("\n").filter(Boolean);
     const located = (e: KeyEntry): KeyLocation[] => [
         ...(e.kind === "finding" ? [{ file: e.file!, startLine: e.startLine!, endLine: e.endLine!, anchor: e.anchor! }] : []),
         ...(e.also ?? [])
@@ -72,7 +75,7 @@ describe.skipIf(!present)("the own fixture's answer key", () => {
     it("names no defect anywhere in the fixture: its files, their names or its history", () => {
         const files = tree();
         expect(files.filter(f => /^\.(claude|cursor|windsurf|kiro|bolt)\//.test(f))).toEqual([]);
-        const log = run("git", ["log", "--format=%B", own.sha], { cwd: fixturePath(own), encoding: "utf8" });
+        const log = run("git", ["log", "--format=%B", own.sha], { cwd: clone, encoding: "utf8" });
         const text = [log, ...files.map(f => `${f}\n${show(f)}`)].join("\n").toLowerCase();
         for (const word of ["vuln", "insecure", "planted", "exploit", "xss", "ssrf", "idor", "injection", "todo", "fixme", "unsafe"]) {
             expect(text, word).not.toContain(word);
