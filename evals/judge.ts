@@ -3,6 +3,7 @@ import { betaZodOutputFormat } from "@anthropic-ai/sdk/helpers/beta/zod";
 import { z } from "zod";
 
 import { DEFAULT_EFFORT, DEFAULT_MODEL } from "@/engine/agent/request";
+import { NOT_JUDGED } from "@/engine/eval-results";
 import { priceMessage } from "@/engine/prices";
 
 import type { AnswerKey, KeyEntry } from "./fixtures";
@@ -114,11 +115,11 @@ export async function judgeLeftovers(
     for (const f of findings) {
         const unsure = (reason: string): Verdict => ({ finding: f.label, verdict: "unsure", key: null, reason });
         if (stopped) {
-            verdicts.push(unsure(`Not judged: the judge stopped (${stopped}).`));
+            verdicts.push(unsure(NOT_JUDGED.stopped(stopped)));
             continue;
         }
         if (o.capUsd !== undefined && costUsd >= o.capUsd) {
-            verdicts.push(unsure("Not judged: the judge's cap was reached."));
+            verdicts.push(unsure(NOT_JUDGED.cap));
             continue;
         }
         try {
@@ -136,16 +137,14 @@ export async function judgeLeftovers(
             if (cost === null) unpriced++;
             else costUsd += cost;
             const v = m.stop_reason === "refusal" ? null : m.parsed_output;
-            if (!v) verdicts.push(unsure("The judge declined to answer."));
-            else if (v.verdict === "matches_key" && !ids.has(v.key_id ?? ""))
-                verdicts.push(unsure(`The judge named an entry the key does not have: ${v.key_id}.`));
+            if (!v) verdicts.push(unsure(NOT_JUDGED.declined));
+            else if (v.verdict === "matches_key" && !ids.has(v.key_id ?? "")) verdicts.push(unsure(NOT_JUDGED.unknownEntry(v.key_id)));
             else verdicts.push({ finding: f.label, verdict: v.verdict, key: v.key_id, reason: v.reason });
         } catch (e) {
             if (e instanceof Anthropic.APIError) {
                 stopped = e.message;
-                verdicts.push(unsure(`Not judged: the judge stopped (${stopped}).`));
-            } else if (e instanceof SyntaxError || e instanceof Anthropic.AnthropicError)
-                verdicts.push(unsure("The judge's answer did not match the verdict schema."));
+                verdicts.push(unsure(NOT_JUDGED.stopped(stopped)));
+            } else if (e instanceof SyntaxError || e instanceof Anthropic.AnthropicError) verdicts.push(unsure(NOT_JUDGED.schema));
             else throw e;
         }
     }

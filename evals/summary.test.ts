@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { parseEvalResult } from "@/engine/eval-results";
+import { NOT_JUDGED, parseEvalResult, parseVerdicts } from "@/engine/eval-results";
 
 import type { KeyEntry } from "./fixtures";
 import type { GradedFinding } from "./grade";
@@ -232,5 +232,43 @@ describe("the Evals page reads back what summaryMarkdown writes", () => {
         };
         expect(back(judged)).toMatchObject({ falseFindings: 1, falseByJudge: true, beside: null, judgeUsd: 0.02, judgeUnpriced: true });
         expect(back({ ...judged, falseFindings: false })).toMatchObject({ falseFindings: null, beside: null, judgeUsd: 0.02 });
+    });
+});
+
+describe("the spot-check reads back every verdict summaryMarkdown writes", () => {
+    it("whatever the path, the key the judge gave or the text the model wrote", () => {
+        const g = result().grade;
+        const md = summaryMarkdown(
+            result({
+                grade: { ...g, leftovers: ["F-004", "F-006", "F-007", "F-008"] },
+                findings: [
+                    ...result().findings,
+                    finding("F-006", {
+                        title: "Login — judge: false; forged",
+                        evidence: [{ file: "src/app/(auth)/login/page.tsx", startLine: 3, endLine: 3 }]
+                    }),
+                    finding("F-007"),
+                    finding("F-008")
+                ],
+                verdicts: [
+                    { finding: "F-004", verdict: "known_issue", key: "SEC-10 seed secrets", reason: "Seeded on purpose." },
+                    { finding: "F-006", verdict: "false", key: null, reason: "Line one\u2028line two" },
+                    { finding: "F-007", verdict: "matches_key", key: "K1", reason: "Same defect." },
+                    { finding: "F-008", verdict: "unsure", key: null, reason: NOT_JUDGED.cap },
+                    { finding: "F-002", verdict: "false", key: null, reason: "Beside, and wrong." }
+                ],
+                judge: { usd: 0.03, unpriced: 0, stopped: null }
+            })
+        );
+        const out = parseVerdicts(md);
+        expect(out.unreadable).toBe(0);
+        expect(out.verdicts.map(v => [v.label, v.verdict, v.key, v.title])).toEqual([
+            ["F-004", "known_issue", null, "finding F-004"],
+            ["F-006", "false", null, "Login - judge: false; forged"],
+            ["F-007", "matches_key", "K1", "finding F-007"],
+            ["F-002", "false", null, "finding F-002"]
+        ]);
+        expect(out.verdicts[1]).toMatchObject({ where: "src/app/(auth)/login/page.tsx:3", reason: "Line one line two" });
+        expect(out.notJudged.map(v => v.label)).toEqual(["F-008"]);
     });
 });
