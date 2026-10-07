@@ -69,7 +69,15 @@ function result(over: Partial<EvalResult> = {}): EvalResult {
             { model: "claude-x", calls: 1, usd: 0, unpriced: 1 }
         ],
         cacheReadShare: 0.804,
-        agents: [{ aspect: "security", status: "done", note: null }],
+        agents: [
+            {
+                aspect: "security",
+                status: "done",
+                note: null,
+                summary: "Examined the routes.",
+                coverage: { examined: 3, partly: 1, notExamined: 12, notReported: 0 }
+            }
+        ],
         versions: null,
         removedImports: [],
         ...over

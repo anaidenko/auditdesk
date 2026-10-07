@@ -116,6 +116,12 @@ describe("runEval", () => {
         expect(run.text).toContain("agents alone: 1 of 3");
     });
 
+    it("records how much of its checklist each agent covered, and its summary", async () => {
+        const run = await evalRun({ "Code quality and tests": [finish([{ item: "QUA-02", status: "examined" }])] }, { aspect: "quality" });
+        expect(run.result.agents[0]).toMatchObject({ aspect: "quality", summary: "Done.", coverage: { examined: 1 } });
+        expect(run.text).toMatch(/\| quality \| done \| 1 examined, 0 partly, \d+ not examined, 0 not reported \| Done\. \|/);
+    });
+
     it("gives every chosen aspect a row, with why an aspect did not start", async () => {
         const run = await evalRun({
             "Security": [message({ ...finish(), model: "claude-unknown" })],
@@ -123,7 +129,7 @@ describe("runEval", () => {
         });
         expect(run.result.agents.map(a => a.aspect)).toEqual(["security", "quality"]);
         expect(run.result.agents[1].status).toBe("not started");
-        expect(run.text).toMatch(/\| quality \| not started \| Skipped Code quality and tests: budget unknown/);
+        expect(run.text).toMatch(/\| quality \| not started \| {2}\| Skipped Code quality and tests: budget unknown/);
     });
 
     it("writes its result when the audit fails, and says why", async () => {
