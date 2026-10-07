@@ -51,9 +51,23 @@ describe("the report in a browser", { timeout: 60_000 }, () => {
                 return (hi + 0.05) / (lo + 0.05);
             });
 
-    it("fits a phone's width: the severity tiles wrap instead of running off the page", async () => {
+    it("fits a phone's width with every card open: the tiles, long rule names and long paths wrap", async () => {
+        const rule = "rules.javascript.sequelize.security.audit.sequelize-injection-express.sequelize-injection-express";
+        const file = "frontend/src/app/administration/administration-component-with-a-long-name.component.ts";
+        const html = renderReport(
+            data({
+                findings: [
+                    finding({
+                        label: "F-001",
+                        explanation: `Semgrep rule ${rule} matched \`getUserProfileFromTheTemplateAndTheUsername\`.`,
+                        evidence: [{ file, startLine: 73, endLine: 92, snippet: "x" }]
+                    })
+                ]
+            })
+        );
         const page = await browser.newPage({ viewport: { width: 375, height: 800 } });
-        await page.setContent(renderReport(data()), { waitUntil: "load" });
+        await page.setContent(html, { waitUntil: "load" });
+        await toggle(page).click();
         expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(375);
     });
 
