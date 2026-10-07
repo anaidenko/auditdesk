@@ -128,6 +128,32 @@ describe("the report in a browser", { timeout: 60_000 }, () => {
         expect(await page.locator(".filters output").textContent()).toBe("1 of 1 findings shown");
     });
 
+    it("prints every card expanded, then gives the reader back the cards they had open", async () => {
+        const page = await open(renderReport(data()));
+        await page.locator("#F-002 .body > summary").click();
+        await page.evaluate(() => dispatchEvent(new Event("beforeprint")));
+        expect(await bodies(page)).toEqual([true, true]);
+        await page.emulateMedia({ media: "print" });
+        expect(await page.locator("#F-001 .body > summary").isVisible()).toBe(false);
+        expect(await page.locator("#F-001 .lead").isVisible()).toBe(true);
+        await page.evaluate(() => dispatchEvent(new Event("afterprint")));
+        expect(await bodies(page)).toEqual([false, true]);
+    });
+
+    it("prints open questions expanded in a report with no findings and no filters bar", async () => {
+        const page = await open(renderReport(data({ findings: [], questions: [finding({ label: "F-009", severity: null })] })));
+        await page.evaluate(() => dispatchEvent(new Event("beforeprint")));
+        expect(await bodies(page)).toEqual([true]);
+    });
+
+    it("keeps the ten-place cap in print", async () => {
+        const page = await open(thirteen());
+        await page.evaluate(() => dispatchEvent(new Event("beforeprint")));
+        await page.emulateMedia({ media: "print" });
+        expect(await page.locator("figure").evaluateAll(els => els.filter(el => el.checkVisibility()).length)).toBe(10);
+        expect(await page.locator(".more").evaluate(d => (d as HTMLDetailsElement).open)).toBe(false);
+    });
+
     it("keeps a Summary line's title readable at phone width", async () => {
         const page = await open(
             renderReport(data({ findings: [finding({ title: "Raw SQL in the search endpoint lets anyone read every table" })] }))

@@ -83,7 +83,7 @@ pre code{display:block}.ln{display:inline-block;width:3.4em;padding-right:.9em;t
 .colophon{margin-top:3rem;padding-top:1rem;border-top:1px solid var(--line);font-size:.78rem;color:var(--faint)}
 @page{size:A4;margin:16mm 15mm 18mm}
 @media print{
-.filters{display:none}
+.filters{display:none}.body>summary{display:none}
 body{background:#fff;font-size:10.5pt}
 .doc{max-width:none;margin:0;border:0;border-radius:0;box-shadow:none;padding:0}
 .cover{min-height:245mm;display:flex;flex-direction:column;justify-content:center;break-after:page}
@@ -167,9 +167,13 @@ function places(list: ReportFinding["evidence"]): string {
 
 // The report's one script, reaching nothing outside the file. It opens a card's details from its
 // toggle, Expand all, a link to the card or a search that matches inside them; a search closes
-// again the ones it opened. It filters and searches the findings and questions with a class that
+// again the ones it opened. Print opens every card and gives the reader's state back after;
+// Chromium fires the same two events around page.pdf(), so the PDF prints them open too. It filters and searches the findings and questions with a class that
 // only the screen honours, so a printout is always complete.
 const FILTER_SCRIPT = `(()=>{const bodies=[...document.querySelectorAll(".finding>.body")];
+let kept=null;
+addEventListener("beforeprint",()=>{if(!kept)kept=bodies.map(b=>b.open);for(const b of bodies)b.open=true});
+addEventListener("afterprint",()=>{if(kept)bodies.forEach((b,i)=>{b.open=kept[i]});kept=null});
 const f=document.querySelector(".filters");const all=f&&f.querySelector(".all");
 const label=()=>{if(all)all.textContent=bodies.every(b=>b.open)?"Collapse all":"Expand all"};
 document.addEventListener("toggle",ev=>{if(bodies.includes(ev.target))label()},true);

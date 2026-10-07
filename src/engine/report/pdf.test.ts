@@ -16,6 +16,15 @@ describe("renderPdf", { timeout: 60_000 }, () => {
         expect(pages(pdf)).toBeGreaterThanOrEqual(4);
     });
 
+    it("prints the cards' closed details: Chromium fires beforeprint, and the report opens them", async () => {
+        const long = Array.from({ length: 6 }, (_, i) =>
+            reportFinding({ label: `F-00${i + 1}`, explanation: "A sentence of the details. ".repeat(250) })
+        );
+        const html = renderReport(reportData({ findings: long }));
+        const noScript = html.replace(/<script>[\s\S]*?<\/script>/, "");
+        expect(pages(await renderPdf(html))).toBeGreaterThan(pages(await renderPdf(noScript)) + 2);
+    });
+
     it("refuses every request the page makes: the report is one self-contained file", async () => {
         const refused: string[] = [];
         await renderPdf(
