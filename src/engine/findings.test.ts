@@ -58,6 +58,26 @@ describe("scannerDuplicates", () => {
         evidence: [{ file, startLine: start, endLine: end }]
     });
 
+    it("folds a scanner finding of several places only into an agent finding that covers each", () => {
+        const grouped = {
+            ...f("F-004", "scanner", "SEC-04", "src/a.js", 7),
+            evidence: [
+                { file: "src/a.js", startLine: 7, endLine: 7 },
+                { file: "src/b.js", startLine: 3, endLine: 3 }
+            ]
+        };
+        const one = f("F-005", "agent", "SEC-04", "src/a.js", 7);
+        const both = {
+            ...f("F-006", "agent", "SEC-04", "src/a.js", 5, 9),
+            evidence: [
+                { file: "src/a.js", startLine: 5, endLine: 9 },
+                { file: "src/b.js", startLine: 1, endLine: 4 }
+            ]
+        };
+        expect(scannerDuplicates([one], [grouped])).toEqual([]);
+        expect(scannerDuplicates([one, both], [grouped])).toEqual([{ from: "F-004", into: "F-006" }]);
+    });
+
     it("pairs a scanner finding with an agent finding on overlapping lines of one file under one item", () => {
         const agent = [f("F-005", "agent", "SEC-04", "src/server.js", 7)];
         const scanner = [

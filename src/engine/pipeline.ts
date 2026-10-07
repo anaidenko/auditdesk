@@ -203,27 +203,28 @@ export async function runAudit(input: AuditInput, deps: AuditDeps): Promise<{ st
                 if (await leakInTree(clonePath, leak)) inTree.add(`${leak.File}:${leak.StartLine}:${leak.Commit}`);
             const known = await sink.knownFingerprints(repo.id);
             const lockEntries = await osvEvidence(clonePath, scan.osv, l => masker.mask(l));
-            const scannerFindings = [
+            // Semgrep's own `extra.lines` reads "requires login" without a Semgrep account: the code comes from the clone.
+            const semgrep = await Promise.all(
+                scan.semgrep.map(async r => ({
+                    ...r,
+                    extra: {
+                        ...r.extra,
+                        lines: (await readSnippet(clonePath, r.path, r.start.line, r.end.line, l => masker.mask(l))) ?? ""
+                    }
+                }))
+            );
+            // `skip`: the places filed before. The re-check reads every place the scanners report now.
+            const normalised = (skip: Set<string>) => [
                 ...normaliseGitleaks(scan.leaks, {
                     repositoryId: repo.id,
                     masker,
-                    inTree: l => inTree.has(`${l.File}:${l.StartLine}:${l.Commit}`)
+                    inTree: l => inTree.has(`${l.File}:${l.StartLine}:${l.Commit}`),
+                    known: skip
                 }),
                 ...normaliseOsv(scan.osv, { repositoryId: repo.id, locate: p => lockEntries.get(p) ?? null }),
-                // Semgrep's own `extra.lines` reads "requires login" without a Semgrep account: the code comes from the clone.
-                ...normaliseSemgrep(
-                    await Promise.all(
-                        scan.semgrep.map(async r => ({
-                            ...r,
-                            extra: {
-                                ...r.extra,
-                                lines: (await readSnippet(clonePath, r.path, r.start.line, r.end.line, l => masker.mask(l))) ?? ""
-                            }
-                        }))
-                    ),
-                    { repositoryId: repo.id, masker }
-                )
+                ...normaliseSemgrep(semgrep, { repositoryId: repo.id, masker, known: skip })
             ];
+            const scannerFindings = normalised(known);
             let filed = 0;
             for (const f of scannerFindings) {
                 if (known.has(f.fingerprint)) continue;
@@ -239,7 +240,7 @@ export async function runAudit(input: AuditInput, deps: AuditDeps): Promise<{ st
             if (!input.only) {
                 const earlier = await sink.earlierFindings(repo.id, sha);
                 if (earlier.length) {
-                    const results = await recheck(earlier, { scanners: scannerFindings, read: file => readMasked(clonePath, file) });
+                    const results = await recheck(earlier, { scanners: normalised(new Set()), read: file => readMasked(clonePath, file) });
                     await sink.recheckFindings(results, sha);
                     await reportRecheck(results, `against ${shortSha(sha)}`);
                 }

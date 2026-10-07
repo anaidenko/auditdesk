@@ -207,6 +207,21 @@ describe("runAudit", () => {
         expect(sink.events).toContainEqual("Did not fold the scanner's duplicates: F-004 was already merged or superseded.");
     });
 
+    it("files a place once, though an earlier finding lists it among several", async () => {
+        const repo = await makeSampleRepo();
+        const ws = await mkdtemp(join(tmpdir(), "ws-"));
+        const sink = new TestSink();
+        await audit(sink, repo, ws);
+        const leak = sink.findings.find(f => f.source === "scanner" && f.checklistItem === "SEC-10")!;
+        // As if filed in a group of two: the group's fingerprint, the place's own key.
+        leak.fingerprint = "a-group";
+        leak.evidence = [...leak.evidence, { file: "src/other.js", startLine: 1, endLine: 1, key: "k-other" }];
+        const count = sink.findings.length;
+        await audit(sink, repo, ws);
+        expect(sink.findings.length).toBe(count);
+        expect(sink.events).toContainEqual("Scanners filed 0 new findings (1 secret masked from here on).");
+    });
+
     it("counts what the scanners filed and masked in words that fit the count", async () => {
         const sink = new TestSink();
         await audit(sink, await makeSampleRepo(), await mkdtemp(join(tmpdir(), "ws-")));

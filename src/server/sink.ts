@@ -226,8 +226,9 @@ export class PrismaSink implements PipelineSink {
     }
 
     async knownFingerprints(repositoryId: string) {
-        const rows = await prisma.finding.findMany({ where: { repositoryId }, select: { fingerprint: true } });
-        return new Set(rows.map(r => r.fingerprint));
+        const rows = await prisma.finding.findMany({ where: { repositoryId }, select: { fingerprint: true, evidence: true } });
+        // A grouped scanner finding's places are known one by one: the next run files only new ones.
+        return new Set(rows.flatMap(r => [r.fingerprint, ...(r.evidence as unknown as Evidence[]).flatMap(e => (e.key ? [e.key] : []))]));
     }
 
     async stopRequested() {
