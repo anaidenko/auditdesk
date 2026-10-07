@@ -84,22 +84,28 @@ function sinceLastAudit<
     };
 }
 
-/** What the review made of the findings filed: the report's method states it (design § 10). */
+/**
+ * What the review made of the findings filed (design § 10). A finding a re-audit found fixed is left
+ * out of the report's findings, so it is counted apart; one folded into a finding nobody reviewed
+ * yet is not reviewed either.
+ */
 async function reviewTally(projectId: string): Promise<NonNullable<ReportData["review"]>> {
-    const groups = await prisma.finding.groupBy({
-        by: ["status"],
+    const rows = await prisma.finding.findMany({
         where: { projectId, kind: "finding", status: { not: "superseded" } },
-        _count: { _all: true }
+        select: { id: true, status: true, recheck: true, mergedIntoId: true }
     });
-    const count = (...statuses: string[]) => groups.filter(g => statuses.includes(g.status)).reduce((n, g) => n + g._count._all, 0);
-    return {
-        filed: count("accepted", "edited", "merged", "rejected", "excluded", "unreviewed"),
-        reported: count(...REPORTABLE),
-        merged: count("merged"),
-        rejected: count("rejected"),
-        excluded: count("excluded"),
-        unreviewed: count("unreviewed")
-    };
+    const statusOf = new Map(rows.map(r => [r.id, r.status as string]));
+    const missing = rows.flatMap(r => (r.mergedIntoId && !statusOf.has(r.mergedIntoId) ? [r.mergedIntoId] : []));
+    if (missing.length)
+        for (const t of await prisma.finding.findMany({ where: { id: { in: missing } }, select: { id: true, status: true } }))
+            statusOf.set(t.id, t.status);
+    const tally = { filed: rows.length, reported: 0, fixed: 0, merged: 0, rejected: 0, excluded: 0, unreviewed: 0 };
+    for (const r of rows) {
+        if (r.status === "accepted" || r.status === "edited") tally[r.recheck === "fixed" ? "fixed" : "reported"]++;
+        else if (r.status === "merged") tally[r.mergedIntoId && statusOf.get(r.mergedIntoId) === "unreviewed" ? "unreviewed" : "merged"]++;
+        else if (r.status === "rejected" || r.status === "excluded" || r.status === "unreviewed") tally[r.status]++;
+    }
+    return tally;
 }
 
 /** `includeCost`: Andrii ticked the cost at export (design § 8); otherwise the report states none. */

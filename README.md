@@ -10,7 +10,7 @@ Local only: it binds 127.0.0.1 and has no login. The design is in [docs/design.m
 
 ## What it does
 
-- **Scanners first:** gitleaks over every branch's history, osv-scanner over the lock files and
+- **Scanners first:** gitleaks over the history of every branch cloned, osv-scanner over the lock files and
   Semgrep, in pinned Docker images and on the app's own configuration. Every secret gitleaks
   finds is masked in everything the model or the client sees.
 - **One agent per aspect:** security always, plus dependencies, architecture, data model, code

@@ -33,7 +33,8 @@ export function repoLinks(source: string, branch: string, sha: string | null): R
     }
     const forms = HOSTS[host.toLowerCase()];
     const segments = path
-        .replace(/\.git$/, "")
+        .replace(/\/+$/, "")
+        .replace(/\.git$/i, "")
         .split("/")
         .filter(Boolean);
     if (!forms || segments.length < 2) return null;

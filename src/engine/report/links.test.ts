@@ -35,6 +35,11 @@ describe("repoLinks", () => {
         });
     });
 
+    it("drops a trailing slash and a .git suffix in any case", () => {
+        for (const source of ["https://github.com/acme/app.git/", "https://github.com/acme/app/", "git@github.com:acme/app.GIT"])
+            expect(repoLinks(source, "main", SHA)?.repo).toBe("https://github.com/acme/app");
+    });
+
     it("keeps a branch's slashes and encodes the rest of it", () => {
         expect(repoLinks("https://github.com/acme/app", "feature/a b#c", SHA)?.branch).toBe(
             "https://github.com/acme/app/tree/feature/a%20b%23c"

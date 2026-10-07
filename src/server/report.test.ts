@@ -108,11 +108,33 @@ describe("the report's review tally", () => {
         expect((await loadReportData(project.id)).review).toEqual({
             filed: 7,
             reported: 2,
+            fixed: 0,
             merged: 1,
             rejected: 2,
             excluded: 1,
             unreviewed: 1
         });
+    });
+
+    it("counts a finding a re-audit found fixed apart, so the reported count matches the report's findings", async () => {
+        const { project, repo } = await projectWithRepo();
+        for (const recheck of [null, "fixed", "unchanged"] as const) {
+            const { id } = await createFinding(project.id, null, sampleFinding(repo.id));
+            await prisma.finding.update({ where: { id }, data: { status: "accepted", recheck } });
+        }
+        const d = await loadReportData(project.id);
+        expect(d.review).toMatchObject({ filed: 3, reported: 2, fixed: 1 });
+        expect(d.review!.reported).toBe(d.findings.length);
+    });
+
+    it("counts a finding folded into one not reviewed yet as not reviewed, since the auditor has not seen it", async () => {
+        const { project, repo } = await projectWithRepo();
+        const agent = await createFinding(project.id, null, sampleFinding(repo.id));
+        const scanner = await createFinding(project.id, null, sampleFinding(repo.id, { source: "scanner" }));
+        await prisma.finding.update({ where: { id: scanner.id }, data: { status: "merged", mergedIntoId: agent.id } });
+        expect((await loadReportData(project.id)).review).toMatchObject({ filed: 2, merged: 0, unreviewed: 2 });
+        await prisma.finding.update({ where: { id: agent.id }, data: { status: "accepted" } });
+        expect((await loadReportData(project.id)).review).toMatchObject({ filed: 2, reported: 1, merged: 1, unreviewed: 0 });
     });
 });
 

@@ -219,12 +219,12 @@ describe("renderReport", () => {
                     rulesets: [],
                     osvQueriedAt: "2026-10-07T10:00:00Z"
                 },
-                review: { filed: 59, reported: 43, merged: 10, rejected: 5, excluded: 1, unreviewed: 0 },
+                review: { filed: 59, reported: 43, fixed: 0, merged: 10, rejected: 5, excluded: 1, unreviewed: 0 },
                 methodUrl: "https://naidenko.dev/audit"
             })
         );
         const method = between(html, '<ul class="method">', "</ul>");
-        expect(method).toContain("gitleaks over every branch's history, osv-scanner over the lock files and Semgrep");
+        expect(method).toContain("gitleaks over the history of every branch cloned, osv-scanner over the lock files and Semgrep");
         expect(method).toContain("one agent per aspect read the code through read-only tools, against the aspect's checklist");
         expect(method).toContain(
             "The auditor reviewed all 59 findings the scanners and agents filed: 43 are in this report, 10 were merged into others, 5 rejected as wrong and 1 kept out of the report."
@@ -235,8 +235,45 @@ describe("renderReport", () => {
         expect(method.indexOf("The auditor reviewed")).toBeLessThan(method.indexOf("not installed, built or run"));
     });
 
+    it("words the method for what ran: pinned images, an agent per aspect and repository, fixes found at a re-audit", () => {
+        const html = renderReport(
+            data({
+                toolVersions: {
+                    images: {
+                        gitleaks: { image: "g", digest: "g@sha256:1" },
+                        osv: { image: "o", digest: "o@sha256:2" },
+                        semgrep: { image: "s", digest: "s@sha256:3" }
+                    },
+                    rulesets: [],
+                    osvQueriedAt: "2026-10-07T10:00:00Z"
+                },
+                repositories: [...data().repositories, { name: "api", branch: "main", sha: "fedcba9876543210", notCovered: [] }],
+                review: { filed: 10, reported: 6, fixed: 2, merged: 1, rejected: 1, excluded: 0, unreviewed: 0 }
+            })
+        );
+        const method = between(html, '<ul class="method">', "</ul>");
+        expect(method).toContain(
+            "gitleaks over the history of every branch cloned, osv-scanner over the lock files and Semgrep; their pinned images are under Technical details."
+        );
+        expect(method).toContain("one agent per aspect and repository read the code");
+        expect(method).toContain(
+            "6 are in this report, 2 were found fixed at a re-audit, 1 was merged into others and 1 rejected as wrong."
+        );
+    });
+
+    it("says plainly when no finding is reviewed yet", () => {
+        const html = renderReport(
+            data({ review: { filed: 12, reported: 0, fixed: 0, merged: 0, rejected: 0, excluded: 0, unreviewed: 12 } })
+        );
+        expect(between(html, '<ul class="method">', "</ul>")).toContain(
+            "None of the 12 findings the scanners and agents filed is reviewed yet."
+        );
+    });
+
     it("says how many findings are not reviewed yet, and leaves out the parts it has no data for", () => {
-        const partial = renderReport(data({ review: { filed: 12, reported: 9, merged: 0, rejected: 0, excluded: 0, unreviewed: 3 } }));
+        const partial = renderReport(
+            data({ review: { filed: 12, reported: 9, fixed: 0, merged: 0, rejected: 0, excluded: 0, unreviewed: 3 } })
+        );
         expect(between(partial, '<ul class="method">', "</ul>")).toContain(
             "The auditor reviewed 9 of the 12 findings the scanners and agents filed: 9 are in this report; 3 not reviewed yet are not."
         );

@@ -51,6 +51,12 @@ describe("the report in a browser", { timeout: 60_000 }, () => {
                 return (hi + 0.05) / (lo + 0.05);
             });
 
+    it("fits a phone's width: the severity tiles wrap instead of running off the page", async () => {
+        const page = await browser.newPage({ viewport: { width: 375, height: 800 } });
+        await page.setContent(renderReport(data()), { waitUntil: "load" });
+        expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(375);
+    });
+
     it("keeps its quiet text readable: an empty severity tile, the colophon, and a link inside the method", async () => {
         const page = await open(renderReport(data({ auditorUrl: "https://naidenko.dev/", methodUrl: "https://naidenko.dev/audit" })));
         expect(await contrast(page, ".tile.zero span")).toBeGreaterThanOrEqual(4.5);

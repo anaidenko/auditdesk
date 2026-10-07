@@ -35,7 +35,7 @@ section,.toc{margin-top:3rem}
 .facts dt{font-size:.7rem;font-weight:600;letter-spacing:.07em;text-transform:uppercase;color:var(--muted)}
 .facts dd{margin:.2rem 0 0}.facts ul{margin:0;padding:0;list-style:none}
 .facts .repos{grid-column:1/-1}.facts .repos li{margin:.15rem 0}
-.tiles{display:grid;grid-template-columns:repeat(5,1fr);gap:.6rem}
+.tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(5.5rem,1fr));gap:.6rem}
 .tile{border-radius:10px;padding:.75rem .9rem;border:1px solid transparent}
 .tile b{display:block;font-size:1.75rem;line-height:1.1;font-variant-numeric:tabular-nums}
 .tile span{font-size:.75rem;font-weight:600;letter-spacing:.05em;text-transform:uppercase}
@@ -120,25 +120,29 @@ function method(d: ReportData): string {
     const steps: string[] = [];
     if (d.toolVersions)
         steps.push(
-            "Scanners first: gitleaks over every branch's history, osv-scanner over the lock files and Semgrep; their versions are under Technical details."
+            "Scanners first: gitleaks over the history of every branch cloned, osv-scanner over the lock files and Semgrep; their pinned images are under Technical details."
         );
     if (d.aspects.length)
         steps.push(
-            "Then one agent per aspect read the code through read-only tools, against the aspect's checklist; Coverage above shows what each examined."
+            `Then one agent per aspect${d.repositories.length > 1 ? " and repository" : ""} read the code through read-only tools, against the aspect's checklist; Coverage above shows what each examined.`
         );
     const r = d.review;
     if (r?.filed) {
         const outcomes = [
             `${r.reported} ${r.reported === 1 ? "is" : "are"} in this report`,
+            ...(r.fixed ? [`${r.fixed} ${r.fixed === 1 ? "was" : "were"} found fixed at a re-audit`] : []),
             ...(r.merged ? [`${r.merged} ${r.merged === 1 ? "was" : "were"} merged into others`] : []),
             ...(r.rejected ? [`${r.rejected} rejected as wrong`] : []),
             ...(r.excluded ? [`${r.excluded} kept out of the report`] : [])
         ];
         const reviewed = r.filed - r.unreviewed;
+        const filed = `${plural(r.filed, "finding", "findings")} the scanners and agents filed`;
         steps.push(
-            r.unreviewed
-                ? `The auditor reviewed ${reviewed} of the ${plural(r.filed, "finding", "findings")} the scanners and agents filed: ${listed(outcomes)}; ${r.unreviewed} not reviewed yet ${r.unreviewed === 1 ? "is" : "are"} not.`
-                : `The auditor reviewed ${r.filed === 1 ? "the 1 finding" : `all ${r.filed} findings`} the scanners and agents filed: ${listed(outcomes)}.`
+            reviewed === 0
+                ? `None of the ${filed} is reviewed yet.`
+                : r.unreviewed
+                  ? `The auditor reviewed ${reviewed} of the ${filed}: ${listed(outcomes)}; ${r.unreviewed} not reviewed yet ${r.unreviewed === 1 ? "is" : "are"} not.`
+                  : `The auditor reviewed ${r.filed === 1 ? "the 1 finding" : `all ${r.filed} findings`} the scanners and agents filed: ${listed(outcomes)}.`
         );
     }
     return steps.map(s => `<li>${s}</li>`).join("\n");
