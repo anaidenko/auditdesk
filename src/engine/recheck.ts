@@ -1,7 +1,6 @@
 import { createHash } from "node:crypto";
 
 import { CUT_NOTE, SNIPPET_LINES } from "./files";
-import type { Place } from "./scanners/group";
 import type { Evidence, NewFinding, References } from "./types";
 
 /**
@@ -65,7 +64,8 @@ type Kind = "gitleaks" | "osv" | "semgrep";
 const kindOf = (f: { checklistItem: string | null; title: string; references: References }): Kind =>
     f.checklistItem === "DEP-01" && f.references.advisories?.length
         ? "osv"
-        : f.checklistItem === "SEC-10" && /^Secrets? in (the code|git history)/.test(f.title)
+        : // A secret is told by its weakness as well as its title, which Andrii may edit: never "fixed" by a scan.
+          f.checklistItem === "SEC-10" && (/^Secrets? in (the code|git history)/.test(f.title) || f.references.cwe === "CWE-798")
           ? "gitleaks"
           : "semgrep";
 const inCode = (title: string) => /^Secrets? in the code/.test(title);
@@ -97,6 +97,8 @@ export async function recheck(
         let digest: string;
         let evidence: Evidence[] | undefined;
         let places: RecheckResult["places"];
+        let back: boolean | null = null;
+        let legacy: string | null = null;
         if (f.source === "scanner" && kindOf(f) === "osv") {
             const now = reported.get(f.fingerprint);
             present = now
@@ -109,16 +111,18 @@ export async function recheck(
             digest = digestOf([String(present), now?.title ?? ""]);
         } else if (f.source === "scanner") {
             const kind = kindOf(f);
-            // A finding filed before grouping is one place, known by its fingerprint.
-            const cited: (Partial<Evidence> & { key: string })[] =
-                f.evidence.length > 0 && f.evidence.every(e => e.key)
-                    ? (f.evidence as Place[])
-                    : [{ ...f.evidence[0], key: f.fingerprint }];
+            // Each place by its own key. A finding filed before grouping is known by its fingerprint at its
+            // first place; a place merged in by hand has no key and is found by its code.
+            const cited: (Partial<Evidence> & { key?: string })[] = f.evidence.length
+                ? f.evidence.map((e, i) => ({ ...e, key: e.key ?? (i === 0 ? f.fingerprint : undefined) }))
+                : [{ key: f.fingerprint }];
+            // An edited title no longer says whether the secret was in the code or the history.
+            const was = /^Secrets? in (the code|git history)/.test(f.title) ? inCode(f.title) : null;
             const states: (boolean | null)[] = [];
             for (const e of cited) {
-                const now = reported.get(e.key);
+                const now = e.key ? reported.get(e.key) : undefined;
                 // A secret moved between the code and the history: the same secret, but the report it gave is no longer true.
-                if (kind === "gitleaks") states.push(now ? (inCode(now.title) === inCode(f.title) ? true : null) : null);
+                if (kind === "gitleaks") states.push(now ? (was === null || inCode(now.title) === was ? true : null) : null);
                 else if (now) states.push(true);
                 else {
                     const snippet = e.snippet;
@@ -132,12 +136,20 @@ export async function recheck(
                 }
             }
             present = states.every(s => s === true) ? true : kind === "semgrep" && states.every(s => s === false) ? false : null;
-            if (cited.length > 1)
+            if (cited.length > 1) {
+                // One place of a fixed rule reported again is a regression, though the others stay fixed.
+                back = kind === "semgrep" ? states.some(s => s === true) : present === true;
                 places = {
-                    left: kind === "gitleaks" ? cited.filter(e => reported.has(e.key)).length : states.filter(s => s !== false).length,
+                    left:
+                        kind === "gitleaks"
+                            ? cited.filter(e => e.key && reported.has(e.key)).length
+                            : states.filter(s => s !== false).length,
                     of: cited.length
                 };
-            digest = digestOf([String(present), ...cited.map((e, i) => `${e.key}:${states[i]}`)]);
+            }
+            digest = digestOf([String(present), ...cited.map((e, i) => `${e.key ?? e.file}:${states[i]}`)]);
+            // The digest before places had keys: Andrii's "still open" on such a finding stands.
+            if (!f.evidence.some(e => e.key) && cited.length === 1) legacy = digestOf([String(present), present ? f.title : ""]);
         } else {
             const cited = f.evidence.filter(e => e.snippet?.trim());
             const readable = cited.length > 0 && cited.every(e => e.endLine - e.startLine < SNIPPET_LINES);
@@ -155,13 +167,14 @@ export async function recheck(
             digest = digestOf(files);
         }
 
+        back ??= present === true;
         let status: RecheckStatus;
         let gone = false;
         if (f.recheck === "fixed") {
-            status = present && f.recheckGone ? "regressed" : "fixed";
-            gone = status === "fixed" && (f.recheckGone || !present);
-        } else if (f.recheck === "open" && f.recheckDigest === digest) status = "open";
-        else if (f.recheck === "regressed" && present) status = "regressed";
+            status = back && f.recheckGone ? "regressed" : "fixed";
+            gone = status === "fixed" && (f.recheckGone || !back);
+        } else if (f.recheck === "open" && (f.recheckDigest === digest || f.recheckDigest === legacy)) status = "open";
+        else if (f.recheck === "regressed" && back) status = "regressed";
         else {
             status = present ? "unchanged" : present === false ? "fixed" : "changed";
             gone = status === "fixed";
