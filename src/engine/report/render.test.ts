@@ -224,12 +224,10 @@ describe("renderReport", () => {
         expect(html.match(/<details(?! open)/g)).toBeNull();
     });
 
-    // On the naidenko.dev report (E.9) a card's title sat alone at the foot of a page: Chromium honours
-    // break-after:avoid after a <summary> only once ::details-content is display:contents (Chromium 153).
+    // On the naidenko.dev report (E.9) a card's title sat alone at the foot of a page.
     it("lets a card run onto the next page, keeping its title with its summary", () => {
         const print = between(renderReport(data()), "@media print{", "</style>");
         expect(print).not.toMatch(/\.finding\{[^}]*break-inside:avoid/);
-        expect(print).toContain(".finding::details-content{display:contents}");
         expect(print).toContain(".finding .meta{break-after:avoid}");
         expect(print).toContain(".finding>summary,.finding .lead,.pair,.callout,figure{break-inside:avoid}");
     });

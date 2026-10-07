@@ -10,8 +10,8 @@ import type { ReportData, ReportFinding } from "./types";
 const SEAMS_TITLE = aspectTitle(SEAMS);
 
 // The app's palette (zinc, an indigo accent) on paper: light only, system fonts, nothing fetched.
-// In print a card may run onto the next page; Chromium keeps its title with its summary only once
-// the details' content slot is unwrapped (::details-content, measured on Chromium 153, 2026-10-07).
+// In print a card may run onto the next page. Its meta line and summary avoid a break after the title:
+// Chromium 153 then kept the title with its summary at 32 of 32 page offsets, 23 without (2026-10-07).
 const CSS = `
 :root{--ink:#18181b;--muted:#71717a;--faint:#a1a1aa;--line:#e4e4e7;--wash:#fafafa;--accent:#4f46e5;
 --critical:#b91c1c;--critical-bg:#fef2f2;--high:#c2410c;--high-bg:#fff7ed;--medium:#a16207;--medium-bg:#fefce8;
@@ -48,6 +48,7 @@ h3.repo{margin:1.8rem 0 .8rem;padding-bottom:.35rem;border-bottom:1px solid var(
 ${["critical", "high", "medium", "low", "info", "question"].map(s => `.${s}{color:var(--${s});background:var(--${s}-bg)}.tile.${s}{border-color:var(--${s}-bg)}`).join("")}
 .risks{list-style:none;padding:0;margin:.5rem 0}.risks li{display:flex;gap:.7rem;align-items:baseline;padding:.5rem 0;border-bottom:1px solid var(--line)}
 .risks .aside{margin-left:auto;padding-left:.5rem;font-size:.82rem;color:var(--muted);white-space:nowrap}
+@media screen and (max-width:640px){.risks li{flex-wrap:wrap}.risks .aside{flex-basis:100%;margin-left:0;padding-left:0;white-space:normal}}
 .fid{flex-shrink:0;white-space:nowrap;font:600 12.5px ui-monospace,SFMono-Regular,Menlo,monospace;color:var(--muted)}
 .coverage{list-style:none;padding:0;margin:.5rem 0}.coverage>li{margin:.7rem 0}.gaps{margin:.3rem 0;padding-left:1.2rem;font-size:.9rem}.gaps li{margin:.15rem 0}
 .pill{display:inline-block;font-size:.72rem;font-weight:600;padding:.08rem .5rem;border-radius:999px;background:var(--info-bg);color:var(--info);white-space:nowrap}
@@ -88,7 +89,7 @@ body{background:#fff;font-size:10.5pt}
 section{margin-top:2.2rem}
 section#findings,section#questions{margin-top:0;break-before:page}
 h2,h3,h4,summary,figcaption{break-after:avoid}
-.finding{-webkit-box-decoration-break:clone;box-decoration-break:clone}.finding::details-content{display:contents}
+.finding{-webkit-box-decoration-break:clone;box-decoration-break:clone}.more[open]>summary .print-only{display:none}
 .finding>summary,.finding .lead,.pair,.callout,figure{break-inside:avoid}.finding .meta{break-after:avoid}.rest{display:none}
 .risks li,.gaps li{break-inside:avoid}
 a{color:inherit}
@@ -176,6 +177,7 @@ const apply=()=>{const min=val("sev"),asp=val("aspect"),repo=val("repo"),q=val("
 const ok=c=>(!min||rank[c.dataset.sev]<=rank[min])&&(!asp||c.dataset.aspect===asp)&&(!repo||c.dataset.repo===repo)&&(!q||c.textContent.toLowerCase().includes(q));
 for(const c of cards){const v=ok(c);c.classList.toggle("off",!v);if(v)shown.add(c.id)}
 for(const c of questions){const v=ok(c);c.classList.toggle("off",!v);if(v)asked++}
+if(q)for(const m of document.querySelectorAll(".finding .more"))if([...m.querySelectorAll("figure")].some(x=>x.textContent.toLowerCase().includes(q)))m.open=true;
 for(const g of groups)g.classList.toggle("off",active&&![...g.querySelectorAll(".finding")].some(c=>shown.has(c.id)));
 f.querySelector("output").textContent=shown.size+" of "+cards.length+" findings"+(questions.length?" and "+asked+" of "+questions.length+(questions.length===1?" question":" questions"):"")+" shown";};
 const reveal=()=>{const t=location.hash&&document.getElementById(decodeURIComponent(location.hash.slice(1)));if(t&&t.closest(".off")){f.reset();apply();t.scrollIntoView()}};

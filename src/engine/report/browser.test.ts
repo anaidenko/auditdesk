@@ -48,4 +48,61 @@ describe("the report in a browser", { timeout: 60_000 }, () => {
         expect(await figures()).toBe(10);
         expect(await page.locator(".more > summary").innerText()).toBe("and 3 more places in the HTML report");
     });
+
+    const thirteen = () =>
+        renderReport(
+            data({
+                findings: [
+                    finding({
+                        evidence: Array.from({ length: 13 }, (_, i) => ({
+                            file: `src/f${i}.ts`,
+                            startLine: 1,
+                            endLine: 1,
+                            snippet: `k${i}`
+                        }))
+                    })
+                ]
+            })
+        );
+
+    it("prints a list of places the reader opened without promising the rest elsewhere", async () => {
+        const page = await open(thirteen());
+        await page.locator(".more > summary").click();
+        await page.emulateMedia({ media: "print" });
+        expect(await page.locator("figure").evaluateAll(els => els.filter(el => el.checkVisibility()).length)).toBe(13);
+        expect(await page.locator(".more > summary").innerText()).toBe("and 3 more places");
+    });
+
+    it("opens the list of places when a search matches a place inside it", async () => {
+        const page = await open(thirteen());
+        await page.locator('.filters input[name="q"]').fill("src/f12");
+        expect(await page.locator(".more").evaluate(d => (d as HTMLDetailsElement).open)).toBe(true);
+        expect(await page.locator(".filters output").textContent()).toBe("1 of 1 findings shown");
+    });
+
+    it("keeps a Summary line's title readable at phone width", async () => {
+        const page = await open(
+            renderReport(data({ findings: [finding({ title: "Raw SQL in the search endpoint lets anyone read every table" })] }))
+        );
+        await page.setViewportSize({ width: 390, height: 800 });
+        const box = await page
+            .locator("#summary .risks li")
+            .first()
+            .evaluate(li => {
+                const [title, aside] = [...li.querySelectorAll("span")].slice(-2);
+                return {
+                    title: title.getBoundingClientRect().width,
+                    overflow: aside.getBoundingClientRect().right - li.getBoundingClientRect().right
+                };
+            });
+        expect(box.title).toBeGreaterThan(200);
+        expect(box.overflow).toBeLessThanOrEqual(0);
+    });
+
+    it("prints a card the reader collapsed as collapsed", async () => {
+        const page = await open(renderReport(data()));
+        await page.locator("details#F-001 > summary").click();
+        await page.emulateMedia({ media: "print" });
+        expect(await page.locator("details#F-001 .lead").evaluate(el => el.checkVisibility())).toBe(false);
+    });
 });
