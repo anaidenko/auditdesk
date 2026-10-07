@@ -27,7 +27,8 @@ export default defineConfig({
             // Fake credentials, set here so the real ones in .env.local never load (@next/env keeps a defined variable).
             CLAUDE_CODE_OAUTH_TOKEN: "e2e-plan-token",
             ANTHROPIC_API_KEY: "",
-            AUDITDESK_HOME: "/tmp/auditdesk-e2e-home"
+            AUDITDESK_HOME: "/tmp/auditdesk-e2e-home",
+            AUDITDESK_EVAL_RESULTS: "e2e/fixtures/eval-results"
         }
     }
 });

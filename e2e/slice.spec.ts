@@ -86,6 +86,16 @@ test("an agent that finishes having looked at little is sent back once, then lab
     await expect(page.getByRole("listitem").filter({ hasText: "Security" }).first().getByTestId("limited-review")).toHaveCount(0);
 });
 
+test("the Evals page plots recall against cost for every result of a fixture", async ({ page }) => {
+    await page.goto("/");
+    await page.getByRole("link", { name: "Evals" }).click();
+    const juice = page.locator("section", { hasText: "juice-shop" });
+    await expect(juice.getByTestId("eval-row")).toHaveCount(2);
+    await expect(juice.getByTestId("eval-row").first()).toContainText("claude-sonnet-5-5 · high");
+    await expect(juice.getByTestId("eval-row").first()).toContainText("9 of 18 (50%)");
+    await expect(juice.getByTestId("eval-point")).toHaveCount(2);
+});
+
 test("a refused start keeps the aspects and caps Andrii chose", async ({ page }) => {
     await newProject(page, "Refused start");
     await page.getByLabel(/client agreed/).check();

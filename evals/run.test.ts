@@ -245,6 +245,24 @@ describe("parseEvalArgs", () => {
         });
     });
 
+    it("takes a matrix of model and effort pairs to run one after another, instead of one pair", () => {
+        const ok = parseEvalArgs([...base, "--budget-usd", "3", "--matrix", "claude-sonnet-5-5:low,claude-opus-5-5:medium"]);
+        expect(ok).toMatchObject({
+            ok: true,
+            value: {
+                matrix: [
+                    { model: "claude-sonnet-5-5", effort: "low" },
+                    { model: "claude-opus-5-5", effort: "medium" }
+                ]
+            }
+        });
+        expect(parseEvalArgs([...base, "--budget-usd", "3", "--matrix", "claude-sonnet-5-5:fast"])).toMatchObject({ ok: false });
+        expect(parseEvalArgs([...base, "--budget-usd", "3", "--matrix", "claude-sonnet-5-5:low", "--model", "claude-opus-5-5"])).toEqual({
+            ok: false,
+            error: expect.stringMatching(/--matrix replaces --model and --effort/)
+        });
+    });
+
     it("refuses --judge without a cap of its own", () => {
         expect(parseEvalArgs([...base, "--budget-usd", "3", "--judge"])).toEqual({
             ok: false,

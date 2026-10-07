@@ -38,6 +38,8 @@ export interface EvalOptions {
     judge: boolean;
     /** The judge's own cap, since it bills the API key whatever the run's access. */
     judgeUsd?: number;
+    /** Model and effort pairs to run one after another, each with the same budget (`pnpm eval --matrix`). */
+    matrix?: { model: string; effort: Effort }[];
 }
 
 export interface EvalDeps {
@@ -58,8 +60,19 @@ const NO_RULES: StripRules = { deletePaths: [], statementPatterns: [] };
 const DEFAULT_TOKENS = 400_000;
 
 const USAGE =
-    "pnpm eval --fixture <name> --access api_key|claude_plan --budget-usd <dollars> [--budget-tokens <n>] [--aspect <key>] [--model <id>] [--effort <level>] [--judge --judge-usd <dollars>]";
-const FLAGS = ["--fixture", "--access", "--budget-usd", "--budget-tokens", "--aspect", "--model", "--effort", "--judge", "--judge-usd"];
+    "pnpm eval --fixture <name> --access api_key|claude_plan --budget-usd <dollars> [--budget-tokens <n>] [--aspect <key>] [--model <id>] [--effort <level> | --matrix model:effort,…] [--judge --judge-usd <dollars>]";
+const FLAGS = [
+    "--fixture",
+    "--access",
+    "--budget-usd",
+    "--budget-tokens",
+    "--aspect",
+    "--model",
+    "--effort",
+    "--judge",
+    "--judge-usd",
+    "--matrix"
+];
 
 export function parseEvalArgs(argv: string[]): { ok: true; value: EvalOptions } | { ok: false; error: string } {
     const flags = new Map<string, string | true>();
@@ -90,6 +103,18 @@ export function parseEvalArgs(argv: string[]): { ok: true; value: EvalOptions } 
         return { ok: false, error: `Unknown model ${model}: ${MODEL_CHOICES.map(m => m.id).join(", ")}.` };
     const effort = (str("--effort") ?? DEFAULT_EFFORT) as Effort;
     if (!EFFORTS.includes(effort)) return { ok: false, error: `Unknown effort ${effort}: ${EFFORTS.join(", ")}.` };
+    let matrix: EvalOptions["matrix"];
+    if (str("--matrix") !== undefined) {
+        if (str("--model") !== undefined || str("--effort") !== undefined)
+            return { ok: false, error: "--matrix replaces --model and --effort: give it model:effort pairs." };
+        matrix = [];
+        for (const pair of str("--matrix")!.split(",")) {
+            const [m, e] = pair.split(":");
+            if (!MODEL_CHOICES.some(c => c.id === m) || !EFFORTS.includes(e as Effort))
+                return { ok: false, error: `--matrix takes model:effort pairs such as claude-sonnet-5-5:low, not "${pair}".` };
+            matrix.push({ model: m, effort: e as Effort });
+        }
+    }
     const aspect = str("--aspect");
     if (aspect !== undefined && !ASPECTS.some(a => a.key === aspect)) return { ok: false, error: `Unknown aspect ${aspect}.` };
     const judge = flags.get("--judge") === true;
@@ -108,7 +133,8 @@ export function parseEvalArgs(argv: string[]): { ok: true; value: EvalOptions } 
             budgetTokens,
             access,
             judge,
-            ...(judge ? { judgeUsd } : {})
+            ...(judge ? { judgeUsd } : {}),
+            ...(matrix ? { matrix } : {})
         }
     };
 }
