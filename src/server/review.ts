@@ -38,6 +38,7 @@ export async function accept(id: string) {
 
 async function withReason(id: string, status: "rejected" | "excluded", reason: string) {
     if (!reason.trim()) throw new Error("Give a reason; it is kept as eval data and for the record.");
+    await reviewable(id);
     await prisma.finding.update({ where: { id }, data: { status, statusReason: reason.trim() } });
 }
 
