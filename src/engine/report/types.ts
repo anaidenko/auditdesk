@@ -43,4 +43,6 @@ export interface ReportData {
     cost: { apiKeyUsd: number; planUsd: number; unpriced: number } | null;
     /** The project's AI-built mode: the report gathers ai-built findings only when it is on (design § 10). */
     aiBuilt: boolean;
+    /** Every catalogue item's title, for an item filed under an aspect that did not run (a scanner's DEP-01). */
+    itemTitles?: Record<string, string>;
 }
