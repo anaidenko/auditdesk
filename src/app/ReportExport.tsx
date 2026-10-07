@@ -16,6 +16,25 @@ export function ReportExport({ projectId }: { projectId: string }) {
                 <Icon name="download" />
                 PDF report
             </button>
+            <button formAction={`/projects/${projectId}/report/sarif`} className={button.secondary} title="For code-scanning tools and CI">
+                <Icon name="download" />
+                SARIF
+            </button>
+            <button
+                formAction={`/projects/${projectId}/report/issues`}
+                className={button.secondary}
+                title="Issue drafts for a tracker's import"
+            >
+                <Icon name="download" />
+                Issues CSV
+            </button>
+            <a
+                href={`/projects/${projectId}/report/issues?format=json`}
+                className="text-xs text-indigo-700 hover:underline"
+                title="For pnpm issues:gh"
+            >
+                JSON
+            </a>
         </form>
     );
 }

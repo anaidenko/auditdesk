@@ -26,6 +26,9 @@ Local only: it binds 127.0.0.1 and has no login. The design is in [docs/design.m
   what to fix before sign-off and what can wait, scope and coverage, each finding with its
   evidence, and links to the OWASP Top 10:2025, ASVS 5.0.0, CWE and Cheat Sheets it is relevant
   to.
+- **Exports:** besides the report, SARIF 2.1.0 for code-scanning tools and CI, and the accepted
+  findings as issue drafts: a CSV for a tracker's import, or JSON that `pnpm issues:gh` turns into
+  GitHub issues through the `gh` CLI (it prints them first; `--create` creates them).
 - **Cost under control:** caps per run, split between agents; a pre-run estimate from past runs;
   every call priced by the model that served it.
 

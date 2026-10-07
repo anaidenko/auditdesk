@@ -141,7 +141,7 @@ export async function loadReportData(projectId: string, o: { includeCost?: boole
     };
 }
 
-export function reportFileName(d: ReportData, ext: "html" | "pdf"): string {
+export function reportFileName(d: ReportData, ext: "html" | "pdf" | "sarif" | "csv" | "json"): string {
     const slug = d.projectName
         .toLowerCase()
         .replace(/[^a-z0-9]+/g, "-")
