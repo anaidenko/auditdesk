@@ -109,7 +109,10 @@ pnpm test:e2e    # Playwright: the built app, with the model and the scanners re
 
 Neither calls the API: recorded model responses and scanner outputs are replayed, so CI needs no
 key and no scanner images. `AUDITDESK_SCREENSHOTS=1 pnpm test:e2e -g screenshots` retakes the
-screenshots above from a replayed run on a sample repository.
+screenshots above from a replayed run on a sample repository. `pnpm test` clones the own fixture
+from GitHub to check its answer key; offline, point the URL at a local clone with
+`GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=url.<path>.insteadOf GIT_CONFIG_VALUE_0=https://github.com/anaidenko/auditdesk-fixture`
+(a repository's own `insteadOf` does not reach a clone made inside it).
 
 ## Evals
 
