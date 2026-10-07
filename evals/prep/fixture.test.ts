@@ -30,6 +30,25 @@ describe("prepareFixture", () => {
         expect(execFileSync("git", ["status", "--porcelain"], { cwd: again.path, encoding: "utf8" })).toBe("");
     });
 
+    it("commits the prepared tree with no parent, so no answer stays in its history, and names the upstream clone", async () => {
+        const source = await makeRepo({ "app.ts": "export {}\n", "answers/demo.md": "the answer\n" });
+        const sha = execFileSync("git", ["rev-parse", "HEAD"], { cwd: source, encoding: "utf8" }).trim();
+        const prepared = await prepareFixture({ name: "demo", url: source, sha, rules }, await mkdtemp(join(tmpdir(), "ws-")));
+        expect(execFileSync("git", ["rev-list", "--all", "--count"], { cwd: prepared.path, encoding: "utf8" }).trim()).toBe("1");
+        expect(execFileSync("git", ["log", "--all", "--format=", "--name-only"], { cwd: prepared.path, encoding: "utf8" })).not.toContain(
+            "answers/"
+        );
+        expect(execFileSync("git", ["show", `${sha}:answers/demo.md`], { cwd: prepared.upstreamDir, encoding: "utf8" })).toBe(
+            "the answer\n"
+        );
+        const blob = execFileSync("git", ["hash-object", "--stdin"], {
+            cwd: prepared.path,
+            input: "the answer\n",
+            encoding: "utf8"
+        }).trim();
+        expect(() => execFileSync("git", ["cat-file", "-e", blob], { cwd: prepared.path, stdio: "pipe" })).toThrow();
+    });
+
     it("keeps a tracked file that the fixture's own .gitignore names", async () => {
         const source = await makeRepo({ ".gitignore": "vendor/*.js\n", "app.ts": "export {}\n" });
         execFileSync("mkdir", ["-p", join(source, "vendor")]);

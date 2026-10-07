@@ -6,6 +6,7 @@ import { join, resolve } from "node:path";
 
 import { DEFAULT_EFFORT, DEFAULT_MODEL, type Effort } from "@/engine/agent/request";
 import type { AgentOutcome, AspectRunner } from "@/engine/agent/run-aspect";
+import type { Coverage } from "@/engine/agent/tools";
 import { ASPECTS, aspectTitle } from "@/engine/aspects";
 import { git } from "@/engine/git";
 import { MemorySink } from "@/engine/memory-sink";
@@ -113,7 +114,7 @@ export function parseEvalArgs(argv: string[]): { ok: true; value: EvalOptions } 
 }
 
 class EvalSink extends MemorySink implements PipelineSink {
-    agents: { id: string; aspect: string; status: AgentOutcome["status"]; note: string | null }[] = [];
+    agents: { id: string; aspect: string; outcome: AgentOutcome | null }[] = [];
     versions: ToolVersions | null = null;
     async repositoryCloned() {}
     async stackDetected() {}
@@ -122,14 +123,11 @@ class EvalSink extends MemorySink implements PipelineSink {
     }
     async startAgent(_repositoryId: string, aspect: string) {
         const id = `agent-${this.agents.length + 1}`;
-        this.agents.push({ id, aspect, status: "failed", note: "did not finish" });
+        this.agents.push({ id, aspect, outcome: null });
         return id;
     }
     async finishAgent(id: string, outcome: AgentOutcome) {
-        Object.assign(
-            this.agents.find(a => a.id === id)!,
-            { status: outcome.status, note: outcome.note }
-        );
+        this.agents.find(a => a.id === id)!.outcome = outcome;
     }
     async supersedeUnreviewed() {}
 }
@@ -154,7 +152,10 @@ export async function runEval(o: EvalOptions, deps: EvalDeps): Promise<{ file: s
     const problems = keyProblems(key, prepared.path, prepared.preparedSha);
     if (problems.length) throw new Error(`The key does not fit the prepared tree:\n${problems.join("\n")}`);
     const root = resolve(import.meta.dirname, "..");
-    const auditdesk = { commit: await git(["rev-parse", "HEAD"], root), dirty: (await git(["status", "--porcelain"], root)) !== "" };
+    const auditdesk = {
+        commit: await git(["rev-parse", "HEAD"], root),
+        dirty: (await git(["status", "--porcelain", "--", ".", ":!evals/results"], root)) !== ""
+    };
 
     const now = deps.now ?? (() => new Date());
     const startedAt = now();
@@ -213,7 +214,16 @@ export async function runEval(o: EvalOptions, deps: EvalDeps): Promise<{ file: s
     }
     const agents = aspects.map(aspect => {
         const ran = sink.agents.find(a => a.aspect === aspect);
-        if (ran) return { aspect, status: ran.status, note: ran.note };
+        if (ran) {
+            const o = ran.outcome;
+            if (!o) return { aspect, status: "failed" as const, note: "Did not finish." };
+            const n = (status: Coverage["status"]) => o.coverage.filter(c => c.status === status).length;
+            // An agent that failed with an error reports no coverage at all: no counts, rather than zeros.
+            const coverage = o.coverage.length
+                ? { examined: n("examined"), partly: n("partly"), notExamined: n("not_examined"), notReported: n("not_reported") }
+                : null;
+            return { aspect, status: o.status, note: o.note, summary: o.summary, coverage };
+        }
         const skipped = sink.events.find(m => m.startsWith(`Skipped ${aspectTitle(aspect)}:`));
         return {
             aspect,

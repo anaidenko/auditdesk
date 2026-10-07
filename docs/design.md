@@ -148,8 +148,8 @@ Grading is deterministic on file, overlapping lines and checklist item, with a j
 what it cannot place. The metrics are recall (and the agents' share of it), false findings, cost
 and duration per model and effort.
 
-Status: the fixtures, their keys and the harness exist; the first scores come next, and this
-section will quote them.
+Status: the fixtures, their keys and the harness exist, and a first baseline is in
+`evals/results/`; scores by model and effort follow, and this section will quote them.
 
 ## The tool's own security
 

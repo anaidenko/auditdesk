@@ -35,7 +35,14 @@ export interface EvalResult {
     byModel: { model: string; calls: number; usd: number; unpriced: number }[];
     /** Cache reads over all input-side tokens. */
     cacheReadShare: number;
-    agents: { aspect: string; status: AgentOutcome["status"] | "not started"; note: string | null }[];
+    agents: {
+        aspect: string;
+        status: AgentOutcome["status"] | "not started";
+        note: string | null;
+        summary?: string | null;
+        /** How many checklist items the agent reported as examined, partly, not examined, or not at all. */
+        coverage?: { examined: number; partly: number; notExamined: number; notReported: number } | null;
+    }[];
     versions: ToolVersions | null;
     /** Imports of deleted modules the prep removed: a finding about what they leave undefined is the prep's. */
     removedImports: string[];
@@ -155,9 +162,20 @@ export function summaryMarkdown(r: EvalResult): string {
         "",
         "## Agents",
         "",
-        "| Aspect | Status | Note |",
-        "| --- | --- | --- |",
-        ...r.agents.map(a => `| ${a.aspect} | ${a.status} | ${a.note ?? ""} |`),
+        "| Aspect | Status | Coverage | Summary or note |",
+        "| --- | --- | --- | --- |",
+        ...r.agents.map(a => {
+            const c = a.coverage;
+            const covered = c
+                ? `${c.examined} examined, ${c.partly} partly, ${c.notExamined} not examined, ${c.notReported} not reported`
+                : "";
+            const text = [a.summary, a.note]
+                .filter(Boolean)
+                .join(" ")
+                .replace(/\s*[\r\n]+\s*/g, " ")
+                .replace(/\|/g, "\\|");
+            return `| ${a.aspect} | ${a.status} | ${covered} | ${text} |`;
+        }),
         "",
         "## What pins the result",
         ""
