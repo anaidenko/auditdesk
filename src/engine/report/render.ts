@@ -1,3 +1,4 @@
+import { limitedReview } from "../coverage";
 import { compareFindings } from "../findings";
 import type { Ref } from "../references";
 import { type ModelAccess, SEVERITIES } from "../types";
@@ -47,7 +48,7 @@ th{text-align:left;font-size:.7rem;font-weight:600;letter-spacing:.07em;text-tra
 td{padding:.5rem .6rem;border-bottom:1px solid var(--line);vertical-align:top}td.nowrap{white-space:nowrap}
 .aspect{border:1px solid var(--line);border-radius:10px;padding:.2rem 1.1rem 1rem;margin:1rem 0}
 .pill{display:inline-block;font-size:.72rem;font-weight:600;padding:.08rem .5rem;border-radius:999px;background:var(--info-bg);color:var(--info);white-space:nowrap}
-.pill.examined,.pill.done{background:#ecfdf5;color:#047857}.pill.partly,.pill.partial{background:var(--medium-bg);color:var(--medium)}
+.pill.examined,.pill.done{background:#ecfdf5;color:#047857}.pill.partly,.pill.partial,.pill.limited{background:var(--medium-bg);color:var(--medium)}
 .pill.declined,.pill.failed,.pill.stopped{background:var(--critical-bg);color:var(--critical)}
 .method{padding-left:1.1rem}.method li{margin:.3rem 0}
 .finding{border:1px solid var(--line);border-left:4px solid var(--info);border-radius:10px;margin:1.1rem 0;background:#fff}
@@ -286,10 +287,14 @@ ${manyRepos ? `<label>Repository <select name="repo">${option("", "All")}${names
     const repos = d.repositories
         .map(r => `<li>${e(r.name)} <span class="muted">· ${e(r.branch)} ·</span> <code>${e(r.sha.slice(0, 10))}</code></li>`)
         .join("");
+    const limited = (a: ReportData["aspects"][number]) => a.status === "done" && limitedReview(a.coverage);
     const aspects = d.aspects
         .map(
-            a => `<div class="aspect"><h3>${e(a.title)} <span class="pill ${e(a.status)}">${e(a.status)}</span></h3>
+            a => `<div class="aspect"><h3>${e(a.title)} <span class="pill ${e(a.status)}">${e(a.status)}</span>${
+                limited(a) ? ` <span class="pill limited">limited review</span>` : ""
+            }</h3>
 ${a.note ? `<p>${e(a.note)}</p>` : ""}
+${limited(a) ? `<p>The agent looked at fewer than half of its checklist; the items it did not examine are marked below.</p>` : ""}
 ${
     a.coverage.length
         ? `<table><thead><tr><th>Item</th><th>Checklist</th><th>Coverage</th></tr></thead><tbody>${a.coverage

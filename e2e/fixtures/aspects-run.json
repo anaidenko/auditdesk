@@ -372,5 +372,95 @@
             ],
             "stop_reason": "tool_use"
         }
+    ],
+    "Production readiness": [
+        {
+            "id": "msg_test_p1",
+            "type": "message",
+            "role": "assistant",
+            "model": "claude-sonnet-5-5",
+            "stop_sequence": null,
+            "stop_details": null,
+            "container": null,
+            "context_management": null,
+            "usage": {
+                "input_tokens": 1000,
+                "output_tokens": 200,
+                "cache_creation_input_tokens": 0,
+                "cache_read_input_tokens": 0,
+                "cache_creation": {
+                    "ephemeral_5m_input_tokens": 0,
+                    "ephemeral_1h_input_tokens": 0
+                },
+                "iterations": null,
+                "server_tool_use": null,
+                "service_tier": null,
+                "inference_geo": null,
+                "fallback_credit": null,
+                "output_tokens_details": null
+            },
+            "content": [
+                {
+                    "type": "tool_use",
+                    "id": "toolu_e2e_p1",
+                    "name": "finish_aspect",
+                    "input": {
+                        "summary": "Looked at the configuration only.",
+                        "coverage": [
+                            {
+                                "item": "PRD-01",
+                                "status": "examined"
+                            }
+                        ]
+                    },
+                    "caller": null
+                }
+            ],
+            "stop_reason": "tool_use"
+        },
+        {
+            "id": "msg_test_p2",
+            "type": "message",
+            "role": "assistant",
+            "model": "claude-sonnet-5-5",
+            "stop_sequence": null,
+            "stop_details": null,
+            "container": null,
+            "context_management": null,
+            "usage": {
+                "input_tokens": 1000,
+                "output_tokens": 200,
+                "cache_creation_input_tokens": 0,
+                "cache_read_input_tokens": 0,
+                "cache_creation": {
+                    "ephemeral_5m_input_tokens": 0,
+                    "ephemeral_1h_input_tokens": 0
+                },
+                "iterations": null,
+                "server_tool_use": null,
+                "service_tier": null,
+                "inference_geo": null,
+                "fallback_credit": null,
+                "output_tokens_details": null
+            },
+            "content": [
+                {
+                    "type": "tool_use",
+                    "id": "toolu_e2e_p2",
+                    "name": "finish_aspect",
+                    "input": {
+                        "summary": "Looked at the configuration only.",
+                        "coverage": [
+                            {
+                                "item": "PRD-01",
+                                "status": "examined"
+                            }
+                        ]
+                    },
+                    "caller": null
+                }
+            ],
+            "stop_reason": "tool_use"
+        }
     ]
 }

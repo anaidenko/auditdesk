@@ -33,7 +33,7 @@ async function deps() {
     const ws = await mkdtemp(join(tmpdir(), "ws-"));
     return (sink: PrismaSink) => ({
         sink,
-        runAspect: apiAspectRunner(new Anthropic({ apiKey: "t", fetch: replayFetch([finish()]).fetch, maxRetries: 0 })),
+        runAspect: apiAspectRunner(new Anthropic({ apiKey: "t", fetch: replayFetch([finish(), finish()]).fetch, maxRetries: 0 })),
         scanners: replayRunner("src/test/fixtures/scanners"),
         fetchRulesets: async () => REPLAY_RULESETS,
         workspaceDir: ws,
@@ -341,7 +341,7 @@ it("fails a Claude plan run that has no token before cloning, and calls nothing"
 it("does not start a Claude plan run above the 50% reserve, and runs it when the start was allowed", async () => {
     await home();
     const replay = join(await mkdtemp(join(tmpdir(), "replay-")), "model.json");
-    await writeFile(replay, JSON.stringify([finish()]));
+    await writeFile(replay, JSON.stringify([finish(), finish()]));
     vi.stubEnv("AUDITDESK_REPLAY_MODEL", replay);
     vi.stubEnv("AUDITDESK_SCANNER_REPLAY", "src/test/fixtures/scanners");
     vi.stubEnv("WORKSPACE_DIR", await mkdtemp(join(tmpdir(), "ws-")));
@@ -358,7 +358,8 @@ it("does not start a Claude plan run above the 50% reserve, and runs it when the
     await processJob((await claimJob())!);
     const second = await prisma.run.findUniqueOrThrow({ where: { id: allowed }, include: { agents: true, calls: true } });
     expect(second.agents.map(a => a.status)).toEqual(["done"]);
-    expect(second.calls).toHaveLength(1);
+    // The recorded finish reports no coverage, so finish_aspect sends the agent back once.
+    expect(second.calls).toHaveLength(2);
 }, 60_000);
 
 // The review's Minor 3: the engine's own refusal comes after the pipeline cloned and superseded the aspect's findings.

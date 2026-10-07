@@ -87,8 +87,12 @@ async function evalRun(
 describe("runEval", () => {
     it("writes a summary with recall, cost, the SHAs and the ruleset hashes", async () => {
         const run = await evalRun({
-            "Security": [tool("report_finding", finding({ evidence: [{ file: "src/server.js", start_line: 5, end_line: 5 }] })), finish()],
-            "Code quality and tests": [finish([])]
+            "Security": [
+                tool("report_finding", finding({ evidence: [{ file: "src/server.js", start_line: 5, end_line: 5 }] })),
+                finish(),
+                finish()
+            ],
+            "Code quality and tests": [finish([]), finish([])]
         });
         expect(run.file).toMatch(/2026-10-08-sample-claude-opus-5-5-low\.md$/);
         // The agent finds S-01; the replayed Semgrep's code-string-concat on line 7 finds S-02.
@@ -96,7 +100,7 @@ describe("runEval", () => {
         expect(run.result.grade.total).toBe(3);
         expect(run.text).toContain("**2 of 3** key entries found (67%)");
         expect(run.text).toContain("| S-03 | QUA-02 | No tests | missed |");
-        expect(run.text).toMatch(/claude-opus-5-5 \| 3 \| \$\d+\.\d{2}/);
+        expect(run.text).toMatch(/claude-opus-5-5 \| 5 \| \$\d+\.\d{2}/);
         expect(run.text).toContain(run.sha);
         expect(run.text).toContain(run.result.preparedSha);
         expect(run.result.preparedSha).not.toBe(run.sha);
@@ -109,23 +113,37 @@ describe("runEval", () => {
 
     it("tells the agents' finds from the scanners'", async () => {
         const run = await evalRun({
-            "Security": [tool("report_finding", finding({ evidence: [{ file: "src/server.js", start_line: 5, end_line: 5 }] })), finish()],
-            "Code quality and tests": [finish([])]
+            "Security": [
+                tool("report_finding", finding({ evidence: [{ file: "src/server.js", start_line: 5, end_line: 5 }] })),
+                finish(),
+                finish()
+            ],
+            "Code quality and tests": [finish([]), finish([])]
         });
         expect(run.text).toMatch(/\| S-02 \| SEC-04 \| eval of the query string \| F-\d{3} \(scanner\) \|/);
         expect(run.text).toContain("agents alone: 1 of 3");
     });
 
     it("records how much of its checklist each agent covered, and its summary", async () => {
-        const run = await evalRun({ "Code quality and tests": [finish([{ item: "QUA-02", status: "examined" }])] }, { aspect: "quality" });
+        const run = await evalRun(
+            {
+                "Code quality and tests": [
+                    finish([{ item: "QUA-02", status: "examined" }]),
+                    finish([{ item: "QUA-02", status: "examined" }])
+                ]
+            },
+            { aspect: "quality" }
+        );
         expect(run.result.agents[0]).toMatchObject({ aspect: "quality", summary: "Done.", coverage: { examined: 1 } });
-        expect(run.text).toMatch(/\| quality \| done \| 1 examined, 0 partly, \d+ not examined, 0 not reported \| Done\. \|/);
+        expect(run.text).toMatch(
+            /\| quality \| done \| 1 examined, 0 partly, \d+ not examined, 0 not reported \| Done\. Sent back once; \d+ of \d+ items still not examined\. \|/
+        );
     });
 
     it("gives every chosen aspect a row, with why an aspect did not start", async () => {
         const run = await evalRun({
             "Security": [message({ ...finish(), model: "claude-unknown" })],
-            "Code quality and tests": [finish([])]
+            "Code quality and tests": [finish([]), finish([])]
         });
         expect(run.result.agents.map(a => a.aspect)).toEqual(["security", "quality"]);
         expect(run.result.agents[1].status).toBe("not started");
@@ -152,13 +170,15 @@ describe("runEval", () => {
                         "report_finding",
                         finding({ checklist_item: "SEC-05", evidence: [{ file: "src/server.js", start_line: 7, end_line: 7 }] })
                     ),
+                    finish(),
                     finish()
                 ],
-                "Code quality and tests": [finish([])]
+                "Code quality and tests": [finish([]), finish([])]
             },
             { judge: true, judgeUsd: 1, aspect: "security" },
             { key: { ...KEY, entries: KEY.entries.slice(0, 1) }, judge: new Anthropic({ apiKey: "test", fetch, maxRetries: 0 }) }
         );
+        expect(run.result.agents[0].status).toBe("done");
         expect(requests.length).toBeGreaterThanOrEqual(1);
         expect(run.text).toMatch(/Judge: \d+ verdicts?: /);
         expect(run.result.judge!.usd).toBeGreaterThan(0);
@@ -178,7 +198,7 @@ describe("runEval", () => {
     });
 
     it("runs a single aspect when --aspect is given", async () => {
-        const run = await evalRun({ "Code quality and tests": [finish([])] }, { aspect: "quality" });
+        const run = await evalRun({ "Code quality and tests": [finish([]), finish([])] }, { aspect: "quality" });
         expect(run.file).toMatch(/2026-10-08-sample-quality-claude-opus-5-5-low\.md$/);
         expect(run.result.agents.map(a => [a.aspect, a.status])).toEqual([["quality", "done"]]);
         expect(run.result.grade.total).toBe(1);

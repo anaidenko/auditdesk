@@ -34,7 +34,11 @@ export function makeSdkServer(
                 if (refused) return { content: [{ type: "text" as const, text: refused }], isError: true };
                 try {
                     const text = await s.run(args as never);
-                    return { content: [{ type: "text" as const, text }], ...(s.name === "finish_aspect" ? { _meta: END_TURN } : {}) };
+                    // A finish_aspect that sent the agent back must not end its turn, or the engine nudges it at once.
+                    return {
+                        content: [{ type: "text" as const, text }],
+                        ...(s.name === "finish_aspect" && ctx.state.finished ? { _meta: END_TURN } : {})
+                    };
                 } catch (e) {
                     o.onToolError?.(s.name, id);
                     // guard() already turned any other error into a ToolError and recorded it as fatal.

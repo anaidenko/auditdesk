@@ -71,6 +71,28 @@ describe("renderReport", () => {
         expect(cover).toContain("0123456789");
     });
 
+    it("marks an aspect whose agent looked at fewer than half of its items as a limited review", () => {
+        const html = renderReport(
+            data({
+                aspects: [
+                    {
+                        title: "Security",
+                        status: "done",
+                        note: null,
+                        coverage: [
+                            { item: "SEC-01", title: "Authentication", status: "examined" },
+                            { item: "SEC-03", title: "Authorization", status: "not_examined" },
+                            { item: "SEC-04", title: "Injection", status: "not_examined" }
+                        ]
+                    }
+                ]
+            })
+        );
+        expect(between(html, '<section id="scope"', "</section>")).toMatch(/limited review[^<]*<\/span>/);
+        expect(between(html, '<section id="scope"', "</section>")).toContain("fewer than half of its checklist");
+        expect(between(renderReport(data()), '<section id="scope"', "</section>")).not.toContain("limited review");
+    });
+
     it("names no auditor when none is set, rather than someone else's name", () => {
         const html = renderReport(data({ auditor: null }));
         expect(between(html, '<header class="cover"', "</header>")).not.toContain("Auditor");

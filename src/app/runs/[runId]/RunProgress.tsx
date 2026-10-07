@@ -89,6 +89,15 @@ export function RunProgress({ runId }: { runId: string }) {
                         <li key={a.id} className="flex flex-wrap items-center gap-3 px-5 py-3 text-sm">
                             <span className="font-medium">{aspectTitle(a.aspect)}</span>
                             <RunStatus status={a.status} />
+                            {a.limited && (
+                                <span
+                                    data-testid="limited-review"
+                                    className="rounded-full bg-amber-50 px-2 py-0.5 text-xs font-medium text-amber-800 ring-1 ring-amber-200"
+                                    title="The agent looked at fewer than half of its checklist."
+                                >
+                                    limited review
+                                </span>
+                            )}
                             {a.note && <span className="text-zinc-500">{a.note}</span>}
                         </li>
                     ))}

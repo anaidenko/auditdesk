@@ -154,6 +154,20 @@ describe("runAspectSdk", { timeout: 60_000 }, () => {
         }
     });
 
+    it("sends the agent back once when it finishes with most items unexamined and most of its share left", async () => {
+        const { h, run } = await setup([finish([]), tool("read_file", { path: "src/db.js", start_line: 1, end_line: 2 }), finish([])]);
+        expect(await run()).toMatchObject({ status: "done" });
+        expect(h.fake.requests).toHaveLength(3);
+        expect(body(h, 1)).toMatch(/Not finished: 2 of 2 items are not examined \(SEC-01, SEC-04\)/);
+        expect(body(h, 1)).not.toContain(NUDGE);
+    });
+
+    it("keeps its nudge for a sent-back agent that then ends with text", async () => {
+        const { h, run } = await setup([finish([]), text("I looked enough."), finish([])]);
+        expect(await run()).toMatchObject({ status: "done" });
+        expect(body(h, 2)).toContain(NUDGE);
+    });
+
     it("never lets a secret gitleaks found reach the model", async () => {
         const { h, run } = await setup([tool("read_file", { path: "src/db.js", start_line: 1, end_line: 2 }), finish()], {
             secrets: [SAMPLE_KEY]
