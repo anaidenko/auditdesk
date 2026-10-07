@@ -131,11 +131,14 @@ describe("review", () => {
         ]);
     });
 
-    it("refuses to accept or edit a merged or superseded finding", async () => {
+    it("refuses to accept, edit, reject or exclude a merged or superseded finding", async () => {
         const { a, b } = await twoFindings();
         await merge(a.id, b.label);
         await expect(accept(a.id)).rejects.toThrow(/merged/);
         await expect(edit(a.id, { title: "x" })).rejects.toThrow(/merged/);
+        await expect(reject(a.id, "a duplicate")).rejects.toThrow(/merged/);
+        await expect(exclude(a.id, "out of scope")).rejects.toThrow(/merged/);
+        expect((await prisma.finding.findUniqueOrThrow({ where: { id: a.id } })).status).toBe("merged");
         await prisma.finding.update({ where: { id: b.id }, data: { status: "superseded" } });
         await expect(accept(b.id)).rejects.toThrow(/superseded/);
     });
