@@ -18,7 +18,8 @@ const VULN_LINE = /vuln-code-snippet vuln-line\s+(.+?)\s*(?:\*\/|-->)?\s*$/;
  * The answer key of a fixture whose source marks its vulnerable lines (Juice Shop's coding
  * challenges): read from the upstream files' markers and written in the prepared tree's line
  * numbers, one entry per challenge. A challenge's consecutive marked lines form one range; a
- * distant one becomes another place the same defect shows. Only languages v1 covers are keyed.
+ * distant one becomes another place the same defect shows. Challenges marked on the same lines
+ * under one item share an entry. Only languages v1 covers are keyed.
  */
 export function buildKey(upstream: Record<string, string>, lineMap: LineMap, challenges: ChallengeMap, preparedTree: string): KeyEntry[] {
     const lines = new Map<string, number[]>();
@@ -32,7 +33,10 @@ export function buildKey(upstream: Record<string, string>, lineMap: LineMap, cha
     const locations = new Map<string, KeyLocation[]>();
     for (const [at, upstreamLines] of lines) {
         const [file, key] = at.split("\n");
-        const moved = upstreamLines.map(n => lineMap.get(file)?.(n) ?? n);
+        const map = lineMap.get(file);
+        // A line the prep removed, alone or with its file, is no longer in the audited tree.
+        const moved = upstreamLines.map(n => (map ? map(n) : n)).filter((n): n is number => n !== null);
+        if (!moved.length) continue;
         const prepared = readFileSync(join(preparedTree, file), "utf8").split("\n");
         const ranges: [number, number][] = [];
         for (const n of moved) {
@@ -45,21 +49,25 @@ export function buildKey(upstream: Record<string, string>, lineMap: LineMap, cha
     }
     const missing = [...locations.keys()].filter(k => !challenges[k]);
     if (missing.length) throw new Error(`No checklist item for ${missing.sort().join(", ")} in the challenge map`);
-    return [...locations.entries()]
-        .sort(([a], [b]) => a.localeCompare(b))
-        .map(([key, [first, ...rest]]) => {
-            const c = challenges[key];
-            return {
-                id: `JS-${key}`,
-                aspect: c.aspect,
-                checklistItem: c.checklistItem,
-                kind: "finding" as const,
-                severity: c.severity,
-                title: c.title,
-                ...first,
-                ...(rest.length ? { also: rest } : {})
-            };
-        });
+    const defects = new Map<string, string[]>();
+    for (const key of [...locations.keys()].sort()) {
+        const at = `${challenges[key].checklistItem}\n${JSON.stringify(locations.get(key))}`;
+        defects.set(at, [...(defects.get(at) ?? []), key]);
+    }
+    return [...defects.values()].map(keys => {
+        const c = challenges[keys[0]];
+        const [first, ...rest] = locations.get(keys[0])!;
+        return {
+            id: `JS-${keys.join("+")}`,
+            aspect: c.aspect,
+            checklistItem: c.checklistItem,
+            kind: "finding" as const,
+            severity: c.severity,
+            title: c.title,
+            ...first,
+            ...(rest.length ? { also: rest } : {})
+        };
+    });
 }
 
 export function keyYaml(fixture: string, entries: KeyEntry[]): string {

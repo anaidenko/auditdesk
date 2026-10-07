@@ -61,6 +61,32 @@ describe("buildKey", () => {
         expect(() => buildKey(upstream, lineMap, { loginChallenge: MAP.loginChallenge }, tree)).toThrow(/searchChallenge/);
     });
 
+    it("keys challenges marked on the same lines under one item as one defect", async () => {
+        const tree = await makeRepo({ "routes/login.js": "db.query(q) // vuln-code-snippet vuln-line adminChallenge benderChallenge\n" });
+        const upstream = { "routes/login.js": readFileSync(`${tree}/routes/login.js`, "utf8") };
+        const lineMap = await stripAnswers(tree, { deletePaths: [], statementPatterns: [] });
+        const map = {
+            adminChallenge: { ...MAP.loginChallenge, title: "SQL injection in the login query" },
+            benderChallenge: { ...MAP.loginChallenge, title: "SQL injection in the login query" }
+        };
+        const key = buildKey(upstream, lineMap, map, tree);
+        expect(key.map(e => e.id)).toEqual(["JS-adminChallenge+benderChallenge"]);
+        expect(key[0]).toMatchObject({ file: "routes/login.js", startLine: 1, endLine: 1, checklistItem: "SEC-04" });
+    });
+
+    it("skips a marked line the prep removed, with its file or alone", async () => {
+        const files = {
+            "routes/app.js": "db.query(q) // vuln-code-snippet vuln-line keptChallenge\n",
+            "routes/verify.js": "check() // vuln-code-snippet vuln-line goneChallenge\n",
+            "lib/x.js": "x()\nchallengeUtils.solveIf(c, () => {\n  return y // vuln-code-snippet vuln-line solvedChallenge\n})\n"
+        };
+        const tree = await makeRepo(files);
+        const lineMap = await stripAnswers(tree, { deletePaths: ["routes/verify.js"], statementPatterns: [/challengeUtils\.solveIf\(/] });
+        const challenge = { ...MAP.loginChallenge };
+        const key = buildKey(files, lineMap, { keptChallenge: challenge, goneChallenge: challenge, solvedChallenge: challenge }, tree);
+        expect(key.map(e => e.id)).toEqual(["JS-keptChallenge"]);
+    });
+
     it("keys only languages v1 covers", async () => {
         const { tree, lineMap, upstream } = await prepared();
         expect(buildKey(upstream, lineMap, MAP, tree).map(e => e.id)).toEqual(["JS-loginChallenge", "JS-searchChallenge"]);
