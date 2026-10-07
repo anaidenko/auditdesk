@@ -61,9 +61,10 @@ read-only tools. Setup and commands: README.md.
   `.claude/rules/testing.md`.
 - **Before a commit that touches code:**
   `pnpm format:check && pnpm lint && pnpm typecheck && pnpm vitest related <changed files> --run`
-  (about 15 s). The whole `pnpm test` (about 90 s, half of it the two Agent SDK test files) and
-  `pnpm test:e2e` (it builds the app) run at checkpoints: after a batch of commits, before a code
-  review, before a live run, and before merging a phase.
+  (about 15 s). The whole `pnpm test` (about 35 s: the parallel files, bound by the Agent SDK
+  ones, then the database files one by one) and `pnpm test:e2e` (it builds the app) run at
+  checkpoints: after a batch of commits, before a code review, before a live run, and before
+  merging a phase.
 - **Commits** follow Conventional Commits. Work on a branch, not `main`.
 - **No bots that open branches or pull requests,** Dependabot included. Update dependencies by
   hand, on a branch.
