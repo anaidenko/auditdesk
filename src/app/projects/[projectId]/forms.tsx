@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState } from "react";
+import { useActionState, useLayoutEffect, useRef, useState } from "react";
 
 import {
     type BriefValues,
@@ -16,8 +16,10 @@ import {
 } from "@/app/actions";
 import { ACCESS_LABEL } from "@/app/model-access";
 import { Badge, FormError, Icon, button, input, label } from "@/app/ui";
-import { DEFAULT_EFFORT, DEFAULT_MODEL } from "@/engine/agent/request";
+import { DEFAULT_EFFORT, DEFAULT_MODEL, type Effort } from "@/engine/agent/request";
 import { ASPECTS } from "@/engine/aspects";
+import { type CostStats, estimateRun, pickStats } from "@/engine/estimate";
+import { EFFORTS, MODEL_CHOICES } from "@/engine/models";
 import type { ModelAccess } from "@/engine/types";
 
 export function AddRepositoryForm({ projectId }: { projectId: string }) {
@@ -45,11 +47,16 @@ export function StartRunForm({
     defaults,
     chosen,
     suggested,
-    planUsage
+    planUsage,
+    repositories,
+    costStats
 }: {
     projectId: string;
     access: ModelAccess;
     defaults: { usd: number; tokens: number };
+    repositories: number;
+    /** Each offered model's per-agent cost from past runs, for the estimate. */
+    costStats: Record<string, CostStats>;
     /** The aspects the project's last run audited; the form starts from them. */
     chosen: string[];
     /** Conditional aspects the repositories' stacks call for, ticked too. */
@@ -58,9 +65,38 @@ export function StartRunForm({
     planUsage: { line: string; overReserve: boolean } | null;
 }) {
     const [state, action, pending] = useActionState<FormState<RunValues>, FormData>(startRun.bind(null, projectId), { error: null });
+    const ticked = (key: string) => key === "security" || (state.values?.aspects ?? [...chosen, ...suggested]).includes(key);
+    const [live, setLive] = useState({
+        aspects: ASPECTS.filter(a => ticked(a.key)).length,
+        usd: defaults.usd,
+        model: DEFAULT_MODEL as string,
+        effort: DEFAULT_EFFORT as Effort
+    });
+    const form = useRef<HTMLFormElement>(null);
+    // Security is disabled, so the form data never holds it.
+    const read = (f: HTMLFormElement | null) => {
+        if (!f) return;
+        const fd = new FormData(f);
+        setLive({
+            aspects: 1 + fd.getAll("aspects").length,
+            usd: Number(fd.get("budgetUsd")),
+            model: String(fd.get("model")),
+            effort: String(fd.get("effort")) as Effort
+        });
+    };
+    // A box ticked by a new suggestion, or values a browser restored, change the form without a change event.
+    useLayoutEffect(() => read(form.current), [chosen, suggested, repositories, state]);
+    const picked = pickStats(costStats, live.model, live.effort);
+    const estimate = repositories ? estimateRun(picked.stats, repositories * live.aspects, live.usd, picked.basis) : null;
     return (
         // Remounted with what a refused start held, since React resets a form after its action.
-        <form key={JSON.stringify(state.values ?? null)} action={action} className="space-y-4">
+        <form
+            ref={form}
+            key={JSON.stringify(state.values ?? null)}
+            action={action}
+            onChange={e => read(e.currentTarget)}
+            className="space-y-4"
+        >
             <fieldset>
                 <legend className={label}>Aspects</legend>
                 <div className="mt-1.5 grid gap-x-4 gap-y-2 sm:grid-cols-2">
@@ -70,9 +106,7 @@ export function StartRunForm({
                                 type="checkbox"
                                 name="aspects"
                                 value={a.key}
-                                defaultChecked={
-                                    a.key === "security" || (state.values?.aspects ?? [...chosen, ...suggested]).includes(a.key)
-                                }
+                                defaultChecked={ticked(a.key)}
                                 disabled={a.key === "security"}
                                 className="mt-0.5 size-4 rounded border-zinc-300 accent-indigo-600"
                             />
@@ -90,6 +124,24 @@ export function StartRunForm({
                 </div>
             </fieldset>
             <div className="grid grid-cols-2 gap-3">
+                <label className={label}>
+                    Model
+                    <select name="model" defaultValue={state.values?.model || DEFAULT_MODEL} className={`${input} mt-1.5`}>
+                        {MODEL_CHOICES.map(m => (
+                            <option key={m.id} value={m.id}>
+                                {m.label}
+                            </option>
+                        ))}
+                    </select>
+                </label>
+                <label className={label}>
+                    Effort
+                    <select name="effort" defaultValue={state.values?.effort || DEFAULT_EFFORT} className={`${input} mt-1.5`}>
+                        {EFFORTS.map(e => (
+                            <option key={e}>{e}</option>
+                        ))}
+                    </select>
+                </label>
                 <label className={label}>
                     Cap, USD
                     <input
@@ -113,6 +165,15 @@ export function StartRunForm({
                     />
                 </label>
             </div>
+            {estimate && (
+                <div className="space-y-1 text-xs">
+                    <p data-testid="estimate" className="text-zinc-600">
+                        {estimate.text}
+                        {access === "claude_plan" ? " API-equivalent; the plan bills nothing." : ""}
+                    </p>
+                    {estimate.warning && <p className="font-medium text-amber-800">{estimate.warning}</p>}
+                </div>
+            )}
             {planUsage && (
                 <div className="space-y-2 text-xs text-zinc-600">
                     <p data-testid="plan-usage">{planUsage.line}</p>
@@ -129,8 +190,9 @@ export function StartRunForm({
                 Start run
             </button>
             <p className="text-xs text-zinc-500">
-                Security is always on · {ACCESS_LABEL[access]} · {DEFAULT_MODEL} · effort {DEFAULT_EFFORT}. The cap is split equally between
-                the aspects and repositories, and checked between calls{access === "claude_plan" ? ", in API-equivalent dollars" : ""}.
+                Security is always on · {ACCESS_LABEL[access]} · Sonnet 5.5 at low effort is the cheapest; another model or effort costs
+                more. The cap is split equally between the aspects and repositories, and checked between calls
+                {access === "claude_plan" ? ", in API-equivalent dollars" : ""}.
             </p>
             {state.error && <FormError>{state.error}</FormError>}
         </form>

@@ -3,7 +3,6 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 
-import { DEFAULT_EFFORT, DEFAULT_MODEL } from "@/engine/agent/request";
 import { workspaceDir } from "@/engine/config";
 import { credentialStatus } from "@/engine/credentials";
 import { readPlanUsage, reserveRefusal } from "@/engine/plan-usage";
@@ -24,7 +23,7 @@ import { confirmDetectedStack, detectRepositoryStack, deleteProject as removePro
  * `values`: what a refused form held, so it comes back as Andrii left it (React resets a form after its action).
  */
 export type FormState<V = never> = { error: string | null; askReserve?: boolean; values?: V };
-export type RunValues = { aspects: string[]; budgetUsd: string; budgetKTokens: string };
+export type RunValues = { aspects: string[]; budgetUsd: string; budgetKTokens: string; model: string; effort: string };
 export type BriefValues = { product: string; concerns: string; outOfScope: string; aiBuilt: boolean };
 export type NotesValues = { stackText: string; instructions: string };
 
@@ -107,7 +106,13 @@ export async function startRun(projectId: string, _prev: FormState<RunValues>, f
     const refused = await tryStartRun(projectId, fd);
     return {
         ...refused,
-        values: { aspects: fd.getAll("aspects").map(String), budgetUsd: text(fd, "budgetUsd"), budgetKTokens: text(fd, "budgetKTokens") }
+        values: {
+            aspects: fd.getAll("aspects").map(String),
+            budgetUsd: text(fd, "budgetUsd"),
+            budgetKTokens: text(fd, "budgetKTokens"),
+            model: text(fd, "model"),
+            effort: text(fd, "effort")
+        }
     };
 }
 
@@ -139,8 +144,6 @@ async function tryStartRun(projectId: string, fd: FormData): Promise<FormState> 
     let runId: string;
     try {
         runId = await enqueueRun(projectId, {
-            model: DEFAULT_MODEL,
-            effort: DEFAULT_EFFORT,
             modelAccess: project.modelAccess,
             allowPastReserve,
             ...parsed.value

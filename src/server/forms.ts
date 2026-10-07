@@ -1,5 +1,7 @@
+import { DEFAULT_EFFORT, DEFAULT_MODEL, type Effort } from "@/engine/agent/request";
 import { type AspectKey, selectAspects } from "@/engine/aspects";
 import { validateBudget } from "@/engine/budget";
+import { EFFORTS, MODEL_CHOICES } from "@/engine/models";
 import type { Brief } from "@/engine/prompts";
 import type { ModelAccess } from "@/engine/types";
 import { parseSource } from "@/engine/workspace";
@@ -25,13 +27,17 @@ export function parseRepositoryForm(fd: FormData): Parsed<{ source: string; bran
 export function parseRunForm(
     fd: FormData,
     repositories: number
-): Parsed<{ budgetUsd: number; budgetTokens: number; aspects: AspectKey[] }> {
+): Parsed<{ budgetUsd: number; budgetTokens: number; aspects: AspectKey[]; model: string; effort: Effort }> {
     const aspects = selectAspects(fd.getAll("aspects").map(String));
     if (!aspects.ok) return aspects;
+    const model = String(fd.get("model") || DEFAULT_MODEL);
+    if (!MODEL_CHOICES.some(m => m.id === model)) return { ok: false, error: "Choose one of the offered models." };
+    const effort = String(fd.get("effort") || DEFAULT_EFFORT) as Effort;
+    if (!EFFORTS.includes(effort)) return { ok: false, error: "Choose one of the offered efforts." };
     const budgetUsd = Number(fd.get("budgetUsd"));
     const budgetTokens = Math.round(Number(fd.get("budgetKTokens")) * 1000);
     const error = validateBudget({ usd: budgetUsd, tokens: budgetTokens }, repositories * aspects.value.length);
-    return error ? { ok: false, error } : { ok: true, value: { budgetUsd, budgetTokens, aspects: aspects.value } };
+    return error ? { ok: false, error } : { ok: true, value: { budgetUsd, budgetTokens, aspects: aspects.value, model, effort } };
 }
 
 export function parseModelAccess(fd: FormData): Parsed<ModelAccess> {

@@ -28,7 +28,8 @@ function repoName(source: string): string {
               .join("/");
 }
 
-export async function loadReportData(projectId: string): Promise<ReportData> {
+/** `includeCost`: Andrii ticked the cost at export (design § 8); otherwise the report states none. */
+export async function loadReportData(projectId: string, o: { includeCost?: boolean } = {}): Promise<ReportData> {
     const project = await prisma.project.findUniqueOrThrow({
         where: { id: projectId },
         include: { repositories: { orderBy: { createdAt: "asc" } } }
@@ -104,7 +105,10 @@ export async function loadReportData(projectId: string): Promise<ReportData> {
         distinct: ["servedModel"],
         select: { servedModel: true }
     });
-    const calls = await prisma.apiCall.findMany({ where: { run: { projectId } }, select: { costUsd: true } });
+    const calls = await prisma.apiCall.findMany({
+        where: { run: { projectId } },
+        select: { costUsd: true, run: { select: { modelAccess: true } } }
+    });
     const accesses = await prisma.run.findMany({
         where: { projectId, calls: { some: {} } },
         distinct: ["modelAccess"],
@@ -127,7 +131,13 @@ export async function loadReportData(projectId: string): Promise<ReportData> {
         toolVersions: (scanned?.toolVersions as ToolVersions | null) ?? null,
         findings: rows.filter(r => r.kind === "finding").map(toReport),
         questions: rows.filter(r => r.kind === "question").map(toReport),
-        costUsd: calls.some(c => c.costUsd === null) ? null : calls.reduce((s, c) => s + Number(c.costUsd), 0)
+        cost: o.includeCost
+            ? {
+                  apiKeyUsd: calls.filter(c => c.run.modelAccess === "api_key").reduce((sum, c) => sum + Number(c.costUsd ?? 0), 0),
+                  planUsd: calls.filter(c => c.run.modelAccess === "claude_plan").reduce((sum, c) => sum + Number(c.costUsd ?? 0), 0),
+                  unpriced: calls.filter(c => c.costUsd === null).length
+              }
+            : null
     };
 }
 

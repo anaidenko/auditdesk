@@ -213,6 +213,46 @@ test("opened from disk with the network off, the report's severity filter hides 
     expect(requests).toEqual([]);
 });
 
+test("a run uses the model and effort chosen in the form", async ({ page }) => {
+    await newProject(page, "Opus run");
+    await page.getByLabel(/client agreed/).check();
+    await page.getByRole("button", { name: "Save", exact: true }).click();
+    await page.locator('select[name="model"]').selectOption("claude-opus-5-5");
+    await page.locator('select[name="effort"]').selectOption("high");
+    await page.getByRole("button", { name: "Start run" }).click();
+    await expect(page.getByTestId("run-status")).toHaveText("done", { timeout: 60_000 });
+    await expect(page.getByText(/claude-opus-5-5 · effort high/)).toBeVisible();
+});
+
+test("the run form estimates the cost for the agents, the model and the effort it would start", async ({ page }) => {
+    await finishedRun(page, "Estimate");
+    await page.getByRole("link", { name: "Estimate", exact: true }).click();
+    const estimate = page.getByTestId("estimate");
+    await expect(estimate).toContainText(/for 1 agent, from \d+ past agents? on this model and effort/);
+    await page.getByRole("checkbox", { name: "Data model and database" }).check();
+    await expect(estimate).toContainText("for 2 agents,");
+    await page.locator('select[name="effort"]').selectOption("max");
+    await expect(estimate).toContainText(/for 2 agents, from \d+ past agents? on this model at \w+ effort, which may cost less/);
+});
+
+test("the run shows its spend per serving model, and the report states the cost only when asked", async ({ page }) => {
+    await finishedRun(page, "Cost");
+    await expect(page.getByTestId("served-by").first()).toContainText("claude-sonnet-5-5 · 4 calls");
+    await page.getByRole("link", { name: "Review the findings" }).click();
+    const accepted = page.locator("details", { hasText: "User input reaches eval" });
+    await accepted.locator("summary").click();
+    await accepted.getByRole("button", { name: "Accept" }).click();
+    await expect(accepted).toContainText("accepted");
+    const text = async (withCost: boolean) => {
+        if (withCost) await page.getByLabel("Include the cost").check();
+        else await page.getByLabel("Include the cost").uncheck();
+        const [download] = await Promise.all([page.waitForEvent("download"), page.getByRole("button", { name: "HTML report" }).click()]);
+        return readFileSync((await download.path())!, "utf8");
+    };
+    expect(await text(false)).not.toMatch(/cost of the model calls/i);
+    expect(await text(true)).toMatch(/API-equivalent cost of the model calls: \$\d+\.\d{2}; the Claude plan bills nothing/);
+});
+
 test("starting twice queues one run", async ({ page }) => {
     await newProject(page, "Double");
     await page.getByLabel(/client agreed/).check();

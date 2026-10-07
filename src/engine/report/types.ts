@@ -38,7 +38,8 @@ export interface ReportData {
     toolVersions: ToolVersions | null;
     findings: ReportFinding[];
     questions: ReportFinding[];
-    costUsd: number | null;
+    /** Only when Andrii ticks it at export (design § 8): billed dollars and plan dollars apart. */
+    cost: { apiKeyUsd: number; planUsd: number; unpriced: number } | null;
     /** The project's AI-built mode: the report gathers ai-built findings only when it is on (design § 10). */
     aiBuilt: boolean;
 }

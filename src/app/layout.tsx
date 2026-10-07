@@ -28,7 +28,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
                         </Link>
                         <div className="ml-auto flex items-center gap-2 text-xs">
                             <span className="hidden items-center gap-1.5 rounded-full bg-zinc-100 px-2.5 py-1 font-medium text-zinc-600 sm:inline-flex">
-                                {DEFAULT_MODEL} · effort {DEFAULT_EFFORT}
+                                default: {DEFAULT_MODEL} · effort {DEFAULT_EFFORT}
                             </span>
                             <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-50 px-2.5 py-1 font-medium text-emerald-700 ring-1 ring-emerald-600/20 ring-inset">
                                 <span aria-hidden className="size-1.5 rounded-full bg-emerald-500" />

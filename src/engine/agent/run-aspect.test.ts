@@ -13,6 +13,7 @@ import { Masker } from "../masker";
 import { MemorySink } from "../memory-sink";
 import { prefixBlocks } from "../prompts";
 
+import type { Effort } from "./request";
 import { runAspect } from "./run-aspect";
 
 async function setup(
@@ -23,6 +24,8 @@ async function setup(
         files?: Record<string, string>;
         checklist?: Checklist;
         aspect?: string;
+        model?: string;
+        effort?: Effort;
     } = {}
 ) {
     const clonePath = await makeRepo({
@@ -45,8 +48,8 @@ async function setup(
     const run = () =>
         runAspect({
             client: new Anthropic({ apiKey: "test", fetch, maxRetries: 0 }),
-            model: "claude-opus-5-5",
-            effort: "medium",
+            model: o.model ?? "claude-sonnet-5-5",
+            effort: o.effort ?? "low",
             share: o.share ?? { usd: 10, tokens: 1_000_000 },
             ctx,
             system: prefixBlocks({ stackProfile: "s", repoMap: "map", brief: "b" }),
@@ -72,6 +75,20 @@ describe("runAspect", () => {
         expect(sink.findings[0].evidence[0].snippet).toContain("SELECT * FROM u");
         expect(sink.calls).toHaveLength(3);
         expect(requests).toHaveLength(3);
+    });
+
+    it("sends the run's model and effort on every request", async () => {
+        const { requests, run } = await setup([tool("list_files", { dir: ".", glob: "" }), finish()], {
+            model: "claude-opus-5-5",
+            effort: "max"
+        });
+        await run();
+        expect(requests).toHaveLength(2);
+        for (const r of requests) {
+            const body = r.body as { model: string; output_config: { effort: string } };
+            expect(body.model).toBe("claude-opus-5-5");
+            expect(body.output_config.effort).toBe("max");
+        }
     });
 
     it("tags a finding filed under an AI-built item ai-built", async () => {

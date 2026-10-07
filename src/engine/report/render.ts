@@ -171,6 +171,21 @@ function effortSummary(findings: ReportFinding[]): string | null {
     return `Estimated effort: ${head && parts.length ? `${head}, plus ${list(parts)}` : head || list(parts)}.`;
 }
 
+/** The model calls' cost: billed dollars and the plan's API-equivalent ones never added together. */
+function costLine(cost: ReportData["cost"]): string {
+    if (!cost) return "";
+    const usd = (x: number) => `$${x.toFixed(2)}`;
+    const atLeast = cost.unpriced ? "at least " : "";
+    const unknown = cost.unpriced
+        ? `; ${cost.unpriced} ${cost.unpriced === 1 ? "call was" : "calls were"} served by a model with no price row, so ${cost.unpriced === 1 ? "its" : "their"} cost is unknown`
+        : "";
+    if (cost.planUsd && cost.apiKeyUsd)
+        return `<li>Cost of the model calls: ${atLeast}${usd(cost.apiKeyUsd)} through the API key, plus ${usd(cost.planUsd)} API-equivalent on the Claude plan, which bills nothing for them${unknown}.</li>`;
+    if (cost.planUsd)
+        return `<li>API-equivalent cost of the model calls: ${atLeast}${usd(cost.planUsd)}; the Claude plan bills nothing for them${unknown}.</li>`;
+    return `<li>Cost of the model calls: ${atLeast}${usd(cost.apiKeyUsd)}${unknown}.</li>`;
+}
+
 function finding(f: ReportFinding): string {
     const byDefault = f.severity === "critical" || f.severity === "high";
     const call =
@@ -369,6 +384,7 @@ ${aspects}
 <li>Model access: ${d.modelAccess.map(a => ACCESS_TEXT[a]).join("; ") || "none"}.</li>
 ${tools}
 <li>Budgets are checked between model calls; a call in progress may exceed its share by its own cost.</li>
+${costLine(d.cost)}
 ${d.repositories
     .filter(r => r.notCovered.length)
     .map(

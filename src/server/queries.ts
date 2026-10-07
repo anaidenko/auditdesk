@@ -1,5 +1,6 @@
 import "server-only";
 
+import { freshTokens } from "@/engine/budget";
 import type { ModelAccess } from "@/engine/types";
 import { prisma } from "@/server/db";
 
@@ -22,8 +23,40 @@ export interface RunSnapshot {
     agents: { id: string; aspect: string; status: string; note: string | null }[];
     spendUsd: number;
     unpriced: boolean;
+    /** Per model that served calls, a fallback target included (design § 8). */
+    byModel: { model: string; calls: number; freshTokens: number; usd: number; fallback: boolean; unpriced: boolean }[];
     findings: number;
     terminal: boolean;
+}
+
+function byServingModel(
+    calls: {
+        costUsd: unknown;
+        servedModel: string;
+        fallback: boolean;
+        inputTokens: number;
+        cacheWrite5mTokens: number;
+        cacheWrite1hTokens: number;
+        outputTokens: number;
+    }[]
+): RunSnapshot["byModel"] {
+    const rows = new Map<string, RunSnapshot["byModel"][number]>();
+    for (const c of calls) {
+        const row = rows.get(c.servedModel) ?? { model: c.servedModel, calls: 0, freshTokens: 0, usd: 0, fallback: false, unpriced: false };
+        row.calls++;
+        row.freshTokens += freshTokens({
+            input: c.inputTokens,
+            cacheWrite5m: c.cacheWrite5mTokens,
+            cacheWrite1h: c.cacheWrite1hTokens,
+            output: c.outputTokens,
+            cacheRead: 0
+        });
+        row.unpriced ||= c.costUsd === null;
+        row.usd = Math.round((row.usd + Number(c.costUsd ?? 0)) * 1e6) / 1e6;
+        row.fallback ||= c.fallback;
+        rows.set(c.servedModel, row);
+    }
+    return [...rows.values()];
 }
 
 export async function runSnapshot(runId: string, afterEventId: bigint): Promise<RunSnapshot> {
@@ -32,7 +65,18 @@ export async function runSnapshot(runId: string, afterEventId: bigint): Promise<
         include: {
             events: { where: { id: { gt: afterEventId } }, orderBy: { id: "asc" } },
             agents: { orderBy: { createdAt: "asc" } },
-            calls: { select: { costUsd: true } },
+            calls: {
+                orderBy: { createdAt: "asc" },
+                select: {
+                    costUsd: true,
+                    servedModel: true,
+                    fallback: true,
+                    inputTokens: true,
+                    cacheWrite5mTokens: true,
+                    cacheWrite1hTokens: true,
+                    outputTokens: true
+                }
+            },
             _count: { select: { findings: true } }
         }
     });
@@ -44,6 +88,7 @@ export async function runSnapshot(runId: string, afterEventId: bigint): Promise<
         agents: run.agents.map(a => ({ id: a.id, aspect: a.aspect, status: a.status, note: a.note })),
         spendUsd: run.calls.reduce((s, c) => s + Number(c.costUsd ?? 0), 0),
         unpriced: run.calls.some(c => c.costUsd === null),
+        byModel: byServingModel(run.calls),
         findings: run._count.findings,
         terminal: ["done", "failed", "interrupted", "stopped"].includes(run.status)
     };

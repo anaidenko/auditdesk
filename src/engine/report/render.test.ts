@@ -317,6 +317,25 @@ describe("renderReport", () => {
         expect(html).toMatch(/hashchange/);
     });
 
+    it("states the model calls' cost only when the export asks for it", () => {
+        expect(renderReport(data({ cost: null }))).not.toMatch(/cost of the model calls/i);
+        expect(renderReport(data({ cost: { apiKeyUsd: 1.234, planUsd: 0, unpriced: 0 } }))).toContain(
+            "<li>Cost of the model calls: $1.23.</li>"
+        );
+        expect(renderReport(data({ cost: { apiKeyUsd: 0, planUsd: 1.234, unpriced: 0 } }))).toContain(
+            "<li>API-equivalent cost of the model calls: $1.23; the Claude plan bills nothing for them.</li>"
+        );
+    });
+
+    it("keeps plan dollars apart from billed ones, and says when some calls could not be priced", () => {
+        expect(renderReport(data({ cost: { apiKeyUsd: 1.2, planUsd: 3, unpriced: 0 } }))).toContain(
+            "<li>Cost of the model calls: $1.20 through the API key, plus $3.00 API-equivalent on the Claude plan, which bills nothing for them.</li>"
+        );
+        expect(renderReport(data({ cost: { apiKeyUsd: 1.2, planUsd: 0, unpriced: 2 } }))).toContain(
+            "<li>Cost of the model calls: at least $1.20; 2 calls were served by a model with no price row, so their cost is unknown.</li>"
+        );
+    });
+
     it("gathers the findings tagged ai-built under Signs of AI-generated code", () => {
         const html = renderReport(
             data({
