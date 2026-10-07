@@ -149,6 +149,41 @@ describe("osv-scanner", () => {
 });
 
 describe("Semgrep", () => {
+    const [xss, concat] = parseSemgrep(recorded("semgrep"));
+    const moved = (r: typeof concat, path: string, line: number, lines: string) => ({
+        ...r,
+        path,
+        start: { line },
+        end: { line },
+        extra: { ...r.extra, lines }
+    });
+
+    it("files one finding per rule, listing every place", () => {
+        const results = [concat, moved(concat, "src/b.js", 9, "eval(b)"), moved(concat, "src/server.js", 20, "eval(c)"), xss];
+        const out = normaliseSemgrep(results, { repositoryId: "r", masker });
+        expect(out).toHaveLength(2);
+        expect(out[0].title).toMatch(/[^.] \(3 places in 2 files\)$/);
+        expect(out[0].evidence.map(e => `${e.file}:${e.startLine}`)).toEqual(["src/b.js:9", "src/server.js:7", "src/server.js:20"]);
+        expect(new Set(out[0].evidence.map(e => e.key)).size).toBe(3);
+    });
+
+    it("keeps the results of one rule apart when their messages differ", () => {
+        const other = moved(concat, "src/b.js", 9, "eval(b)");
+        other.extra = { ...other.extra, message: "Another message." };
+        expect(normaliseSemgrep([concat, other], { repositoryId: "r", masker })).toHaveLength(2);
+    });
+
+    it("files only the places not filed before", () => {
+        const results = [concat, moved(concat, "src/b.js", 9, "eval(b)")];
+        const [group, ...none] = normaliseSemgrep(results, { repositoryId: "r", masker });
+        expect(none).toEqual([]);
+        const [first, second] = group.evidence.map(e => e.key!);
+        expect(first && second).toBeTruthy();
+        const [left] = normaliseSemgrep(results, { repositoryId: "r", masker, known: new Set([first]) });
+        expect(left.evidence.map(e => e.key)).toEqual([second]);
+        expect(left.title).not.toMatch(/places/);
+    });
+
     it("maps a code-injection rule to SEC-04 by its CWE", () => {
         const findings = normaliseSemgrep(parseSemgrep(recorded("semgrep")), { repositoryId: "r", masker });
         // Line 7 also trips an XSS rule (direct-response-write, CWE-79); pick the eval rule by its ID.

@@ -2,7 +2,8 @@ import { fingerprint } from "../findings";
 import type { Masker } from "../masker";
 import type { NewFinding, SeverityName } from "../types";
 
-import { ROLE_WORDS, sampleRole } from "./paths";
+import { type Place, comparePlaces, filesPhrase, groupFingerprint, groupPlaces } from "./group";
+import { ROLE_WORDS, type SampleRole, sampleRole } from "./paths";
 import type { Ruleset, SemgrepResult } from "./types";
 
 export function semgrepArgs(rulesets: Ruleset[]): string[] {
@@ -50,30 +51,52 @@ function firstCwe(meta: SemgrepResult["extra"]["metadata"]): string | undefined 
 
 const SEVERITY: Record<string, SeverityName> = { ERROR: "high", WARNING: "medium", INFO: "low" };
 
-export function normaliseSemgrep(results: SemgrepResult[], o: { repositoryId: string; masker: Masker }): NewFinding[] {
-    return results.map(r => {
+type Result = { r: SemgrepResult; cwe: string | undefined; item: string; role: SampleRole | null; message: string; place: Place };
+
+/** `known`: places filed before, left out, so a group files only what is new. */
+export function normaliseSemgrep(results: SemgrepResult[], o: { repositoryId: string; masker: Masker; known?: Set<string> }): NewFinding[] {
+    const located = results.map((r): Result => {
         const cwe = firstCwe(r.extra.metadata);
         const item = BY_CWE.find(([re]) => cwe && re.test(cwe))?.[1] ?? "SEC-15";
-        const evidence = [{ file: r.path, startLine: r.start.line, endLine: r.end.line, snippet: o.masker.mask(r.extra.lines) }];
-        const base = { repositoryId: o.repositoryId, aspect: "security", checklistItem: item, evidence };
-        const role = sampleRole(r.path);
-        return {
-            ...base,
-            agentRunId: null,
-            kind: "finding",
-            title: `${o.masker.mask(r.extra.message.split(/(?<=\.)\s/)[0].slice(0, 160)).replace(role ? /\.\s*$/ : /$^/, "")}${role ? ` (${ROLE_WORDS[role]})` : ""}`,
-            // In a sample file a hard-coded secret is rated as gitleaks rates it; anything else is low.
-            severity: role ? (item === "SEC-10" ? "medium" : "low") : (SEVERITY[r.extra.severity] ?? "medium"),
-            likelihood: null,
-            impact: null,
-            summary: o.masker.mask(r.extra.message),
-            explanation: `Semgrep rule ${r.check_id}.`,
-            recommendation: "Confirm the input is attacker-controlled; if so, follow the rule's references.",
-            effort: "S",
-            references: { cwe, cheatSheets: r.extra.metadata.references?.filter(u => u.includes("cheatsheetseries.owasp.org")) },
-            tags: [],
-            source: "scanner",
-            fingerprint: fingerprint({ ...base, evidence: [{ ...evidence[0], snippet: `${r.check_id}\n${evidence[0].snippet}` }] })
-        } satisfies NewFinding;
+        const evidence = { file: r.path, startLine: r.start.line, endLine: r.end.line, snippet: o.masker.mask(r.extra.lines) };
+        const key = fingerprint({
+            repositoryId: o.repositoryId,
+            aspect: "security",
+            checklistItem: item,
+            evidence: [{ ...evidence, snippet: `${r.check_id}\n${evidence.snippet}` }]
+        });
+        return { r, cwe, item, role: sampleRole(r.path), message: o.masker.mask(r.extra.message), place: { ...evidence, key } };
     });
+    // A rule whose message names what it matched ("input `query`") files each message apart, so no card misstates a place.
+    return groupPlaces(located, x => `${x.r.check_id}\n${x.role}\n${x.message}`, o.known).map(g => semgrepFinding(g, o.repositoryId));
+}
+
+function semgrepFinding(group: Result[], repositoryId: string): NewFinding {
+    const { r, cwe, item, role, message } = group[0];
+    const places = group.map(x => x.place).sort(comparePlaces);
+    const sentence = message.split(/(?<=\.)\s/)[0].slice(0, 160);
+    return {
+        repositoryId,
+        agentRunId: null,
+        aspect: "security",
+        kind: "finding",
+        checklistItem: item,
+        title:
+            places.length === 1
+                ? `${sentence.replace(role ? /\.\s*$/ : /$^/, "")}${role ? ` (${ROLE_WORDS[role]})` : ""}`
+                : `${sentence.replace(/\.\s*$/, "")} (${places.length} places in ${filesPhrase(places, role)})`,
+        // In a sample file a hard-coded secret is rated as gitleaks rates it; anything else is low.
+        severity: role ? (item === "SEC-10" ? "medium" : "low") : (SEVERITY[r.extra.severity] ?? "medium"),
+        likelihood: null,
+        impact: null,
+        summary: message,
+        explanation: `Semgrep rule ${r.check_id}.`,
+        recommendation: "Confirm the input is attacker-controlled; if so, follow the rule's references.",
+        effort: "S",
+        references: { cwe, cheatSheets: r.extra.metadata.references?.filter(u => u.includes("cheatsheetseries.owasp.org")) },
+        tags: [],
+        source: "scanner",
+        fingerprint: groupFingerprint(places),
+        evidence: places
+    } satisfies NewFinding;
 }
