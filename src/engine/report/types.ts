@@ -36,7 +36,14 @@ export interface ReportData {
     repositories: { name: string; branch: string; sha: string; notCovered: string[] }[];
     /** The name a seams finding's path starts with, per repository; present when there are seams findings. */
     seamsPaths?: { path: string; repository: string }[];
-    aspects: { title: string; status: string; note: string | null; coverage: { item: string; title: string; status: string }[] }[];
+    aspects: {
+        /** The catalogue key; the title names the repository too. */
+        key?: string;
+        title: string;
+        status: string;
+        note: string | null;
+        coverage: { item: string; title: string; status: string }[];
+    }[];
     servedModels: string[];
     /** The accesses of the runs whose calls are in the report: which terms the client's code went under. */
     modelAccess: ModelAccess[];

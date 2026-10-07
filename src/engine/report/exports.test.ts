@@ -28,7 +28,8 @@ const data = () =>
                     asvs: [],
                     cheatsheets: [],
                     advisories: [],
-                    nist: null
+                    nist: null,
+                    wcag: []
                 }
             })
         ],

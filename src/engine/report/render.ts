@@ -99,6 +99,14 @@ const COVERAGE: Record<string, string> = {
     not_reported: "not reported (the agent stopped first)"
 };
 
+/** Performance and accessibility read from code: what the report cannot claim for them. */
+function staticOnly(d: ReportData): string {
+    const ran = ["performance", "accessibility"].filter(k => d.aspects.some(a => a.key === k)).map(aspectTitle);
+    if (!ran.length) return "";
+    const named = ran.length > 1 ? `${ran[0]} and ${ran[1].toLowerCase()} were` : `${ran[0]} was`;
+    return `<li>${named} judged from the code alone: no page was rendered or timed, no contrast was measured and no screen reader was run.</li>`;
+}
+
 /**
  * Every value from the database or the client's code goes through here. A template, not
  * react-dom/server: Next.js rejects that import in Route Handler and instrumentation bundles.
@@ -217,8 +225,8 @@ function finding(f: ReportFinding): string {
     const R = f.refs;
     const refs = R
         ? [
-              (R.top10 || R.asvs.length) &&
-                  `Relevant to: ${[R.top10, ...R.asvs]
+              (R.top10 || R.asvs.length || R.wcag.length) &&
+                  `Relevant to: ${[R.top10, ...R.asvs, ...R.wcag]
                       .filter((r): r is Ref => !!r)
                       .map(link)
                       .join("; ")}.`,
@@ -423,6 +431,7 @@ ${aspects}
 <h3>Method</h3>
 <ul class="method">
 <li>The client's code was read, not installed, built or run: no dependency install, no type-check, no project lint.</li>
+${staticOnly(d)}
 <li>Models that served calls: ${e(d.servedModels.join(", ") || "none")}.</li>
 <li>Model access: ${d.modelAccess.map(a => ACCESS_TEXT[a]).join("; ") || "none"}.</li>
 ${tools}

@@ -14,6 +14,9 @@ describe("aspects", () => {
             "data",
             "quality",
             "production",
+            "api",
+            "performance",
+            "accessibility",
             "llm",
             "tenancy",
             "seams"
@@ -25,7 +28,7 @@ describe("aspects", () => {
     });
 
     it("refuses an aspect outside the catalogue", () => {
-        expect(selectAspects(["security", "performance"])).toEqual({ ok: false, error: "Unknown aspect: performance." });
+        expect(selectAspects(["security", "usability"])).toEqual({ ok: false, error: "Unknown aspect: usability." });
     });
 
     it("names an aspect by its checklist's title, and an unknown one by its key", () => {

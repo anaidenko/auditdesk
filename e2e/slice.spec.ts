@@ -197,6 +197,9 @@ test("the stack is detected and confirmed, and the brief is saved", async ({ pag
     await notes.getByRole("button", { name: "Detect stack" }).click();
     await expect(notes.getByLabel("Stack profile")).toHaveValue(/Frameworks: Express/);
     await expect(notes).toContainText("detected, not confirmed");
+    // An Express server with no user interface: API design is suggested, Accessibility is not.
+    await expect(page.getByRole("checkbox", { name: "API design" })).toBeChecked();
+    await expect(page.getByRole("checkbox", { name: "Accessibility" })).not.toBeChecked();
     await notes.getByLabel("How to run it").fill("npm start, port 3000");
     await notes.getByRole("button", { name: "Save the instructions only" }).click();
     await expect(notes).toContainText("detected, not confirmed");

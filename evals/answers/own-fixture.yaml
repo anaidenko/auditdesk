@@ -154,6 +154,8 @@ entries:
     kind: finding
     severity: medium
     title: OrderItem.orderId has no index
+    alsoItems:
+      - PRF-07
     file: prisma/schema.prisma
     startLine: 85
     endLine: 92
@@ -169,6 +171,8 @@ entries:
     kind: finding
     severity: medium
     title: The order list queries each order's items separately
+    alsoItems:
+      - PRF-07
     file: src/app/api/orders/route.ts
     startLine: 13
     endLine: 18
@@ -302,6 +306,168 @@ entries:
     startLine: 5
     endLine: 5
     anchor: cached("top-products"
+  - id: OWN-26
+    aspect: api
+    checklistItem: API-01
+    kind: finding
+    severity: high
+    title: Opening a link is enough to cancel an order, since the cancel endpoint answers GET
+    alsoItems:
+      - SEC-06
+    file: src/app/api/orders/[id]/cancel/route.ts
+    startLine: 5
+    endLine: 5
+    anchor: export async function GET
+  - id: OWN-27
+    aspect: api
+    checklistItem: API-02
+    kind: finding
+    severity: medium
+    title: A refused cancellation is answered with status 200
+    file: src/app/api/orders/[id]/cancel/route.ts
+    startLine: 12
+    endLine: 12
+    anchor: "if (!order) return Response.json({ ok: false"
+    also:
+      - file: src/app/api/orders/[id]/cancel/route.ts
+        startLine: 7
+        endLine: 7
+        anchor: "if (!session) return Response.json({ ok: false"
+  - id: OWN-28
+    aspect: api
+    checklistItem: API-03
+    kind: finding
+    severity: medium
+    title: The product list endpoint returns a store's whole catalogue in one response
+    alsoItems:
+      - DAT-03
+    file: src/app/api/products/route.ts
+    startLine: 9
+    endLine: 13
+    anchor: const products = await prisma.product.findMany({
+  - id: OWN-29
+    aspect: api
+    checklistItem: API-05
+    kind: finding
+    severity: high
+    title: A retried checkout request creates a second order and charges the card again
+    file: src/app/api/checkout/route.ts
+    startLine: 41
+    endLine: 41
+    anchor: const charge = await capture(order.id, total);
+    also:
+      - file: src/app/api/checkout/route.ts
+        startLine: 9
+        endLine: 9
+        anchor: export async function POST
+  - id: OWN-30
+    aspect: performance
+    checklistItem: PRF-02
+    kind: finding
+    severity: high
+    title: The shipping page waits for nine carrier rates one after another
+    file: src/app/shipping/page.tsx
+    startLine: 7
+    endLine: 11
+    anchor: for (const carrier of CARRIERS) {
+  - id: OWN-31
+    aspect: performance
+    checklistItem: PRF-01
+    kind: finding
+    severity: medium
+    title: Standard carrier rates are fetched again for every view of the shipping page
+    file: src/lib/carriers.ts
+    startLine: 13
+    endLine: 13
+    anchor: 'cache: "no-store",'
+  - id: OWN-32
+    aspect: performance
+    checklistItem: PRF-04
+    kind: finding
+    severity: high
+    title: Product search requests the catalogue after every render, which re-renders it, without end
+    file: src/components/ProductSearch.tsx
+    startLine: 17
+    endLine: 21
+    anchor: useEffect(() => {
+  - id: OWN-33
+    aspect: performance
+    checklistItem: PRF-05
+    kind: finding
+    severity: medium
+    title: Store banners load at full size with no dimensions or responsive sizes
+    alsoItems:
+      - PRF-04
+    file: src/components/StoreBanner.tsx
+    startLine: 2
+    endLine: 2
+    anchor: <img className="banner"
+    also:
+      - file: src/components/ProductSearch.tsx
+        startLine: 37
+        endLine: 37
+        anchor: <img src={`/images/products/
+  - id: OWN-34
+    aspect: accessibility
+    checklistItem: ACC-01
+    kind: finding
+    severity: low
+    title: Search result thumbnails have no alt text, so screen readers read out file names
+    file: src/components/ProductSearch.tsx
+    startLine: 37
+    endLine: 37
+    anchor: <img src={`/images/products/
+  - id: OWN-35
+    aspect: accessibility
+    checklistItem: ACC-02
+    kind: finding
+    severity: medium
+    title: Sign-up, shipping and search fields are labelled only by their placeholders
+    file: src/components/SignupForm.tsx
+    startLine: 26
+    endLine: 27
+    anchor: <input name="email"
+    also:
+      - file: src/components/ShippingEstimate.tsx
+        startLine: 23
+        endLine: 24
+        anchor: <input name="country"
+      - file: src/components/ProductSearch.tsx
+        startLine: 29
+        endLine: 29
+        anchor: <input value={query}
+  - id: OWN-36
+    aspect: accessibility
+    checklistItem: ACC-03
+    kind: finding
+    severity: medium
+    title: The sort switch in search is a span that only a mouse can use
+    alsoItems:
+      - ACC-04
+    file: src/components/ProductSearch.tsx
+    startLine: 30
+    endLine: 30
+    anchor: <span className="sort"
+  - id: OWN-37
+    aspect: accessibility
+    checklistItem: ACC-03
+    kind: finding
+    severity: high
+    title: Keyboard focus is invisible on every link, button and field
+    file: src/app/globals.css
+    startLine: 10
+    endLine: 14
+    anchor: a:focus,
+  - id: OWN-38
+    aspect: accessibility
+    checklistItem: ACC-06
+    kind: finding
+    severity: medium
+    title: "Store names are grey on white at about 2.8:1, under the 4.5:1 minimum"
+    file: src/app/globals.css
+    startLine: 40
+    endLine: 42
+    anchor: .store {
 known:
   - checklistItem: DEP-01
     title: "osv-scanner: next 15.1.0 in the lock file has published advisories"
@@ -346,3 +512,39 @@ known:
   - checklistItem: TEN-07
     title: Isolation is a storeId filter each query must remember, with no second layer
     file: src/lib/db.ts
+  - checklistItem: API-02
+    title: Errors are plain text in some routes and JSON in others
+  - checklistItem: API-03
+    title: The order list stops at 50 orders with no way to page further
+    file: src/app/api/orders/route.ts
+  - checklistItem: API-06
+    title: The API has no versioning
+  - checklistItem: API-07
+    title: No OpenAPI or other published contract
+  - checklistItem: PRF-01
+    title: The public product list sends no cache headers
+    file: src/app/api/products/route.ts
+  - checklistItem: PRF-07
+    title: "Each ProductCard queries its store: an N+1 on the home page"
+    file: src/components/ProductCard.tsx
+  - checklistItem: ARC-03
+    title: One failing carrier rate takes the whole shipping page down
+    file: src/app/shipping/page.tsx
+  - checklistItem: ARC-03
+    title: A failed product request in search is never handled
+    file: src/components/ProductSearch.tsx
+  - checklistItem: QUA-07
+    title: A failed product request in search is never handled
+    file: src/components/ProductSearch.tsx
+  - checklistItem: ARC-08
+    title: Search fetches on the client the list a Server Component could render
+    file: src/components/ProductSearch.tsx
+  - checklistItem: ACC-05
+    title: Every page has the same title
+    file: src/app/layout.tsx
+  - checklistItem: ACC-08
+    title: Adding to the cart gives no confirmation, seen or heard
+    file: src/components/AddToCart.tsx
+  - checklistItem: ACC-08
+    title: The shipping estimate appears without being announced
+    file: src/components/ShippingEstimate.tsx

@@ -50,8 +50,8 @@ describe("forms", () => {
 
     it("refuses an aspect outside the catalogue", () => {
         const f = fd({ budgetUsd: "10", budgetKTokens: "400" });
-        f.append("aspects", "performance");
-        expect(parseRunForm(f, 1)).toEqual({ ok: false, error: "Unknown aspect: performance." });
+        f.append("aspects", "usability");
+        expect(parseRunForm(f, 1)).toEqual({ ok: false, error: "Unknown aspect: usability." });
     });
 
     it("splits the token cap over every repository and aspect before checking the minimum", () => {

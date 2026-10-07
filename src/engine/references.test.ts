@@ -22,6 +22,24 @@ describe("references", () => {
         }
     });
 
+    it("cites for every Accessibility item WCAG 2.2 criteria from the list checked on 2026-10-07, and for no other item", async () => {
+        const checked = new Set(refs.wcag.map(c => c.id));
+        const acc = (await loadChecklist("accessibility")).items.map(i => i.id);
+        for (const [item, m] of Object.entries(refs.mapping.items)) {
+            if (acc.includes(item)) expect(m.wcag?.length, item).toBeGreaterThan(0);
+            else expect(m.wcag, item).toBeUndefined();
+            for (const id of m.wcag ?? []) expect(checked, `${item} ${id}`).toContain(id);
+        }
+    });
+
+    it("links a WCAG criterion to its section of the WCAG 2.2 Recommendation, with its level", () => {
+        expect(referencesFor(refs, "ACC-01", {}).wcag[0]).toEqual({
+            label: "WCAG 2.2 SC 1.1.1 Non-text Content (Level A)",
+            url: "https://www.w3.org/TR/WCAG22/#non-text-content"
+        });
+        expect(referencesFor(refs, "ACC-08", {}).wcag.map(w => w.label)).toEqual(["WCAG 2.2 SC 4.1.3 Status Messages (Level AA)"]);
+    });
+
     it("never uses a CWE MITRE prohibits for mapping", () => {
         expect(Object.values(refs.mapping.items).map(m => m.cwe)).not.toContain(16);
     });
@@ -87,7 +105,8 @@ describe("references", () => {
             asvs: [],
             cheatsheets: [],
             advisories: [],
-            nist: null
+            nist: null,
+            wcag: []
         });
         expect(referencesFor(refs, null, {}).asvs).toEqual([]);
     });

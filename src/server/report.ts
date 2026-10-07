@@ -149,7 +149,7 @@ export async function loadReportData(projectId: string, o: { includeCost?: boole
             }));
             // The seams pass reads every repository; its agent is filed under the first.
             const title = a.aspect === SEAMS ? checklist.title : `${checklist.title} (${names.get(a.repositoryId)})`;
-            return { title, status: a.status, note: a.note, coverage };
+            return { key: a.aspect, title, status: a.status, note: a.note, coverage };
         })
     );
     const catalogue = await Promise.all(

@@ -8,6 +8,8 @@ import { SKIP_DIRS, resolveInClone } from "./paths";
 export interface StackProfile {
     languages: string[];
     frameworks: string[];
+    /** What serves an HTTP API: a server framework, or a meta-framework's route files by count. */
+    httpApi: string[];
     databases: string[];
     orms: string[];
     auth: string[];
@@ -22,6 +24,7 @@ export interface StackProfile {
 export const EMPTY_STACK: StackProfile = {
     languages: [],
     frameworks: [],
+    httpApi: [],
     databases: [],
     orms: [],
     auth: [],
@@ -82,6 +85,18 @@ const FRAMEWORKS: Table = [
     ["@trpc/server", "tRPC {v}"],
     ["graphql", "GraphQL"]
 ];
+
+const API_SERVERS = new Set(["express", "fastify", "@nestjs/core", "koa", "hono", "@trpc/server"]);
+
+/** Route files a meta-framework serves as API endpoints, recognised by their names alone. */
+const API_ROUTES: { dep: string; label: string; file: RegExp }[] = [
+    { dep: "next", label: "Next.js route handlers", file: /(^|\/)app\/(.+\/)?route\.(ts|js|tsx|jsx|mjs)$|(^|\/)pages\/api\// },
+    { dep: "@sveltejs/kit", label: "SvelteKit endpoints", file: /(^|\/)src\/routes\/(.+\/)?\+server\.(ts|js)$/ },
+    { dep: "nuxt", label: "Nuxt server routes", file: /(^|\/)server\/(api|routes)\// }
+];
+
+/** Frameworks that render a user interface, as their labels start. */
+const UI_FRAMEWORK = /^(Next\.js|React|Angular|Ionic|Capacitor|Cordova|Vue|Nuxt|Svelte|SvelteKit|Expo|Electron|Remix|Astro)\b/;
 
 const DATABASES: Table = [
     ["pg", "PostgreSQL"],
@@ -311,9 +326,21 @@ export async function detectStack(root: string, o: { read?: Reader } = {}): Prom
     ];
     aiBuiltSigns.push(...labels(AI_PACKAGES, deps));
 
+    const routes = API_ROUTES.flatMap(r => {
+        const n = deps.get(r.dep)?.prod ? files.filter(f => r.file.test(f)).length : 0;
+        return n ? [`${r.label} (${plural(n)})`] : [];
+    });
+
     return {
         languages,
         frameworks: labels(FRAMEWORKS, deps),
+        httpApi: [
+            ...labels(
+                FRAMEWORKS.filter(([name]) => API_SERVERS.has(name)),
+                deps
+            ).filter(shipped),
+            ...routes
+        ],
         databases: [...databases].sort(),
         orms: labels(ORMS, deps),
         auth: labels(AUTH, deps),
@@ -329,7 +356,12 @@ export async function detectStack(root: string, o: { read?: Reader } = {}): Prom
 
 /** The conditional aspects the profile calls for (design § 7). */
 export function suggestAspects(s: StackProfile): AspectKey[] {
-    return [...(s.llmSdks.some(shipped) ? (["llm"] as const) : []), ...(s.tenancyHints.length ? (["tenancy"] as const) : [])];
+    return [
+        ...((s.httpApi ?? []).length ? (["api"] as const) : []),
+        ...(s.frameworks.some(f => UI_FRAMEWORK.test(f) && shipped(f)) ? (["accessibility"] as const) : []),
+        ...(s.llmSdks.some(shipped) ? (["llm"] as const) : []),
+        ...(s.tenancyHints.length ? (["tenancy"] as const) : [])
+    ];
 }
 
 export function suggestAiBuilt(s: StackProfile): boolean {
@@ -351,7 +383,7 @@ export function suggestionsFor(
     const added = o.lastRunRepositories !== undefined && (o.lastRunRepositories === null || profiles.length > o.lastRunRepositories);
     return {
         aspects: [
-            ...(["llm", "tenancy"] as const).filter(k => keys.has(k)),
+            ...(["api", "accessibility", "llm", "tenancy"] as const).filter(k => keys.has(k)),
             ...(profiles.length > 1 && (known.length || added) ? (["seams"] as const) : [])
         ],
         aiBuiltSigns: [...new Set(known.flatMap(p => p.aiBuiltSigns))].sort()
@@ -376,6 +408,8 @@ export function stackProfileText(s: StackProfile): string {
     return [
         line("Languages", s.languages),
         line("Frameworks", s.frameworks),
+        // A profile saved before the HTTP API was detected has no such field.
+        line("HTTP API", s.httpApi ?? []),
         line("Databases", s.databases),
         line("ORM and query builders", s.orms),
         line("Authentication", s.auth),

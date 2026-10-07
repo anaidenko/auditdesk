@@ -1,5 +1,5 @@
 /**
- * The v1 aspect catalogue (design § 7), in the order agents run and the report lists them.
+ * The aspect catalogue (design § 7), in the order agents run and the report lists them.
  * Each has a checklist in `checklists/<key>.md` whose title is `title`.
  */
 export const ASPECTS = [
@@ -9,6 +9,9 @@ export const ASPECTS = [
     { key: "data", prefix: "DAT", title: "Data model and database", conditional: false },
     { key: "quality", prefix: "QUA", title: "Code quality and tests", conditional: false },
     { key: "production", prefix: "PRD", title: "Production readiness", conditional: false },
+    { key: "api", prefix: "API", title: "API design", conditional: true, when: "the repository serves an HTTP API" },
+    { key: "performance", prefix: "PRF", title: "Performance", conditional: false },
+    { key: "accessibility", prefix: "ACC", title: "Accessibility", conditional: true, when: "the repository has a user interface" },
     { key: "llm", prefix: "LLM", title: "LLM integrations", conditional: true, when: "the code calls a language model" },
     { key: "tenancy", prefix: "TEN", title: "Multi-tenancy", conditional: true, when: "records belong to tenants" },
     {
