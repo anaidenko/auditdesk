@@ -1,7 +1,7 @@
 import { execFile } from "node:child_process";
 import { existsSync } from "node:fs";
 import { mkdir, rm } from "node:fs/promises";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 import { promisify } from "node:util";
 
 import { type LineMap, type StripRules, commitPrepared, stripAnswers } from "./strip";
@@ -24,7 +24,10 @@ export async function prepareFixture(
     const upstream = join(base, `${f.name}-upstream`);
     // A partial clone fetches only the blobs of the pinned commit; a local path is copied whole.
     const remote = /^(https?|ssh|git):\/\/|^git@/.test(f.url);
-    if (!existsSync(upstream)) await git(["clone", "--quiet", ...(remote ? ["--filter=blob:none"] : []), "--no-checkout", f.url, upstream]);
+    // A relative path is the caller's: the fetch below runs inside the cached clone.
+    const url = remote ? f.url : resolve(f.url);
+    if (!existsSync(upstream)) await git(["clone", "--quiet", ...(remote ? ["--filter=blob:none"] : []), "--no-checkout", url, upstream]);
+    else await git(["remote", "set-url", "origin", url], upstream);
     const has = () =>
         git(["cat-file", "-e", `${f.sha}^{commit}`], upstream).then(
             () => true,

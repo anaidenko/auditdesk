@@ -109,7 +109,10 @@ pnpm test:e2e    # Playwright: the built app, with the model and the scanners re
 
 Neither calls the API: recorded model responses and scanner outputs are replayed, so CI needs no
 key and no scanner images. `AUDITDESK_SCREENSHOTS=1 pnpm test:e2e -g screenshots` retakes the
-screenshots above from a replayed run on a sample repository.
+screenshots above from a replayed run on a sample repository. `pnpm test` clones the own fixture
+from GitHub to check its answer key; offline, point the URL at a local clone with
+`GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=url.<path>.insteadOf GIT_CONFIG_VALUE_0=https://github.com/anaidenko/auditdesk-fixture`
+(a repository's own `insteadOf` does not reach a clone made inside it).
 
 ## Evals
 
@@ -120,8 +123,10 @@ Semgrep rule hashes, the Auditdesk commit). Grading is deterministic on file, li
 item; with `--judge`, an LLM judge reads what the grader could not place, within a cap of its own.
 
 - **Auditdesk's own fixture,** a small Next.js storefront platform with defects planted for every
-  aspect, is a separate repository, to be published alongside this one; its answer key is in
-  `evals/answers/`.
+  aspect, is a repository of its own,
+  [anaidenko/auditdesk-fixture](https://github.com/anaidenko/auditdesk-fixture); its answer key is
+  in `evals/answers/`, and the unit tests clone the fixture to check every entry at the pinned
+  commit.
 - **OWASP Juice Shop** v20.2.0, for comparison: the prep removes its coding challenges' answers
   (fixes, tutorials, translated hints, specs, the code that scores a solve) and renames every
   challenge, and `pnpm eval:key` reads its key from the markers.

@@ -1,10 +1,9 @@
 # Eval fixtures, cloned at pinned commits into the workspace, never vendored (design § 11).
-# The own fixture is a sibling repository until it is published (plan, Task 6.5); its path is
-# relative to this repository so no absolute path reaches the history. aspects and aiBuilt are
-# what an eval run audits: the key's alsoItems cover findings filed under another aspect.
+# aspects and aiBuilt are what an eval run audits: the key's alsoItems cover findings filed under
+# another aspect.
 fixtures:
   - name: own
-    path: ../auditdesk-fixture
+    url: https://github.com/anaidenko/auditdesk-fixture
     sha: 2aff7d01594473443eda3d072e40c0099e098d0f
     aspects: all
     aiBuilt: false

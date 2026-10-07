@@ -1,14 +1,12 @@
 import { existsSync, readFileSync } from "node:fs";
-import { isAbsolute, join, resolve } from "node:path";
+import { join, resolve } from "node:path";
 import { parse } from "yaml";
 
 import type { SeverityName } from "@/engine/types";
 
 export interface FixtureSpec {
     name: string;
-    /** A path relative to this repository, until the fixture is published; then `url`. */
-    path?: string;
-    url?: string;
+    url: string;
     sha: string;
     /** What an eval run audits: "all" or a list of aspect keys. */
     aspects?: "all" | string[];
@@ -59,11 +57,6 @@ const root = resolve(import.meta.dirname, "..");
 
 export function loadFixtures(): FixtureSpec[] {
     return (parse(readFileSync(resolve(root, "evals/fixtures.yaml"), "utf8")) as { fixtures: FixtureSpec[] }).fixtures;
-}
-
-export function fixturePath(f: FixtureSpec): string {
-    if (!f.path || isAbsolute(f.path)) throw new Error(`Fixture ${f.name} needs a path relative to the repository`);
-    return resolve(root, f.path);
 }
 
 export function loadKey(fixture: string): AnswerKey {
