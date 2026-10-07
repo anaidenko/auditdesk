@@ -94,3 +94,45 @@ export function parseEvalResult(md: string, file: string): EvalRow | null {
         )
     };
 }
+
+/** A judge's verdict on one finding outside the key, as the result file lists it. */
+export interface JudgedFinding {
+    label: string;
+    item: string;
+    where: string;
+    title: string;
+    verdict: string;
+    key: string | null;
+    reason: string;
+}
+
+/**
+ * The reasons evals/judge.ts gives a verdict it did not reach, written there and recognised here:
+ * the spot-check lists them apart, with nothing to agree with.
+ */
+export const NOT_JUDGED = {
+    stopped: (why: string) => `Not judged: the judge stopped (${why}).`,
+    cap: "Not judged: the judge's cap was reached.",
+    declined: "Not judged: the judge declined to answer.",
+    unknownEntry: (id: string | null) => `Not judged: the judge named an entry the key does not have: ${id}.`,
+    schema: "Not judged: the judge's answer did not match the verdict schema."
+};
+
+/**
+ * The judged findings of a result file, for Andrii's spot-check: the verdicts to check, those the
+ * judge did not reach, and how many of the judge's tally no line could be read for. A leftover the
+ * judge never read carries no verdict and is left out.
+ */
+export function parseVerdicts(md: string): { verdicts: JudgedFinding[]; notJudged: JudgedFinding[]; unreadable: number } {
+    md = md.replace(/\r\n/g, "\n");
+    const outside = section(md, "Findings outside the key");
+    const line = /^- (F-\d+) \(([^,]+), (.+?)\): (.*?) — judge: (\w+)(?: (\S+))?; (.*)$/;
+    const all = outside.split("\n").flatMap(l => {
+        const m = l.match(line);
+        return m ? [{ label: m[1], item: m[2], where: m[3], title: m[4], verdict: m[5], key: m[6] ?? null, reason: m[7] }] : [];
+    });
+    const tail = outside.slice(outside.lastIndexOf("\nQuestions outside the key: "));
+    const tally = Number(tail.match(/^Judge: (\d+) verdicts?:/m)?.[1] ?? all.length);
+    const notJudged = all.filter(v => v.verdict === "unsure" && v.reason.startsWith("Not judged: "));
+    return { verdicts: all.filter(v => !notJudged.includes(v)), notJudged, unreadable: Math.max(0, tally - all.length) };
+}

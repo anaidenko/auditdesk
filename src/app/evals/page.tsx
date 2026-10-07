@@ -1,6 +1,8 @@
+import Link from "next/link";
+
 import { Card, PageHeader } from "@/app/ui";
 import type { EvalRow } from "@/engine/eval-results";
-import { evalResultsDir, loadEvalRows } from "@/server/evals";
+import { type EvalHistoryRow, evalResultsDir, loadEvalRows } from "@/server/evals";
 
 export const dynamic = "force-dynamic";
 
@@ -119,7 +121,7 @@ function falseCell(r: EvalRow): string {
 }
 
 /** The own fixture first, its score being the headline (design § 11); the most aspects first within one. */
-function groups(rows: EvalRow[]): { fixture: string; aspects: string; rows: EvalRow[] }[] {
+function groups(rows: EvalHistoryRow[]): { fixture: string; aspects: string; rows: EvalHistoryRow[] }[] {
     const keys = [...new Set(rows.map(r => `${r.fixture}\n${r.aspects.join(", ")}`))].map(k => {
         const [fixture, aspects] = k.split("\n");
         return { fixture, aspects, rows: rows.filter(r => r.fixture === fixture && r.aspects.join(", ") === aspects) };
@@ -133,7 +135,7 @@ function groups(rows: EvalRow[]): { fixture: string; aspects: string; rows: Eval
 }
 
 export default async function EvalsPage() {
-    const { rows, skipped } = await loadEvalRows();
+    const { rows, skipped, brokenReviews } = await loadEvalRows();
     return (
         <div className="space-y-8">
             <PageHeader eyebrow="Evals" title="Recall and cost by model and effort">
@@ -147,6 +149,11 @@ export default async function EvalsPage() {
                 <p className="text-sm text-amber-800" data-testid="eval-skipped">
                     {skipped.length} {skipped.length === 1 ? "file" : "files"} in the folder could not be read as a result:{" "}
                     {skipped.join(", ")}.
+                </p>
+            )}
+            {brokenReviews.length > 0 && (
+                <p className="text-sm text-red-700" data-testid="eval-broken-reviews">
+                    Spot-checks that could not be read, and are not counted: {brokenReviews.join(", ")}. Fix or remove them.
                 </p>
             )}
             {groups(rows).map(g => {
@@ -182,6 +189,7 @@ export default async function EvalsPage() {
                                         <th className="font-medium">Time</th>
                                         <th className="font-medium">Key</th>
                                         <th className="font-medium">Auditdesk</th>
+                                        <th className="font-medium">Judge</th>
                                     </tr>
                                 </thead>
                                 <tbody className="divide-y divide-zinc-100 tabular-nums">
@@ -212,6 +220,18 @@ export default async function EvalsPage() {
                                             <td className="font-mono text-xs">
                                                 {r.commit?.slice(0, 7) ?? "–"}
                                                 {r.dirty && <div className="font-sans text-zinc-500">with uncommitted changes</div>}
+                                            </td>
+                                            <td className="whitespace-nowrap">
+                                                {r.judged ? (
+                                                    <Link
+                                                        href={`/evals/${encodeURIComponent(r.file)}`}
+                                                        className="text-indigo-700 hover:underline"
+                                                    >
+                                                        {r.checked} of {r.judged} checked, {r.agreed} agreed
+                                                    </Link>
+                                                ) : (
+                                                    "–"
+                                                )}
                                             </td>
                                         </tr>
                                     ))}

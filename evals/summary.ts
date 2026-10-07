@@ -71,9 +71,12 @@ export function summaryMarkdown(r: EvalResult): string {
     const describe = (label: string) => {
         const f = finding.get(label);
         const v = verdict.get(label);
-        // One line each: model-written text must not start a line the Evals page reads.
-        const line = (t: string) => t.replace(/\s*[\r\n]+\s*/g, " ");
-        return `- ${label} (${f?.checklistItem ?? "no item"}, ${where(f)}): ${line(f?.title ?? "")}${v ? ` — judge: ${v.verdict}${v.key ? ` ${v.key}` : ""}; ${line(v.reason)}` : ""}`;
+        // One line each, and the marker once: model-written text must not pass for what the Evals
+        // page and the spot-check read. Only a matched entry's ID is checked, so only it is written.
+        const line = (t: string) => t.replace(/\s*[\r\n\u2028\u2029]+\s*/g, " ");
+        const title = line(f?.title ?? "").replaceAll(" — judge: ", " - judge: ");
+        const key = v?.verdict === "matches_key" && v.key ? ` ${v.key}` : "";
+        return `- ${label} (${f?.checklistItem ?? "no item"}, ${where(f)}): ${title}${v ? ` — judge: ${v.verdict}${key}; ${line(v.reason)}` : ""}`;
     };
     const by = (label: string) => `${label}${finding.get(label)?.source === "scanner" ? " (scanner)" : ""}`;
     const apiUsd = r.byModel.reduce((s, m) => s + m.usd, 0);

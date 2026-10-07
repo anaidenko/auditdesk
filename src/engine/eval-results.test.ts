@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
-import { parseEvalResult } from "./eval-results";
+import { parseEvalResult, parseVerdicts } from "./eval-results";
 
 const baseline = readFileSync("evals/results/2026-10-07-juice-shop-security-claude-sonnet-5-5-low.md", "utf8");
 
@@ -103,5 +103,63 @@ describe("parseEvalResult", () => {
 
     it("returns null for a file that is not a result", () => {
         expect(parseEvalResult("# Notes\n", "notes.md")).toBeNull();
+    });
+});
+
+describe("parseVerdicts", () => {
+    const md = (...lines: string[]) =>
+        [
+            "# Eval: own, claude-sonnet-5-5 at low",
+            "",
+            "## Findings outside the key",
+            "",
+            "**False findings: 1** by the judge's verdicts, of 4 it was given.",
+            "",
+            ...lines,
+            "Questions outside the key: 0.",
+            "",
+            `Judge: 4 verdicts: 1 false, 1 matches_key, 2 unsure. Cost $0.02.`,
+            "",
+            "## Cost"
+        ].join("\n");
+
+    it("reads each judged finding outside the key, and keeps apart those the judge did not reach", () => {
+        const out = parseVerdicts(
+            md(
+                "- F-004 (SEC-04, src/app/(auth)/login/page.tsx:5): Raw SQL (twice): see — judge: false; The query is parameterised; see — judge: x.",
+                "- F-007 (SEC-10, data/users.yml:88-90): Secret in a seed file — judge: matches_key JS-login+jim; Same login query.",
+                "- F-009 (no item, no location): Unjudged leftover",
+                "",
+                "Beside an entry under another item:",
+                "- F-011 (SEC-15, server.ts:260): Directory listing — judge: unsure; Not judged: the judge's cap was reached."
+            )
+        );
+        expect(out.verdicts).toEqual([
+            {
+                label: "F-004",
+                item: "SEC-04",
+                where: "src/app/(auth)/login/page.tsx:5",
+                title: "Raw SQL (twice): see",
+                verdict: "false",
+                key: null,
+                reason: "The query is parameterised; see — judge: x."
+            },
+            {
+                label: "F-007",
+                item: "SEC-10",
+                where: "data/users.yml:88-90",
+                title: "Secret in a seed file",
+                verdict: "matches_key",
+                key: "JS-login+jim",
+                reason: "Same login query."
+            }
+        ]);
+        expect(out.notJudged.map(v => v.label)).toEqual(["F-011"]);
+        // The judge's tally names four verdicts; three lines read as one.
+        expect(out.unreadable).toBe(1);
+    });
+
+    it("reads nothing from a result the judge did not read", () => {
+        expect(parseVerdicts("# Eval: own, m at low\n")).toEqual({ verdicts: [], notJudged: [], unreadable: 0 });
     });
 });

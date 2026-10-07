@@ -319,7 +319,9 @@ export async function runEval(o: EvalOptions, deps: EvalDeps): Promise<{ file: s
     await mkdir(deps.resultsDir, { recursive: true });
     const base = [startedAt.toISOString().slice(0, 10), spec.name, ...(o.aspect ? [o.aspect] : []), o.model, o.effort].join("-");
     let file = join(deps.resultsDir, `${base}.md`);
-    for (let n = 2; existsSync(file); n++) file = join(deps.resultsDir, `${base}-${n}.md`);
+    // A spot-check left beside a result that was moved away would attach to a new one of its name.
+    const taken = (f: string) => existsSync(f) || existsSync(f.replace(/\.md$/, ".review.json"));
+    for (let n = 2; taken(file); n++) file = join(deps.resultsDir, `${base}-${n}.md`);
     // Written before the judge runs, so a judge that fails cannot lose the audit's result.
     await writeFile(file, summaryMarkdown(result));
 
