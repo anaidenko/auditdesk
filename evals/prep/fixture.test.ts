@@ -41,6 +41,12 @@ describe("prepareFixture", () => {
         expect(execFileSync("git", ["show", `${sha}:answers/demo.md`], { cwd: prepared.upstreamDir, encoding: "utf8" })).toBe(
             "the answer\n"
         );
+        const blob = execFileSync("git", ["hash-object", "--stdin"], {
+            cwd: prepared.path,
+            input: "the answer\n",
+            encoding: "utf8"
+        }).trim();
+        expect(() => execFileSync("git", ["cat-file", "-e", blob], { cwd: prepared.path, stdio: "pipe" })).toThrow();
     });
 
     it("keeps a tracked file that the fixture's own .gitignore names", async () => {

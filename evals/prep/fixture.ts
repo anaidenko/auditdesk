@@ -42,9 +42,12 @@ export async function prepareFixture(
     await run("tar", ["-xf", tar, "-C", path]);
     await rm(tar);
     // Staged, not committed: the prepared commit is the repository's only one, so the answers are in
-    // no history an audit's scanners read (gitleaks scans every commit).
+    // no history an audit's scanners read (gitleaks scans every commit). The originals' blobs that
+    // staging wrote are pruned, or an audit's clone of this repository would copy them.
     await git(["init", "--quiet", "-b", "main"], path);
     await git(["add", "-A", "--force"], path);
     const { lineMap, removedImports } = await stripAnswers(path, f.rules);
-    return { path, upstreamDir: upstream, upstreamSha: f.sha, preparedSha: await commitPrepared(path), lineMap, removedImports };
+    const preparedSha = await commitPrepared(path);
+    await git(["prune", "--expire=now"], path);
+    return { path, upstreamDir: upstream, upstreamSha: f.sha, preparedSha, lineMap, removedImports };
 }

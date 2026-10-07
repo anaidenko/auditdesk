@@ -132,6 +132,19 @@ describe("summaryMarkdown", () => {
         expect(md).toContain("- F-004 (SEC-04, a.ts:3-4): finding F-004 — judge: false; Parameterised.");
     });
 
+    it("gives each agent a row with its coverage, its summary on one line and its pipes escaped", () => {
+        const md = summaryMarkdown(
+            result({
+                agents: [
+                    ...result().agents,
+                    { aspect: "quality", status: "failed", note: "a | b\nc\rd\r\ne", summary: null, coverage: null }
+                ]
+            })
+        );
+        expect(md).toContain("| security | done | 3 examined, 1 partly, 12 not examined, 0 not reported | Examined the routes. |");
+        expect(md).toContain("| quality | failed |  | a \\| b c d e |");
+    });
+
     it("says when the judge stopped, and when the run was aborted", () => {
         const md = summaryMarkdown(
             result({ aborted: "Error: the engine broke", verdicts: [], judge: { usd: 0, unpriced: 0, stopped: "Connection error." } })

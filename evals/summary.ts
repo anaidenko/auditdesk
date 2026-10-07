@@ -172,7 +172,7 @@ export function summaryMarkdown(r: EvalResult): string {
             const text = [a.summary, a.note]
                 .filter(Boolean)
                 .join(" ")
-                .replace(/\s*\n\s*/g, " ")
+                .replace(/\s*[\r\n]+\s*/g, " ")
                 .replace(/\|/g, "\\|");
             return `| ${a.aspect} | ${a.status} | ${covered} | ${text} |`;
         }),

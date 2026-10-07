@@ -113,7 +113,8 @@ item; with `--judge`, an LLM judge reads what the grader could not place, within
   (fixes, tutorials, translated hints, specs, the code that scores a solve) and renames every
   challenge, and `pnpm eval:key` reads its key from the markers.
 
-The first scores, by model and effort, come next and will be quoted here.
+A first result, a baseline on Juice Shop at the cheapest model and effort, is in `evals/results/`;
+scores by model and effort follow and will be quoted here.
 
 ## Live checks
 

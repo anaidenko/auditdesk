@@ -135,6 +135,8 @@ describe("runEval", () => {
     it("writes its result when the audit fails, and says why", async () => {
         const run = await evalRun({}, {}, { runAspect: async () => Promise.reject(new Error("the engine broke")) });
         expect(run.result.aborted).toMatch(/the engine broke/);
+        expect(run.result.agents[0]).toMatchObject({ aspect: "security", status: "failed", coverage: null });
+        expect(run.text).toMatch(/\| security \| failed \| {2}\| Error: the engine broke \|/);
         expect(run.text).toMatch(/\*\*Aborted:\*\* .*the engine broke/);
     });
 

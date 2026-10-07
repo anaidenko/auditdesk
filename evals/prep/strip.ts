@@ -203,7 +203,7 @@ export async function stripAnswers(tree: string, rules: StripRules): Promise<{ l
     return { lineMap, removedImports };
 }
 
-/** Commits the prepared tree with a fixed author and date: one parent and one tree always give one SHA. */
+/** Commits the prepared tree with a fixed author and date: the same tree and parent (none, for a fixture) always give one SHA. */
 export async function commitPrepared(tree: string): Promise<string> {
     const when = "2026-01-01T00:00:00Z";
     const env = {

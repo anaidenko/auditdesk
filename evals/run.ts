@@ -6,6 +6,7 @@ import { join, resolve } from "node:path";
 
 import { DEFAULT_EFFORT, DEFAULT_MODEL, type Effort } from "@/engine/agent/request";
 import type { AgentOutcome, AspectRunner } from "@/engine/agent/run-aspect";
+import type { Coverage } from "@/engine/agent/tools";
 import { ASPECTS, aspectTitle } from "@/engine/aspects";
 import { git } from "@/engine/git";
 import { MemorySink } from "@/engine/memory-sink";
@@ -216,13 +217,11 @@ export async function runEval(o: EvalOptions, deps: EvalDeps): Promise<{ file: s
         if (ran) {
             const o = ran.outcome;
             if (!o) return { aspect, status: "failed" as const, note: "Did not finish." };
-            const n = (status: string) => o.coverage.filter(c => c.status === status).length;
-            const coverage = {
-                examined: n("examined"),
-                partly: n("partly"),
-                notExamined: n("not_examined"),
-                notReported: n("not_reported")
-            };
+            const n = (status: Coverage["status"]) => o.coverage.filter(c => c.status === status).length;
+            // An agent that failed with an error reports no coverage at all: no counts, rather than zeros.
+            const coverage = o.coverage.length
+                ? { examined: n("examined"), partly: n("partly"), notExamined: n("not_examined"), notReported: n("not_reported") }
+                : null;
             return { aspect, status: o.status, note: o.note, summary: o.summary, coverage };
         }
         const skipped = sink.events.find(m => m.startsWith(`Skipped ${aspectTitle(aspect)}:`));
