@@ -12,6 +12,7 @@ import { makeHostileRepo } from "@/test/hostile-repo";
 import { SAMPLE_KEY } from "@/test/sample-repo";
 import { type SdkHarness, sdkHarness } from "@/test/sdk";
 
+import type { Effort } from "../agent/request";
 import { NUDGE, REOPEN } from "../agent/run-aspect";
 import { Masker } from "../masker";
 import { MemorySink } from "../memory-sink";
@@ -47,6 +48,8 @@ async function setup(
         allowPastReserve?: boolean;
         extraEnv?: Record<string, string>;
         firstMessage?: string;
+        model?: string;
+        effort?: Effort;
     } = {}
 ) {
     const h = await sdkHarness(responses, { reply: o.reply, keepModel: o.keepModel, headers: o.headers });
@@ -75,8 +78,8 @@ async function setup(
                 extraEnv: { ...h.config(o.access).extraEnv, ...o.extraEnv }
             },
             {
-                model: "claude-sonnet-5-5",
-                effort: "low",
+                model: o.model ?? "claude-sonnet-5-5",
+                effort: o.effort ?? "low",
                 share: o.share ?? { usd: 10, tokens: 1_000_000 },
                 ctx,
                 system: prefixBlocks({ stackProfile: "s", repoMap: "map", brief: "b" }),
@@ -135,6 +138,20 @@ describe("runAspectSdk", { timeout: 60_000 }, () => {
             ["list_files", "read_file", "grep", "repo_map", "scanner_results", "report_finding", "finish_aspect"].map(sdkToolName).sort()
         );
         expect(req.tools.some(t => t.defer_loading)).toBe(false);
+    });
+
+    it("sends the run's model and effort on every request", async () => {
+        const { h, run } = await setup([tool("list_files", { dir: ".", glob: "" }), finish()], {
+            model: "claude-opus-5-5",
+            effort: "max"
+        });
+        await run();
+        expect(h.fake.requests).toHaveLength(2);
+        for (const r of h.fake.requests) {
+            const body = r.body as { model: string; output_config: { effort: string } };
+            expect(body.model).toBe("claude-opus-5-5");
+            expect(body.output_config.effort).toBe("max");
+        }
     });
 
     it("never lets a secret gitleaks found reach the model", async () => {
