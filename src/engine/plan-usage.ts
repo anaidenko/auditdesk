@@ -5,9 +5,18 @@ import { expandHome } from "./config";
 
 /**
  * The share of the plan's 5-hour window a run may use without the auditor's permission: the rest
- * stays for his other work (Andrii, 2026-10-06).
+ * stays for his other work (Andrii, 2026-10-06). AUDITDESK_PLAN_RESERVE moves it for one command,
+ * when he allows a run to go further but not without a ceiling (0.8 for the sample, 2026-10-07).
  */
-export const PLAN_RESERVE = 0.5;
+export function planReserve(value: string | undefined): number {
+    if (value === undefined || value === "") return 0.5;
+    const share = Number(value);
+    if (!(share > 0 && share <= 1))
+        throw new Error(`AUDITDESK_PLAN_RESERVE is a share of the window above 0 and at most 1, such as 0.8, not "${value}".`);
+    return share;
+}
+
+export const PLAN_RESERVE = planReserve(process.env.AUDITDESK_PLAN_RESERVE);
 
 /** The plan's 5-hour window as the CLI last reported it; utilization is a fraction, times in epoch seconds. */
 export interface PlanUsage {
