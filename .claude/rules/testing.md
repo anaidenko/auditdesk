@@ -19,5 +19,7 @@ paths:
 - **The scanners are replayed too:** recorded outputs in `src/test/fixtures/scanners/`, so no
   test needs the scanner images.
 - **End-to-end tests (Playwright)** run the built app on port 3100 with both replays.
+- **A socket a test server hands over** in a `connect` or `upgrade` event needs its own error
+  listener: Linux resets it where macOS closes it, and the uncaught `ECONNRESET` fails CI only.
 - **A test that passes before the change exists** is a finding about the test. A red run counts
   only when its message shows the failure under test.
