@@ -55,15 +55,17 @@ test("screenshots for the README", async ({ page }) => {
     const file = join(tmpdir(), "auditdesk-sample-report.html");
     writeFileSync(file, html);
     await page.goto(`file://${file}`);
-    // The first card open and the next one collapsed, so one image shows both states.
-    const cards = page.locator('article[id^="F-"]');
+    // The first card open and the next one collapsed, so one image shows both states. A full-page
+    // clip is in document coordinates, a bounding box in the viewport's: the click scrolls the page.
+    const cards = page.locator("section#findings article.finding");
     await cards.first().locator(".body > summary").click();
+    const scrolled = await page.evaluate(() => scrollY);
     const top = (await page.locator("section#findings").boundingBox())!;
-    const next = (await cards.nth(1).boundingBox())!;
+    const last = (await cards.nth(Math.min(1, (await cards.count()) - 1)).boundingBox())!;
     await page.screenshot({
         path: join(out, "report-finding.png"),
         animations: "disabled",
         fullPage: true,
-        clip: { x: 0, y: top.y - 24, width: page.viewportSize()!.width, height: next.y + next.height - top.y + 48 }
+        clip: { x: 0, y: top.y + scrolled - 24, width: page.viewportSize()!.width, height: last.y + last.height - top.y + 48 }
     });
 });
