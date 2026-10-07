@@ -32,7 +32,7 @@ export interface AgentContext {
         /** How many times finish_aspect sent the agent back to unexamined items, and what it reported then. */
         sentBack?: number;
         sentBackFinish?: { summary: string; coverage: Coverage[]; reads: number };
-        /** Read-only tool calls so far: a send-back's second finish must follow at least one. */
+        /** Read-only tool calls so far: a finish after a send-back must follow at least one to raise a status. */
         reads?: number;
         /** Why a finish was limited, for the outcome's note. */
         note?: string;
@@ -258,38 +258,65 @@ async function reportFinding(ctx: AgentContext, input: z.infer<typeof findingInp
     return `Filed ${label}.`;
 }
 
+const times = (n: number) => (n === 1 ? "once" : n === 2 ? "twice" : `${n} times`);
+const items = (n: number) => `${n} ${n === 1 ? "item" : "items"}`;
+const looked = (coverage: Coverage[]) => coverage.filter(c => c.status === "examined" || c.status === "partly").length;
+
 async function finishAspect(ctx: AgentContext, input: z.infer<typeof finishInput>): Promise<string> {
     const ids = ctx.checklist.items.map(i => i.id);
     const unknown = input.coverage.filter(c => !ids.includes(c.item)).map(c => c.item);
     if (unknown.length) throw new ToolError(`Not on this checklist: ${unknown.join(", ")}.`);
-    let coverage: Coverage[] = ids.map(id => input.coverage.find(c => c.item === id) ?? { item: id, status: "not_examined" });
+    // The note is this finish's; one left by a finish that was reopened no longer applies.
+    ctx.state.note = undefined;
     const last = ctx.state.sentBackFinish;
     const rounds = ctx.state.sentBack ?? 0;
+    // An item left out of a later finish keeps the status the round before gave it.
+    let coverage: Coverage[] = ids.map(
+        (id, i) => input.coverage.find(c => c.item === id) ?? last?.coverage[i] ?? { item: id, status: "not_examined" }
+    );
     // Coverage is self-reported: statuses raised after a send-back without one more read do not count.
     const rank = (c: Coverage) => ({ examined: 2, partly: 1 })[c.status as "examined" | "partly"] ?? 0;
-    const raised = (a: Coverage[], b: Coverage[]) => a.some((c, i) => rank(c) > rank(b[i]));
-    if (last && (ctx.state.reads ?? 0) === last.reads && raised(coverage, last.coverage)) {
-        coverage = last.coverage;
-        ctx.state.note = "Sent back; it changed its coverage without reading more code, so its earlier coverage stands.";
-    }
+    const reverted = !!last && (ctx.state.reads ?? 0) === last.reads && coverage.some((c, i) => rank(c) > rank(last.coverage[i]));
+    if (reverted) coverage = last.coverage;
     const left = coverage.filter(c => c.status === "not_examined").map(c => c.item);
-    // The first round is for a limited review; later ones go on while a round examined more and items are left.
-    const due = rounds === 0 ? limitedReview(coverage) : left.length > 0 && !!last && raised(coverage, last.coverage);
+    // The first round is for a limited review; later ones go on while a round looked at more items and some are left.
+    const due = rounds === 0 ? limitedReview(coverage) : left.length > 0 && looked(coverage) > looked(last!.coverage);
+    let spent = false;
     if (due && ctx.share && rounds < ROUNDS) {
         const spend = await ctx.sink.agentSpend(ctx.agentRunId);
         if (!spend.unpriced && spend.usd * 2 < ctx.share.usd && spend.freshTokens * 2 < ctx.share.tokens) {
             ctx.state.sentBack = rounds + 1;
             // Kept, so an agent that never finishes again still reports what it said here.
             ctx.state.sentBackFinish = { summary: input.summary, coverage, reads: ctx.state.reads ?? 0 };
-            await ctx.sink.progress(`${ctx.checklist.title}: sent back to ${left.length} unexamined items of ${ids.length}.`, "warn");
+            await ctx.sink.progress(
+                `${ctx.checklist.title}: sent back to ${items(left.length).replace("item", "unexamined item")} of ${ids.length}.`,
+                "warn"
+            );
             const next = left.slice(0, BATCH).map(id => `${id} ${ctx.checklist.items.find(i => i.id === id)!.title}`);
             const more = left.length > BATCH ? ` (${left.length - BATCH} more after them)` : "";
-            return `Not finished: ${left.length} of ${ids.length} items are not examined. Examine these next: ${next.join(", ")}${more}. Read the code they concern, file what you find, then call finish_aspect again with the updated coverage. Mark an item examined or partly only for code you read for it.`;
+            return `Not finished: ${left.length} of ${ids.length} items ${left.length === 1 ? "is" : "are"} not examined, and most of this aspect's budget is left. Examine these next: ${next.join(", ")}${more}. Read the code they concern, file what you find, then call finish_aspect again with the coverage of every checklist item, including those you examined before. Mark an item examined or partly only for code you read for it.`;
         }
-        if (rounds === 0) ctx.state.note ??= `${left.length} of ${ids.length} items not examined; half of its share was already spent.`;
+        spent = true;
     }
-    if (rounds > 0 && left.length && (limitedReview(coverage) || rounds >= ROUNDS))
-        ctx.state.note ??= `Sent back ${rounds === 1 ? "once" : `${rounds} times`}; ${left.length} of ${ids.length} items still not examined.`;
+    const notes = [reverted ? "It raised its coverage without reading more code, so the earlier statuses stand." : ""];
+    if (rounds > 0 && left.length)
+        notes.push(
+            `Sent back ${times(rounds)}; ${left.length} of ${ids.length} items still not examined${spent ? "; half of its share was already spent" : ""}.`
+        );
+    else if (spent) notes.push(`${left.length} of ${ids.length} items not examined; half of its share was already spent.`);
+    ctx.state.note = notes.filter(Boolean).join(" ") || undefined;
     ctx.state.finished = { summary: input.summary, coverage };
     return "Aspect finished.";
+}
+
+/**
+ * An agent sent back that ended its turns without finishing again: what it reported when it was
+ * sent back stands, and the note says it stopped. Null when it was never sent back.
+ */
+export function finishAfterSilence(ctx: AgentContext): string | null {
+    const last = ctx.state.sentBackFinish;
+    if (!last) return null;
+    ctx.state.finished = { summary: last.summary, coverage: last.coverage };
+    const left = last.coverage.filter(c => c.status === "not_examined").length;
+    return `Sent back ${times(ctx.state.sentBack ?? 1)}; it stopped without finishing again; ${left} of ${last.coverage.length} items still not examined.`;
 }

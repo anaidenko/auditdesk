@@ -100,12 +100,12 @@ describe("runAspect", () => {
         expect(await run()).toMatchObject({ status: "done" });
         expect(requests).toHaveLength(3);
         expect(JSON.stringify(requests[1].body.messages)).toMatch(
-            /Not finished: 2 of 2 items are not examined\. Examine these next: SEC-01 Authentication, SEC-04 Injection\./
+            /Not finished: 2 of 2 items are not examined, and most of this aspect's budget is left\. Examine these next: SEC-01 Authentication, SEC-04 Injection\./
         );
     });
 
     const read = () => tool("read_file", { path: "src/db.js", start_line: 1, end_line: 2 });
-    const five = parseChecklist(
+    const seven = parseChecklist(
         "security",
         "# Security\n\n## SEC-01 Authentication\n\n## SEC-02 Sessions\n\n## SEC-03 Authorization\n\n## SEC-04 Injection\n\n## SEC-05 XSS\n\n## SEC-06 CSRF\n\n## SEC-07 SSRF\n"
     );
@@ -125,10 +125,91 @@ describe("runAspect", () => {
         expect(requests).toHaveLength(5);
     });
 
-    it("stops sending it back when a round examines nothing more", async () => {
-        const thin = await setup([finish([]), read(), finish([]), read(), finish([])]);
-        expect(await thin.run()).toMatchObject({ status: "done", note: "Sent back once; 2 of 2 items still not examined." });
-        expect(thin.requests).toHaveLength(3);
+    it("stops sending it back when a round examines nothing more, and says how many rounds it had", async () => {
+        const { requests, run } = await setup([finish([]), read(), finish(examined("SEC-01")), read(), finish(examined("SEC-01"))], {
+            checklist: seven
+        });
+        expect(await run()).toMatchObject({ status: "done", note: "Sent back twice; 6 of 7 items still not examined." });
+        expect(requests).toHaveLength(5);
+    });
+
+    it("carries an item a finish leaves out from the round before, and asks for every item", async () => {
+        const { requests, run } = await setup(
+            [finish(examined("SEC-01", "SEC-02")), read(), finish(examined("SEC-03", "SEC-04", "SEC-05", "SEC-06", "SEC-07"))],
+            { checklist: seven }
+        );
+        const out = await run();
+        expect(out).toMatchObject({ status: "done", note: null });
+        expect(out.coverage.every(c => c.status === "examined")).toBe(true);
+        expect(requests).toHaveLength(3);
+        expect(JSON.stringify(requests[1].body.messages)).toMatch(
+            /with the coverage of every checklist item, including those you examined before/
+        );
+    });
+
+    it("ends a sent-back agent that stops with text twice as done, with what it reported and why it stopped", async () => {
+        const { run } = await setup([finish([]), text("Enough."), read(), finish(examined("SEC-01")), text("Still enough.")], {
+            checklist: seven
+        });
+        const out = await run();
+        expect(out).toMatchObject({
+            status: "done",
+            note: "Sent back twice; it stopped without finishing again; 6 of 7 items still not examined."
+        });
+        expect(out.coverage.find(c => c.item === "SEC-01")!.status).toBe("examined");
+    });
+
+    it("says when a later round was stopped by the budget, not by the agent", async () => {
+        const { run } = await setup([finish([]), read(), finish(examined("SEC-01"))], {
+            checklist: seven,
+            share: { usd: 0.04, tokens: 1_000_000 }
+        });
+        expect(await run()).toMatchObject({
+            note: "Sent back once; 6 of 7 items still not examined; half of its share was already spent."
+        });
+    });
+
+    it("keeps the earlier statuses when a later round raises them without a read, and says so", async () => {
+        const { run } = await setup(
+            [finish([]), read(), finish(examined("SEC-01")), finish([...examined("SEC-01"), { item: "SEC-02", status: "partly" }])],
+            { checklist: seven }
+        );
+        const out = await run();
+        expect(out.coverage.find(c => c.item === "SEC-02")!.status).toBe("not_examined");
+        expect(out.note).toBe(
+            "It raised its coverage without reading more code, so the earlier statuses stand. Sent back twice; 6 of 7 items still not examined."
+        );
+    });
+
+    it("keeps the last round's coverage when the share runs out during a later round", async () => {
+        const { run } = await setup([finish([]), read(), finish(examined("SEC-01")), read(), read(), read(), read(), read()], {
+            checklist: seven,
+            share: { usd: 0.06, tokens: 1_000_000 }
+        });
+        const out = await run();
+        expect(out.status).toBe("partial");
+        expect(out.coverage.find(c => c.item === "SEC-01")!.status).toBe("examined");
+    });
+
+    it("drops a stale note when a finish is reopened, and ends with no note when every item was looked at", async () => {
+        const both = message({
+            content: [
+                {
+                    type: "tool_use",
+                    id: "toolu_bad2",
+                    name: "report_finding",
+                    input: finding({ evidence: [{ file: "src/db.js", start_line: 1, end_line: 9 }] }),
+                    caller: null
+                },
+                { type: "tool_use", id: "toolu_fin2", name: "finish_aspect", input: { summary: "Done.", coverage: [] }, caller: null }
+            ],
+            stop_reason: "tool_use"
+        } as never);
+        const all = ["SEC-01", "SEC-02", "SEC-03", "SEC-04", "SEC-05", "SEC-06", "SEC-07"];
+        const { run } = await setup([finish([]), read(), both, read(), finish(examined(...all))], { checklist: seven });
+        expect(await run()).toMatchObject({ status: "done", note: null });
+        const partly = await setup([finish(all.map(item => ({ item, status: "partly" })))], { checklist: seven });
+        expect(await partly.run()).toMatchObject({ status: "done", note: null });
     });
 
     it("sends it back three times at most, naming at most five items a round", async () => {
@@ -142,13 +223,13 @@ describe("runAspect", () => {
                 read(),
                 finish(examined("SEC-01", "SEC-02", "SEC-03"))
             ],
-            { checklist: five }
+            { checklist: seven }
         );
         expect(await run()).toMatchObject({ status: "done", note: "Sent back 3 times; 4 of 7 items still not examined." });
         expect(requests).toHaveLength(7);
         const first = JSON.stringify(requests[1].body.messages);
         expect(first).toMatch(
-            /Not finished: 7 of 7 items are not examined\. Examine these next: SEC-01 Authentication, SEC-02 Sessions, SEC-03 Authorization, SEC-04 Injection, SEC-05 XSS \(2 more after them\)\./
+            /Not finished: 7 of 7 items are not examined, and most of this aspect's budget is left\. Examine these next: SEC-01 Authentication, SEC-02 Sessions, SEC-03 Authorization, SEC-04 Injection, SEC-05 XSS \(2 more after them\)\./
         );
     });
 
@@ -193,7 +274,9 @@ describe("runAspect", () => {
         ]);
         const out = await run();
         expect(out.coverage.map(c => c.status)).toEqual(["not_examined", "not_examined"]);
-        expect(out.note).toMatch(/changed its coverage without reading more code/);
+        expect(out.note).toMatch(
+            /^It raised its coverage without reading more code, so the earlier statuses stand\. Sent back once; 2 of 2 items still not examined\.$/
+        );
         expect(sink.events).toContainEqual(expect.stringMatching(/sent back to 2 unexamined items of 2/));
     });
 
