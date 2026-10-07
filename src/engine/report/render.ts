@@ -421,7 +421,6 @@ ${d.questions.length ? `<li><a href="#questions">Open questions</a>${tocItems(d.
 </ol></nav>
 
 <section id="summary"><h2>Summary</h2>
-<p>${SEVERITIES.map(s => `${count(s)} ${s}`).join(" · ")}.</p>
 <h3>Fix before sign-off</h3>
 ${riskList(fixFirst, "Nothing needs fixing before sign-off.")}
 <h3>Can wait</h3>

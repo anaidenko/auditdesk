@@ -370,6 +370,14 @@ describe("renderReport", () => {
             return [...part.split("<h3>")[0].matchAll(/href="#(F-\d{3})"/g)].map(m => m[1]);
         };
 
+        it("leaves the counts by severity to the cover's tiles", () => {
+            const html = renderReport(data({ findings: [finding({ severity: "high" })] }));
+            expect(summary(html)).not.toContain("· 0 low");
+            expect(between(html, '<header class="cover"', "</header>")).toContain(
+                '<div class="tile low zero"><b>0</b><span>low</span></div>'
+            );
+        });
+
         it("puts critical and high findings before sign-off by default, and the rest under can wait", () => {
             const html = renderReport(
                 data({
