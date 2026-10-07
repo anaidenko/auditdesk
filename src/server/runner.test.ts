@@ -63,6 +63,31 @@ describe("runner", () => {
         expect((await prisma.repository.findUniqueOrThrow({ where: { id: repo.id } })).commitSha).toMatch(/^[0-9a-f]{40}$/);
     });
 
+    it("gives the agents the project's brief and each repository's confirmed stack and instructions", async () => {
+        const { project, repo } = await projectWithRepo(await makeSampleRepo());
+        await prisma.project.update({ where: { id: project.id }, data: { briefProduct: "A school calculator.", aiBuilt: true } });
+        await prisma.repository.update({
+            where: { id: repo.id },
+            data: { stackText: "Express 4, confirmed.", stackConfirmedAt: new Date(), instructions: "npm start" }
+        });
+        await enqueueRun(project.id, runOptions);
+        const systems: string[] = [];
+        const messages: string[] = [];
+        const base = await deps();
+        await processJob((await claimJob())!, sink => ({
+            ...base(sink),
+            runAspect: async o => {
+                systems.push(o.system.map(b => b.text).join("\n"));
+                messages.push(o.firstMessage);
+                return { status: "done", note: null, summary: "ok", coverage: [] };
+            }
+        }));
+        expect(systems[0]).toContain("A school calculator.");
+        expect(systems[0]).toContain("Express 4, confirmed.");
+        expect(systems[0]).toContain("How to run this repository: npm start");
+        expect(messages[0]).toMatch(/largely AI-built/);
+    });
+
     it("skips a job another claimer has locked, instead of waiting for it or taking it too", async () => {
         const { project } = await projectWithRepo();
         await enqueueRun(project.id, runOptions);

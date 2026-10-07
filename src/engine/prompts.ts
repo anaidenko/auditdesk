@@ -33,14 +33,34 @@ export function prefixBlocks(o: { stackProfile: string; repoMap: string; brief: 
     ];
 }
 
-export function aspectMessage(o: { checklist: Checklist; findingIndex: string[]; budgetTokens: number }): string {
+export function aspectMessage(o: { checklist: Checklist; findingIndex: string[]; budgetTokens: number; aiBuilt?: boolean }): string {
     return [
         `# Aspect: ${o.checklist.title}`,
         o.checklist.text.replace(/^# .+\n/, ""),
+        // After the cache breakpoint, so the mode never changes the shared prefix.
+        ...(o.aiBuilt ? ['The auditor marked the code as largely AI-built: the items marked "(AI-built)" are on this checklist.'] : []),
         "# Findings already filed for this repository",
         o.findingIndex.length ? o.findingIndex.join("\n") : "None yet.",
         "# Your budget",
         `About ${o.budgetTokens.toLocaleString("en-US")} tokens for this aspect; the API counts it down for you. Examine the riskiest items for this stack first, and call finish_aspect before the budget runs out.`,
         "Start from the repository map in the system prompt."
     ].join("\n\n");
+}
+
+export interface Brief {
+    product: string | null;
+    concerns: string | null;
+    outOfScope: string | null;
+    aiBuilt: boolean;
+}
+
+/** The auditor's brief and one repository's instructions, as one block of the cached prefix. */
+export function briefText(b: Brief | undefined, instructions?: string | null): string {
+    const parts = [
+        b?.product?.trim() && `What the product does: ${b.product.trim()}`,
+        b?.concerns?.trim() && `Known concerns: ${b.concerns.trim()}`,
+        b?.outOfScope?.trim() && `Out of scope: ${b.outOfScope.trim()}`,
+        instructions?.trim() && `How to run this repository: ${instructions.trim()}`
+    ].filter(Boolean);
+    return parts.length ? parts.join("\n\n") : "No brief was written for this audit.";
 }

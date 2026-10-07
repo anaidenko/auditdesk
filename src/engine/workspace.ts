@@ -1,5 +1,5 @@
 import { existsSync } from "node:fs";
-import { mkdir, rename, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, rename, rm } from "node:fs/promises";
 import { isAbsolute, join } from "node:path";
 
 import { expandHome } from "./config";
@@ -58,6 +58,32 @@ export async function cloneRepository(o: {
     await rm(clonePath, { recursive: true, force: true });
     await rename(tmp, clonePath);
     return { sha, clonePath };
+}
+
+/**
+ * A shallow clone of a branch as it is now, in a folder of its own that is removed afterwards:
+ * stack detection reads it while a run may be cloning the same repository (review of 2026-10-07).
+ */
+export async function withScratchClone<T>(
+    o: { source: string; branch: string; workspaceDir: string; projectId: string },
+    work: (dir: string) => Promise<T>
+): Promise<T> {
+    const source = parseSource(o.source);
+    if (!BRANCH.test(o.branch)) throw new Error(`Not a branch name: ${o.branch}`);
+    if (source.kind === "path" && !existsSync(join(source.path, ".git"))) throw new Error(`No git repository at ${source.path}`);
+    const projectDir = join(o.workspaceDir, o.projectId);
+    await mkdir(projectDir, { recursive: true });
+    const dir = await mkdtemp(join(projectDir, "detect-"));
+    try {
+        // A local path ignores --depth; file:// keeps the clone shallow.
+        const from = source.kind === "url" ? source.url : `file://${source.path}`;
+        await git(["clone", "--quiet", "--depth", "1", "--single-branch", "--branch", o.branch, "--", from, dir]).catch((e: Error) => {
+            throw new Error(`Could not clone the branch "${o.branch}": ${e.message.trim().split("\n").pop()}`);
+        });
+        return await work(dir);
+    } finally {
+        await rm(dir, { recursive: true, force: true });
+    }
 }
 
 export async function deleteProjectClones(workspaceDir: string, projectId: string): Promise<void> {

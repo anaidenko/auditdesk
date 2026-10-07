@@ -213,7 +213,11 @@ async function reportFinding(ctx: AgentContext, input: z.infer<typeof findingInp
         recommendation: input.recommendation,
         effort: input.effort,
         references: input.cwe ? { cwe: input.cwe } : {},
-        tags: input.tags,
+        // The engine alone decides "ai-built", by the item: a model's own tag would put any finding in that section.
+        tags: [
+            ...new Set(input.tags.filter(t => t !== "ai-built")),
+            ...(ctx.checklist.items.find(i => i.id === input.checklist_item)?.aiBuilt ? ["ai-built"] : [])
+        ],
         source: "agent",
         fingerprint: fingerprint(base)
     });

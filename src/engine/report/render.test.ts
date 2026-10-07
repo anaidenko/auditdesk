@@ -115,13 +115,109 @@ describe("renderReport", () => {
         expect(html).toMatch(/\.pair\.one\{grid-template-columns:1fr\}/);
     });
 
+    it("gives each repository its own run of findings, in the cover's order, and lists them so in the contents", () => {
+        const html = renderReport(
+            data({
+                repositories: [
+                    { name: "web", branch: "main", sha: "0123456789abcdef", notCovered: [] },
+                    { name: "api", branch: "main", sha: "fedcba9876543210", notCovered: [] }
+                ],
+                findings: [
+                    finding({ label: "F-001", severity: "critical", repository: "api", title: "Open admin route" }),
+                    finding({ label: "F-002", severity: "low", repository: "web", title: "Verbose errors" })
+                ]
+            })
+        );
+        const body = html.slice(html.indexOf('<section id="findings">'));
+        expect(body.indexOf('<h3 class="repo" id="repo-web">web</h3>')).toBeGreaterThan(0);
+        expect(body.indexOf('id="F-002"')).toBeLessThan(body.indexOf('<h3 class="repo" id="repo-api">api</h3>'));
+        expect(body.indexOf('<h3 class="repo" id="repo-api">api</h3>')).toBeLessThan(body.indexOf('id="F-001"'));
+        const toc = between(html, '<nav class="toc">', "</nav>");
+        expect(toc.indexOf("F-002")).toBeLessThan(toc.indexOf("F-001"));
+        expect(toc).toContain('<a href="#repo-api">api</a>');
+    });
+
+    it("adds no repository headings for a single repository", () => {
+        expect(renderReport(data())).not.toContain('class="repo"');
+    });
+
+    it("gathers the findings tagged ai-built under Signs of AI-generated code", () => {
+        const html = renderReport(
+            data({
+                aiBuilt: true,
+                findings: [
+                    finding({ label: "F-001", title: "Raw SQL" }),
+                    finding({ label: "F-002", title: "Admin action unchecked", tags: ["ai-built"] })
+                ]
+            })
+        );
+        const section = between(html, '<section id="ai-built">', "</section>");
+        expect(section).toContain("Signs of AI-generated code");
+        expect(section).toContain('href="#F-002"');
+        expect(section).not.toContain('href="#F-001"');
+        expect(between(html, '<nav class="toc">', "</nav>")).toContain('<a href="#ai-built">Signs of AI-generated code</a>');
+    });
+
+    it("gathers tagged questions under Signs of AI-generated code too", () => {
+        const html = renderReport(data({ aiBuilt: true, questions: [finding({ label: "F-009", severity: null, tags: ["ai-built"] })] }));
+        expect(between(html, '<section id="ai-built">', "</section>")).toContain('href="#F-009"');
+    });
+
+    it("leaves the AI-generated code section out when the mode is off", () => {
+        const html = renderReport(data({ aiBuilt: false, findings: [finding({ tags: ["ai-built"] })] }));
+        expect(html).not.toContain('id="ai-built"');
+    });
+
+    it("names what a repository's audit did not cover, in Scope and method", () => {
+        const html = renderReport(
+            data({
+                repositories: [
+                    { name: "app", branch: "main", sha: "0123456789abcdef", notCovered: ["Python (14 files; api/requirements.txt)"] }
+                ]
+            })
+        );
+        expect(between(html, '<section id="scope">', "</section>")).toContain(
+            "Not covered in app: Python (14 files; api/requirements.txt)."
+        );
+    });
+
+    it("gives a repository without accepted findings its heading, and says so", () => {
+        const html = renderReport(
+            data({
+                repositories: [
+                    { name: "web", branch: "main", sha: "0123456789abcdef", notCovered: [] },
+                    { name: "api", branch: "main", sha: "fedcba9876543210", notCovered: [] }
+                ],
+                findings: [finding({ label: "F-001", repository: "web" })]
+            })
+        );
+        const body = html.slice(html.indexOf('<section id="findings">'));
+        expect(body).toContain('<h3 class="repo" id="repo-api">api</h3>');
+        expect(body).toContain("No findings were accepted for this repository.");
+    });
+
+    it("keeps repository anchors unique when names differ only in punctuation", () => {
+        const html = renderReport(
+            data({
+                repositories: ["a b", "a-b-3", "a-b"].map((name, i) => ({ name, branch: "main", sha: `${i}`.repeat(16), notCovered: [] })),
+                findings: ["a b", "a-b-3", "a-b"].map((repository, i) => finding({ label: `F-00${i + 1}`, repository }))
+            })
+        );
+        const ids = [...html.matchAll(/<h3 class="repo" id="([^"]+)"/g)].map(m => m[1]);
+        expect(new Set(ids).size).toBe(3);
+    });
+
+    it("has no AI-generated code section when no finding carries the tag", () => {
+        expect(renderReport(data())).not.toContain('id="ai-built"');
+    });
+
     // The cover names a single repository; a column repeating it wrapped in the PDF (R.3).
     it("shows the repository column only when the audit spans more than one repository", () => {
         const head = (html: string) => between(html, "<thead>", "</thead>");
         const one = renderReport(data());
         expect(head(one.slice(one.indexOf('id="findings"')))).not.toContain("Repository");
         const two = renderReport(
-            data({ repositories: [...data().repositories, { name: "api", branch: "main", sha: "fedcba9876543210" }] })
+            data({ repositories: [...data().repositories, { name: "api", branch: "main", sha: "fedcba9876543210", notCovered: [] }] })
         );
         expect(head(two.slice(two.indexOf('id="findings"')))).toContain("Repository");
     });

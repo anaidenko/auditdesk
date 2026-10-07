@@ -1,5 +1,5 @@
 import { existsSync } from "node:fs";
-import { mkdtemp, readFile } from "node:fs/promises";
+import { mkdtemp, readFile, readdir } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
@@ -7,7 +7,7 @@ import { describe, expect, it } from "vitest";
 import { makeRepo } from "@/test/git-repo";
 
 import { git } from "./git";
-import { cloneRepository, deleteProjectClones, parseSource } from "./workspace";
+import { cloneRepository, deleteProjectClones, parseSource, withScratchClone } from "./workspace";
 
 async function ws() {
     return mkdtemp(join(tmpdir(), "auditdesk-ws-"));
@@ -110,5 +110,29 @@ describe("cloneRepository", () => {
         const { clonePath } = await cloneRepository({ source: src, branch: "main", workspaceDir: dir, projectId: "p", repositoryId: "r" });
         await deleteProjectClones(dir, "p");
         expect(existsSync(clonePath)).toBe(false);
+    });
+});
+
+describe("withScratchClone", () => {
+    it("reads the branch from a clone of its own, removed afterwards, beside a run's clone it never touches", async () => {
+        const source = await makeRepo({ "package.json": "{}" }, { branches: { dev: { "dev.txt": "x" } } });
+        const workspaceDir = await mkdtemp(join(tmpdir(), "ws-"));
+        const run = await cloneRepository({ source, branch: "main", workspaceDir, projectId: "p", repositoryId: "r" });
+        const seen = await withScratchClone({ source, branch: "dev", workspaceDir, projectId: "p" }, async dir =>
+            existsSync(join(dir, "dev.txt"))
+        );
+        expect(seen).toBe(true);
+        expect(await readdir(join(workspaceDir, "p"))).toEqual([run.clonePath.split("/").pop()]);
+    });
+
+    it("removes its clone when the work inside fails", async () => {
+        const source = await makeRepo({ "a.txt": "a" });
+        const workspaceDir = await mkdtemp(join(tmpdir(), "ws-"));
+        await expect(
+            withScratchClone({ source, branch: "main", workspaceDir, projectId: "p" }, async () => {
+                throw new Error("boom");
+            })
+        ).rejects.toThrow("boom");
+        expect(await readdir(join(workspaceDir, "p"))).toEqual([]);
     });
 });

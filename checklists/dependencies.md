@@ -70,3 +70,10 @@ a public package of the same name could replace (dependency confusion).
 Several libraries for one job (moment, dayjs and date-fns; two HTTP clients; two state
 libraries), heavy packages shipped to the browser for a small use (a whole `lodash` import),
 `@types/*` and build tools in production dependencies.
+
+## DEP-09 Packages that may not exist or be trusted (AI-built)
+
+Dependencies whose names look invented or one typo away from a well-known package (`expresss`,
+`axois`), packages the code imports but no manifest declares, and packages too obscure for what
+they are trusted with. You cannot query the registry: name each suspect and why, and ask
+the team to confirm it, as a question unless the repository itself shows the problem.

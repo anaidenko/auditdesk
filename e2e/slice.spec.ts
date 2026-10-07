@@ -17,7 +17,7 @@ async function newProject(page: Page, name: string) {
 test("a run from project to downloaded report", async ({ page }) => {
     await newProject(page, "Sample");
     await page.getByLabel(/client agreed/).check();
-    await page.getByRole("button", { name: "Save" }).click();
+    await page.getByRole("button", { name: "Save", exact: true }).click();
     await page.getByRole("button", { name: "Start run" }).click();
     await expect(page.getByTestId("run-status")).toHaveText("done", { timeout: 60_000 });
     // A Claude plan run's cap is in API-equivalent dollars (plan, Decision for Andrii 4).
@@ -46,7 +46,7 @@ test("a run from project to downloaded report", async ({ page }) => {
 test("a run over two aspects files findings under both, and the report covers both", async ({ page }) => {
     await newProject(page, "Two aspects");
     await page.getByLabel(/client agreed/).check();
-    await page.getByRole("button", { name: "Save" }).click();
+    await page.getByRole("button", { name: "Save", exact: true }).click();
     await expect(page.getByRole("checkbox", { name: "Security" })).toBeChecked();
     await expect(page.getByRole("checkbox", { name: "Security" })).toBeDisabled();
     await page.getByRole("checkbox", { name: "Code quality and tests" }).check();
@@ -85,11 +85,46 @@ test("a refused start keeps the aspects and caps Andrii chose", async ({ page })
     await expect(page.getByLabel("Cap, thousand tokens")).toHaveValue("30");
 });
 
+test("the stack is detected and confirmed, and the brief is saved", async ({ page }) => {
+    await newProject(page, "Stack and brief");
+    const notes = page.locator("details", { hasText: "Stack and instructions" });
+    await expect(notes).toContainText("not detected yet");
+    await notes.locator("summary").click();
+    await notes.getByRole("button", { name: "Detect stack" }).click();
+    await expect(notes.getByLabel("Stack profile")).toHaveValue(/Frameworks: Express/);
+    await expect(notes).toContainText("detected, not confirmed");
+    await notes.getByLabel("How to run it").fill("npm start, port 3000");
+    await notes.getByRole("button", { name: "Save the instructions only" }).click();
+    await expect(notes).toContainText("detected, not confirmed");
+    await notes.getByLabel("Stack profile").fill("Express 4 on Node.js; PostgreSQL through pg.");
+    await notes.getByRole("button", { name: "Save and confirm the profile" }).click();
+    await expect(notes.locator("summary")).toContainText(/confirmed \d{4}-\d{2}-\d{2}/);
+    await expect(notes.getByLabel("How to run it")).toHaveValue("npm start, port 3000");
+
+    // A detection that differs from the confirmed profile is shown beside it, one click from use.
+    await notes.getByRole("button", { name: "Detect stack" }).click();
+    await expect(notes.locator("summary")).toContainText("detection changed");
+    await notes.getByRole("button", { name: "Use this detection" }).click();
+    await expect(notes.getByLabel("Stack profile")).toHaveValue(/Frameworks: Express/);
+    await expect(notes.locator("summary")).not.toContainText("detection changed");
+    await notes.getByLabel("Stack profile").fill("Express 4 on Node.js; PostgreSQL through pg.");
+    await notes.getByRole("button", { name: "Save and confirm the profile" }).click();
+
+    const brief = page.locator("section", { hasText: "Brief" }).filter({ has: page.getByLabel("What the product does") });
+    await brief.getByLabel("What the product does").fill("A calculator API for schools.");
+    await brief.getByLabel(/AI-built/).check();
+    await brief.getByRole("button", { name: "Save brief" }).click();
+    await page.reload();
+    await expect(page.getByLabel("What the product does")).toHaveValue("A calculator API for schools.");
+    await expect(page.getByLabel(/AI-built/)).toBeChecked();
+    await expect(page.getByLabel("Stack profile")).toHaveValue("Express 4 on Node.js; PostgreSQL through pg.");
+});
+
 test("an API key saved in Settings runs an audit, and no page shows the key", async ({ page }) => {
     const key = "sk-ant-e2e-0000000000000000wxyz";
     await page.goto("/settings");
     await page.getByLabel("API key value").fill(key);
-    await page.getByRole("button", { name: "Save" }).click();
+    await page.getByRole("button", { name: "Save", exact: true }).click();
     await expect(page.getByTestId("status-api_key")).toHaveText("saved · …wxyz");
     expect(await page.content()).not.toContain(key);
 
@@ -99,7 +134,7 @@ test("an API key saved in Settings runs an audit, and no page shows the key", as
     await expect(page.getByTestId("credential-status")).toHaveText("API key: saved · …wxyz");
     expect(await page.content()).not.toContain(key);
     await page.getByLabel(/client agreed/).check();
-    await page.getByRole("button", { name: "Save" }).click();
+    await page.getByRole("button", { name: "Save", exact: true }).click();
     await page.getByRole("button", { name: "Start run" }).click();
     await expect(page.getByTestId("run-status")).toHaveText("done", { timeout: 60_000 });
 });
@@ -113,7 +148,7 @@ test("the model access tooltip says what was approved", async ({ page }) => {
 async function finishedRun(page: Page, name: string) {
     await newProject(page, name);
     await page.getByLabel(/client agreed/).check();
-    await page.getByRole("button", { name: "Save" }).click();
+    await page.getByRole("button", { name: "Save", exact: true }).click();
     await page.getByRole("button", { name: "Start run" }).click();
     await expect(page.getByTestId("run-status")).toHaveText("done", { timeout: 60_000 });
 }
@@ -137,7 +172,7 @@ test("a review refusal is shown on the page, not as an error page", async ({ pag
 test("starting twice queues one run", async ({ page }) => {
     await newProject(page, "Double");
     await page.getByLabel(/client agreed/).check();
-    await page.getByRole("button", { name: "Save" }).click();
+    await page.getByRole("button", { name: "Save", exact: true }).click();
     const projectUrl = page.url();
     const start = page.getByRole("button", { name: "Start run" });
     // Two clicks before React re-renders: the pending state cannot stop the second one, the index must.
@@ -179,7 +214,7 @@ test("a Claude plan run above half of the 5-hour window starts only when allowed
     try {
         await newProject(page, "Reserve");
         await page.getByLabel(/client agreed/).check();
-        await page.getByRole("button", { name: "Save" }).click();
+        await page.getByRole("button", { name: "Save", exact: true }).click();
         await expect(page.getByTestId("plan-usage")).toContainText("62%");
         await page.getByRole("button", { name: "Start run" }).click();
         await expect(page.getByText(/above the 50% reserve/)).toBeVisible();
@@ -198,7 +233,7 @@ test("a run form rendered below the reserve offers the checkbox when the start i
     try {
         await newProject(page, "Stale reserve");
         await page.getByLabel(/client agreed/).check();
-        await page.getByRole("button", { name: "Save" }).click();
+        await page.getByRole("button", { name: "Save", exact: true }).click();
         await expect(page.getByTestId("plan-usage")).toContainText("not measured yet");
         mkdirSync(E2E_HOME, { recursive: true });
         writeFileSync(usage, JSON.stringify({ utilization: 0.58, resetsAt: now + 3600, seenAt: now }));

@@ -5,7 +5,9 @@ import { freshTokens } from "@/engine/budget";
 import { findingLabel, indexLine } from "@/engine/findings";
 import type { PipelineSink } from "@/engine/pipeline";
 import type { ToolVersions } from "@/engine/scanners/types";
+import type { StackProfile } from "@/engine/stack";
 import type { CallRecord, NewFinding, SeverityName, Spend } from "@/engine/types";
+import type { Prisma } from "@/generated/prisma/client";
 import { prisma } from "@/server/db";
 import { createFinding } from "@/server/findings";
 import { RUN_CHANNEL } from "@/server/pg";
@@ -114,6 +116,13 @@ export class PrismaSink implements PipelineSink {
 
     async stopRequested() {
         return (await prisma.run.findUniqueOrThrow({ where: { id: this.runId }, select: { stopRequested: true } })).stopRequested;
+    }
+
+    async stackDetected(repositoryId: string, profile: StackProfile) {
+        await prisma.repository.update({
+            where: { id: repositoryId },
+            data: { stack: profile as unknown as Prisma.InputJsonObject, stackDetectedAt: new Date() }
+        });
     }
 
     async repositoryCloned(repositoryId: string, sha: string, clonePath: string) {

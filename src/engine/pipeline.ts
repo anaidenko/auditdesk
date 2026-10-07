@@ -4,21 +4,23 @@ import type { Effort } from "./agent/request";
 import type { AgentOutcome, AspectRunner } from "./agent/run-aspect";
 import { aspectTitle } from "./aspects";
 import { shareFor } from "./budget";
-import { loadChecklist } from "./checklists";
+import { forMode, loadChecklist } from "./checklists";
 import { readSnippet } from "./files";
 import { Masker } from "./masker";
-import { aspectMessage, prefixBlocks } from "./prompts";
+import { type Brief, aspectMessage, briefText, prefixBlocks } from "./prompts";
 import { buildRepoMap } from "./repomap";
 import { normaliseGitleaks } from "./scanners/gitleaks";
-import { leakInTree, leakMasks, runScanners } from "./scanners/index";
+import { type ScanResults, leakInTree, leakMasks, runGitleaks, runScanners } from "./scanners/index";
 import { normaliseOsv, osvEvidence } from "./scanners/osv";
 import { normaliseSemgrep } from "./scanners/semgrep";
 import type { Ruleset, ScannerRunner, ToolVersions } from "./scanners/types";
+import { type StackProfile, detectStack, stackProfileText } from "./stack";
 import type { AuditSink } from "./types";
 import { cloneRepository } from "./workspace";
 
 export interface PipelineSink extends AuditSink {
     repositoryCloned(repositoryId: string, sha: string, clonePath: string): Promise<void>;
+    stackDetected(repositoryId: string, profile: StackProfile): Promise<void>;
     toolVersions(v: ToolVersions): Promise<void>;
     startAgent(repositoryId: string, aspect: string, share: { usd: number; tokens: number }): Promise<string>;
     finishAgent(agentRunId: string, outcome: AgentOutcome): Promise<void>;
@@ -32,7 +34,16 @@ export interface AuditInput {
     effort: Effort;
     budget: { usd: number; tokens: number };
     /** `sha` is set on a re-run: the commit the run already audited, whatever the branch says now. */
-    repositories: { id: string; source: string; branch: string; sha?: string | null }[];
+    repositories: {
+        id: string;
+        source: string;
+        branch: string;
+        sha?: string | null;
+        /** The stack profile as the auditor confirmed or edited it; detected afresh when absent (design § 6). */
+        stackText?: string | null;
+        instructions?: string | null;
+    }[];
+    brief?: Brief;
     aspects: string[];
     /** A re-run of one aspect in one repository (design § 9). */
     only?: { repositoryId: string; aspect: string };
@@ -53,10 +64,17 @@ export async function runAudit(input: AuditInput, deps: AuditDeps): Promise<{ st
     const agentsInRun = input.repositories.length * input.aspects.length;
     const fullShare = shareFor(input.budget, agentsInRun);
 
-    for (const repo of input.repositories) {
-        if (input.only && input.only.repositoryId !== repo.id) continue;
-        if (await sink.stopRequested()) return { stopped: true };
+    const runDir = join(deps.workspaceDir, input.projectId, "runs", input.runId);
+    const rulesDir = join(runDir, "rules");
 
+    // Every repository is cloned and scanned before any agent starts: the brief reaches every agent,
+    // so it is masked with the secrets gitleaks found in all of them (design § 6). A re-run of one
+    // repository runs gitleaks alone on the others.
+    const scanned: { repo: AuditInput["repositories"][number]; clonePath: string; scan: ScanResults }[] = [];
+    const masks: { value: string; rule: string }[] = [];
+    for (const repo of input.repositories) {
+        if (await sink.stopRequested()) return { stopped: true };
+        const target = !input.only || input.only.repositoryId === repo.id;
         await sink.progress(`Cloning ${repo.source} at ${repo.branch}…`);
         const { sha, clonePath } = await cloneRepository({
             source: repo.source,
@@ -66,11 +84,14 @@ export async function runAudit(input: AuditInput, deps: AuditDeps): Promise<{ st
             projectId: input.projectId,
             repositoryId: repo.id
         });
+        if (!target) {
+            await sink.progress("Running gitleaks, so this repository's secrets stay out of the brief…");
+            const leaks = await runGitleaks({ clonePath, runner: deps.scanners, configDir: join(runDir, "gitleaks") });
+            masks.push(...(await leakMasks(clonePath, leaks)));
+            continue;
+        }
         await sink.repositoryCloned(repo.id, sha, clonePath);
-
         await sink.progress("Running gitleaks, osv-scanner and Semgrep…");
-        const runDir = join(deps.workspaceDir, input.projectId, "runs", input.runId);
-        const rulesDir = join(runDir, "rules");
         const scan = await runScanners({
             clonePath,
             runner: deps.scanners,
@@ -79,7 +100,12 @@ export async function runAudit(input: AuditInput, deps: AuditDeps): Promise<{ st
             configDir: join(runDir, "gitleaks")
         });
         await sink.toolVersions(scan.versions);
-        const masker = new Masker(await leakMasks(clonePath, scan.leaks));
+        masks.push(...(await leakMasks(clonePath, scan.leaks)));
+        scanned.push({ repo, clonePath, scan });
+    }
+    const masker = new Masker(masks);
+
+    for (const { repo, clonePath, scan } of scanned) {
         const inTree = new Set<string>();
         for (const leak of scan.leaks) if (await leakInTree(clonePath, leak)) inTree.add(`${leak.File}:${leak.StartLine}:${leak.Commit}`);
         const known = await sink.knownFingerprints(repo.id);
@@ -116,10 +142,16 @@ export async function runAudit(input: AuditInput, deps: AuditDeps): Promise<{ st
 
         await sink.progress("Building the repository map…");
         const repoMap = await buildRepoMap(clonePath, masker);
+        let stackText = repo.stackText?.trim();
+        if (!stackText) {
+            const profile = await detectStack(clonePath);
+            await sink.stackDetected(repo.id, profile);
+            stackText = `${stackProfileText(profile)}\n\nDetected from the manifests; the auditor has not confirmed it yet.`;
+        }
         const system = prefixBlocks({
-            stackProfile: "Not detected in this version; read the repository map.",
+            stackProfile: masker.mask(stackText),
             repoMap,
-            brief: "No brief was written for this audit."
+            brief: masker.mask(briefText(input.brief, repo.instructions))
         });
 
         for (const aspect of input.aspects) {
@@ -141,7 +173,7 @@ export async function runAudit(input: AuditInput, deps: AuditDeps): Promise<{ st
                 continue;
             }
             if (input.only) await sink.supersedeUnreviewed(repo.id, aspect);
-            const checklist = await loadChecklist(aspect, deps.checklistsDir);
+            const checklist = forMode(await loadChecklist(aspect, deps.checklistsDir), input.brief?.aiBuilt ?? false);
             const agentRunId = await sink.startAgent(repo.id, aspect, share);
             await sink.progress(`Agent: ${checklist.title} (${share.tokens.toLocaleString("en-US")} tokens, $${share.usd.toFixed(2)})…`);
             const outcome = await deps
@@ -161,7 +193,12 @@ export async function runAudit(input: AuditInput, deps: AuditDeps): Promise<{ st
                         state: { finished: null, reported: [], fatal: null }
                     },
                     system,
-                    firstMessage: aspectMessage({ checklist, findingIndex: await sink.findingIndex(repo.id), budgetTokens: share.tokens })
+                    firstMessage: aspectMessage({
+                        checklist,
+                        findingIndex: await sink.findingIndex(repo.id),
+                        budgetTokens: share.tokens,
+                        aiBuilt: input.brief?.aiBuilt
+                    })
                 })
                 .catch(async (e: Error) => {
                     // Recorded before the run fails, or the agent would show "running" forever.

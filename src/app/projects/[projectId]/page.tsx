@@ -5,10 +5,11 @@ import { deleteProject, setConsent } from "@/app/actions";
 import { Badge, Card, Icon, PageHeader, RunStatus, button } from "@/app/ui";
 import { credentialStatus } from "@/engine/credentials";
 import { overReserve, planUsageLine, readPlanUsage } from "@/engine/plan-usage";
+import { type StackProfile, stackProfileText, suggestionsFor } from "@/engine/stack";
 import { getProject } from "@/server/queries";
 
 import { ModelAccessCard } from "./ModelAccess";
-import { AddRepositoryForm, StartRunForm } from "./forms";
+import { AddRepositoryForm, BriefForm, RepositoryNotes, StartRunForm } from "./forms";
 
 export const dynamic = "force-dynamic";
 
@@ -22,6 +23,15 @@ export default async function ProjectPage({ params }: { params: Promise<{ projec
     const active = project.runs.some(r => r.status === "queued" || r.status === "running");
     const usage = project.modelAccess === "claude_plan" ? await readPlanUsage() : null;
     const planUsage = project.modelAccess === "claude_plan" ? { line: planUsageLine(usage), overReserve: overReserve(usage) } : null;
+    const stackOf = (r: { stack: unknown }) => (r.stack ? (r.stack as StackProfile) : null);
+    // A suggestion ticks an aspect only when its detection is newer than the last run, so an aspect
+    // Andrii left out of that run is not ticked again by the run's own detection.
+    const lastRun = project.runs[0];
+    const since = lastRun ? (lastRun.finishedAt ?? lastRun.createdAt) : null;
+    const fresh = (at: Date | null, after: Date | null) => !!at && (!after || at > after);
+    const suggestions = suggestionsFor(project.repositories.map(r => (fresh(r.stackDetectedAt, since) ? stackOf(r) : null)));
+    // The AI-built hint shows only signs found since the brief was last saved.
+    const aiHint = suggestionsFor(project.repositories.map(r => (fresh(r.stackDetectedAt, project.briefSavedAt) ? stackOf(r) : null)));
     return (
         <div className="space-y-8">
             <PageHeader
@@ -58,16 +68,42 @@ export default async function ProjectPage({ params }: { params: Promise<{ projec
                         {project.repositories.length > 0 && (
                             <ul className="mb-4 divide-y divide-zinc-100 rounded-lg border border-zinc-200">
                                 {project.repositories.map(r => (
-                                    <li key={r.id} className="flex flex-wrap items-center gap-x-3 gap-y-1 px-3.5 py-2.5 text-sm">
+                                    <li key={r.id} className="flex flex-wrap items-center gap-x-3 gap-y-2 px-3.5 py-2.5 text-sm">
                                         <Icon name="branch" className="size-4 shrink-0 text-zinc-400" />
                                         <span className="min-w-0 flex-1 font-mono text-[13px] break-all text-zinc-800">{r.source}</span>
                                         <Badge tone="slate">{r.branch}</Badge>
                                         {r.commitSha && <code className="text-xs text-zinc-400">{r.commitSha.slice(0, 10)}</code>}
+                                        <RepositoryNotes
+                                            projectId={project.id}
+                                            repositoryId={r.id}
+                                            detected={stackOf(r) && stackProfileText(stackOf(r)!)}
+                                            detectedAt={r.stackDetectedAt?.toISOString().slice(0, 10) ?? null}
+                                            stackText={r.stackText}
+                                            confirmedAt={r.stackConfirmedAt?.toISOString().slice(0, 10) ?? null}
+                                            instructions={r.instructions}
+                                        />
                                     </li>
                                 ))}
                             </ul>
                         )}
                         <AddRepositoryForm projectId={project.id} />
+                    </Card>
+
+                    <Card
+                        as="section"
+                        title="Brief"
+                        description="What the agents should know about the product; it goes into every agent's prompt."
+                    >
+                        <BriefForm
+                            projectId={project.id}
+                            brief={{
+                                product: project.briefProduct,
+                                concerns: project.briefConcerns,
+                                outOfScope: project.briefOutOfScope,
+                                aiBuilt: project.aiBuilt
+                            }}
+                            aiBuiltSigns={aiHint.aiBuiltSigns}
+                        />
                     </Card>
 
                     <ModelAccessCard
@@ -112,6 +148,7 @@ export default async function ProjectPage({ params }: { params: Promise<{ projec
                             access={project.modelAccess}
                             defaults={defaults}
                             chosen={project.runs[0]?.aspects ?? []}
+                            suggested={suggestions.aspects}
                             planUsage={planUsage}
                         />
                         {project.runs.length > 0 && (
