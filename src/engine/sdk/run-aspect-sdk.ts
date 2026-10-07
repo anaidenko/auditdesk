@@ -12,7 +12,7 @@ import { setImmediate as tick } from "node:timers/promises";
 
 import { APPROVED_FALLBACKS } from "../agent/request";
 import { type AgentOutcome, type AspectInput, type AspectRunner, NUDGE, REOPEN, outcomeOf } from "../agent/run-aspect";
-import type { AgentContext } from "../agent/tools";
+import { type AgentContext, finishAfterSilence } from "../agent/tools";
 import { exhausted } from "../budget";
 import { PLAN_RESERVE, clock, percent, readPlanUsage, recordPlanUsage, reserveRefusal } from "../plan-usage";
 import { priceMessage } from "../prices";
@@ -306,7 +306,8 @@ export async function runAspectSdk(cfg: SdkRunnerConfig, o: AspectInput): Promis
                         input.push(NUDGE);
                         break;
                     }
-                    return end("partial", "Finished without reporting coverage.");
+                    const silent = finishAfterSilence(ctx);
+                    return silent ? end("done", silent) : end("partial", "Finished without reporting coverage.");
             }
         }
         await writes;

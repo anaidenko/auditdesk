@@ -5,7 +5,7 @@ import { exhausted } from "../budget";
 import { priceMessage } from "../prices";
 
 import { type Effort, agentParams } from "./request";
-import { type AgentContext, type Coverage, makeTools } from "./tools";
+import { type AgentContext, type Coverage, finishAfterSilence, makeTools } from "./tools";
 
 export type AgentOutcome = {
     status: "done" | "partial" | "declined" | "stopped" | "failed";
@@ -117,7 +117,8 @@ export async function runAspect(o: AspectInput & { client: Anthropic }): Promise
         if (last?.stop_reason !== "end_turn") return end("partial", "Partially covered: the turn limit was reached.");
         messages = [...(runner.params.messages as typeof messages), { role: "user", content: NUDGE }];
     }
-    return end("partial", "Finished without reporting coverage.");
+    const silent = finishAfterSilence(ctx);
+    return silent ? end("done", silent) : end("partial", "Finished without reporting coverage.");
 }
 
 /**

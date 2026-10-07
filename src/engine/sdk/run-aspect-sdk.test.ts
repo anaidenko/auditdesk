@@ -158,8 +158,38 @@ describe("runAspectSdk", { timeout: 60_000 }, () => {
         const { h, run } = await setup([finish([]), tool("read_file", { path: "src/db.js", start_line: 1, end_line: 2 }), finish([])]);
         expect(await run()).toMatchObject({ status: "done" });
         expect(h.fake.requests).toHaveLength(3);
-        expect(body(h, 1)).toMatch(/Not finished: 2 of 2 items are not examined \(SEC-01, SEC-04\)/);
+        expect(body(h, 1)).toMatch(
+            /Not finished: 2 of 2 items are not examined, and most of this aspect's budget is left\. Examine these next: SEC-01 Authentication, SEC-04 Injection\./
+        );
         expect(body(h, 1)).not.toContain(NUDGE);
+    });
+
+    it("sends the agent back over several rounds without a nudge, and ends a twice-silent one as done", async () => {
+        const read = () => tool("read_file", { path: "src/db.js", start_line: 1, end_line: 2 });
+        const rounds = await setup([
+            finish([]),
+            read(),
+            finish([{ item: "SEC-01", status: "examined" }]),
+            read(),
+            finish([
+                { item: "SEC-01", status: "examined" },
+                { item: "SEC-04", status: "examined" }
+            ])
+        ]);
+        expect(await rounds.run()).toMatchObject({ status: "done", note: null });
+        expect(rounds.h.fake.requests).toHaveLength(5);
+        expect(rounds.h.fake.requests.map((_, i) => body(rounds.h, i)).join()).not.toContain(NUDGE);
+        const silent = await setup([
+            finish([]),
+            text("Enough."),
+            read(),
+            finish([{ item: "SEC-01", status: "examined" }]),
+            text("Still enough.")
+        ]);
+        expect(await silent.run()).toMatchObject({
+            status: "done",
+            note: "Sent back twice; it stopped without finishing again; 1 of 2 items still not examined."
+        });
     });
 
     it("keeps its nudge for a sent-back agent that then ends with text", async () => {
