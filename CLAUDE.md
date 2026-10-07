@@ -26,7 +26,7 @@ read-only tools. Setup and commands: README.md.
   run. Tools that read it go through `resolveInClone`.
 - **No live Claude API call without Andrii's OK on a cost estimate.** Tests replay recorded
   responses (`src/engine/replay.ts`).
-- **Live calls use `DEFAULT_MODEL` at `DEFAULT_EFFORT` (Sonnet 5.5, `high` since 2026-10-07).**
+- **Live calls use `DEFAULT_MODEL` at `DEFAULT_EFFORT` (Sonnet 5.5, `medium` since 2026-10-07).**
   Another model or a higher effort, in a script, a run or a default, only with Andrii's explicit OK.
 - Claude API code is written against the claude-api skill, never from memory. The skill's
   model and price tables are a dated cache: check the live models overview and pricing pages
