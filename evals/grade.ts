@@ -106,18 +106,18 @@ export function grade(findings: GradedFinding[], key: AnswerKey, o: { slack?: nu
                 if (!near.length) for (const id of nearest(located, ev)) onPlace.add(id);
             }
         for (const e of key.entries) if (hits.has(e.id)) g.matched.push({ key: e.id, finding: f.label });
-        if (f.folded) continue;
-        if (!hits.size)
-            for (const e of key.entries) if (onPlace.has(e.id)) g.locationOnly.push({ key: e.id, finding: f.label, item: f.checklistItem });
-        if (hits.size || onPlace.size) continue;
-        if (f.kind === "question") {
-            g.questionsIgnored++;
+        if (f.folded || hits.size) continue;
+        // A known issue is named before a nearby planted entry, which would read it as a misplaced find.
+        const known =
+            f.kind === "finding" &&
+            key.known.some(k => k.checklistItem === f.checklistItem && (!k.file || f.evidence.some(ev => norm(ev.file) === norm(k.file!))));
+        if (known) {
+            g.known.push(f.label);
             continue;
         }
-        const known = key.known.some(
-            k => k.checklistItem === f.checklistItem && (!k.file || f.evidence.some(ev => norm(ev.file) === norm(k.file!)))
-        );
-        if (known) g.known.push(f.label);
+        for (const e of key.entries) if (onPlace.has(e.id)) g.locationOnly.push({ key: e.id, finding: f.label, item: f.checklistItem });
+        if (onPlace.size) continue;
+        if (f.kind === "question") g.questionsIgnored++;
         else g.leftovers.push(f.label);
     }
 

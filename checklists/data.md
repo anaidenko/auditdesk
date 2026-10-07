@@ -26,14 +26,16 @@ without an index that matches.
 ## DAT-03 Queries and N+1
 
 Queries inside loops; lazy-loaded relations read while rendering a list; list endpoints without
-pagination or a limit; fetching whole rows or all columns where a few are used; counts and
-aggregates computed on every request.
+pagination or a limit (while API design runs, a list endpoint's paging is API-03's and this item
+keeps the query); fetching whole rows or all columns where a few are used; counts and aggregates
+computed on every request.
 
 ## DAT-04 Transactions and concurrency
 
 Writes that must succeed together (an order, its payment, the stock) outside one transaction;
 read-modify-write races on balances, counters and inventory; no optimistic locking where two
-editors can collide; no idempotency key on writes a client or a queue retries.
+editors can collide; no idempotency key on writes a client or a queue retries (a client's retried
+HTTP request is API-05's while API design runs).
 
 ## DAT-05 Migrations
 

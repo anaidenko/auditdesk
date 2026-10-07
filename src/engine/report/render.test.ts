@@ -103,15 +103,20 @@ describe("renderReport", () => {
         expect(html).toContain("the budget share was spent");
     });
 
-    it("says when performance or accessibility were judged from the code alone, and names which", () => {
+    it("says what reading the code alone could not show, for performance and for accessibility apart", () => {
         const aspect = (key: string, title: string) => ({ key, title, status: "done", note: null, coverage: [] });
+        const perf = "<li>Performance was judged from the code alone: no page was rendered or timed.</li>";
+        const a11y =
+            "<li>Accessibility was judged from the code alone: no page was rendered and no screen reader was run; contrast was computed only for colour pairs written in the code.</li>";
         expect(renderReport(data({ aspects: [aspect("security", "Security")] }))).not.toMatch(/judged from the code alone/);
-        expect(renderReport(data({ aspects: [aspect("accessibility", "Accessibility (web)")] }))).toContain(
-            "<li>Accessibility was judged from the code alone: no page was rendered or timed, no contrast was measured and no screen reader was run.</li>"
+        const one = renderReport(data({ aspects: [aspect("accessibility", "Accessibility (web)")] }));
+        expect(one).toContain(a11y);
+        expect(one).not.toContain(perf);
+        const both = renderReport(
+            data({ aspects: [aspect("performance", "Performance (web)"), aspect("accessibility", "Accessibility (web)")] })
         );
-        expect(
-            renderReport(data({ aspects: [aspect("performance", "Performance (web)"), aspect("accessibility", "Accessibility (web)")] }))
-        ).toContain("<li>Performance and accessibility were judged from the code alone:");
+        expect(both).toContain(perf);
+        expect(both).toContain(a11y);
     });
 
     it("carries the disclaimer", () => {

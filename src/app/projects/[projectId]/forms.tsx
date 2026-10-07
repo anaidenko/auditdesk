@@ -85,16 +85,18 @@ export function StartRunForm({
         });
     };
     // React sets a box's `checked` when it mounts, after which a new `defaultChecked` no longer moves
-    // it: a suggestion that arrives later (a detection on this page) ticks its box here, leaving the
-    // rest of the form as Andrii left it.
+    // it: a suggestion that arrives or goes later (a detection on this page) moves its box here, as a
+    // reload would, leaving the rest of the form as Andrii left it.
     const offered = useRef(suggested);
-    // A box ticked that way, or values a browser restored, change the form without a change event.
+    // A box moved that way, or values a browser restored, change the form without a change event.
     useLayoutEffect(() => {
         const f = form.current;
-        for (const key of suggested.filter(k => !offered.current.includes(k))) {
+        const tick = (key: string, on: boolean) => {
             const box = f?.querySelector<HTMLInputElement>(`input[name="aspects"][value="${key}"]`);
-            if (box) box.checked = true;
-        }
+            if (box) box.checked = on;
+        };
+        for (const key of suggested.filter(k => !offered.current.includes(k))) tick(key, true);
+        for (const key of offered.current.filter(k => !suggested.includes(k) && !chosen.includes(k))) tick(key, false);
         offered.current = suggested;
         read(f);
     }, [chosen, suggested, repositories, state]);

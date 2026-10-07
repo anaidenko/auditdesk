@@ -169,6 +169,17 @@ describe("issue drafts", () => {
         expect(issueDrafts(data())).toHaveLength(2);
     });
 
+    it("links an accessibility finding's WCAG criteria in its issue, as the report does", () => {
+        const wcag = { label: "WCAG 2.2 SC 2.4.7 Focus Visible (Level AA)", url: "https://www.w3.org/TR/WCAG22/#focus-visible" };
+        const [draft] = issueDrafts(
+            one({
+                checklistItem: "ACC-03",
+                refs: { top10: null, cwe: null, asvs: [], cheatsheets: [], advisories: [], nist: null, wcag: [wcag] }
+            })
+        );
+        expect(draft.body).toContain("[WCAG 2.2 SC 2.4.7 Focus Visible (Level AA)](https://www.w3.org/TR/WCAG22/#focus-visible)");
+    });
+
     it("orders the drafts by severity, so the first issue created is the worst", () => {
         const d = reportData({
             findings: [reportFinding({ label: "F-001", severity: "low" }), reportFinding({ label: "F-002", severity: "critical" })]

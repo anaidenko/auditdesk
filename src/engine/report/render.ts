@@ -99,12 +99,18 @@ const COVERAGE: Record<string, string> = {
     not_reported: "not reported (the agent stopped first)"
 };
 
+const STATIC_ONLY: Record<string, string> = {
+    performance: "Performance was judged from the code alone: no page was rendered or timed.",
+    accessibility:
+        "Accessibility was judged from the code alone: no page was rendered and no screen reader was run; contrast was computed only for colour pairs written in the code."
+};
+
 /** Performance and accessibility read from code: what the report cannot claim for them. */
 function staticOnly(d: ReportData): string {
-    const ran = ["performance", "accessibility"].filter(k => d.aspects.some(a => a.key === k)).map(aspectTitle);
-    if (!ran.length) return "";
-    const named = ran.length > 1 ? `${ran[0]} and ${ran[1].toLowerCase()} were` : `${ran[0]} was`;
-    return `<li>${named} judged from the code alone: no page was rendered or timed, no contrast was measured and no screen reader was run.</li>`;
+    return Object.entries(STATIC_ONLY)
+        .filter(([key]) => d.aspects.some(a => a.key === key))
+        .map(([, text]) => `<li>${text}</li>`)
+        .join("\n");
 }
 
 /**

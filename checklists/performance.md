@@ -15,8 +15,8 @@ images served at full size). Low for small savings.
 
 ## PRF-01 Caching
 
-Work repeated on every request that could be cached: identical outbound calls (exchange rates,
-carrier quotes, configuration); framework caches switched off (`cache: "no-store"`,
+Work repeated on every request that could be cached: identical outbound calls (currency rates,
+a partner's price list, configuration); framework caches switched off (`cache: "no-store"`,
 `force-dynamic`, `revalidate = 0`) for data that rarely changes; public and static responses
 without cache headers; caches with no expiry, or with a key that misses an input (a missing
 tenant is TEN-05).
@@ -49,8 +49,9 @@ video that loads before it is played.
 
 ## PRF-06 Memory
 
-Listeners, intervals and subscriptions that are never removed; caches and maps that grow without
-a bound; whole files or result sets read into memory where a stream or a page would do.
+Listeners, intervals and subscriptions that are never removed, for the memory they hold (the
+missing cleanup itself is ARC-05's); caches and maps that grow without a bound; whole files or
+result sets read into memory where a stream or a page would do.
 
 ## PRF-07 Database load
 

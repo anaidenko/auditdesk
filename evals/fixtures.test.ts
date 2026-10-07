@@ -95,7 +95,24 @@ describe("the own fixture at its pinned commit", () => {
         expect(files.filter(f => /^\.(claude|cursor|windsurf|kiro|bolt)\//.test(f))).toEqual([]);
         const log = run("git", ["log", "--format=%B", own.sha], { cwd: clone, encoding: "utf8" });
         const text = [log, ...files.map(f => `${f}\n${show(f)}`)].join("\n").toLowerCase();
-        for (const word of ["vuln", "insecure", "planted", "exploit", "xss", "ssrf", "idor", "injection", "todo", "fixme", "unsafe"]) {
+        for (const word of [
+            "vuln",
+            "insecure",
+            "planted",
+            "exploit",
+            "xss",
+            "ssrf",
+            "idor",
+            "injection",
+            "todo",
+            "fixme",
+            "unsafe",
+            "a11y",
+            "wcag",
+            "idempot",
+            "prefetch",
+            "contrast"
+        ]) {
             expect(text, word).not.toContain(word);
         }
         for (const e of key.entries) expect(text, e.id).not.toContain(e.title.toLowerCase());

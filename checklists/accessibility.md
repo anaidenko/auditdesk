@@ -1,8 +1,9 @@
 # Accessibility
 
 When the repository has a user interface. From the code alone: templates, components and styles
-are read and nothing is rendered, so no contrast is measured and no screen reader runs. Judge
-what a keyboard or screen-reader user meets against WCAG 2.2 level AA, and cite the component.
+are read and nothing is rendered, so contrast is computed only for colour pairs written in the
+code, and no screen reader runs. Judge what a keyboard or screen-reader user meets against
+WCAG 2.2 level AA, and cite the component.
 For a mobile app (React Native, Ionic), read the platform's equivalents (`accessibilityLabel`,
 `accessibilityRole`, `aria-label` on Ionic components).
 
@@ -21,7 +22,8 @@ neither a title nor `aria-hidden`; charts with no text equivalent.
 
 Inputs labelled only by a placeholder; labels not tied to their inputs (`htmlFor` and `id`);
 required fields and expected formats not stated; errors shown away from the field, by colour
-alone, or not announced; `autocomplete` missing on fields for personal data.
+alone, or not announced; `autocomplete` missing on fields for personal data; password fields
+that block pasting, or a sign-in that needs a puzzle solved.
 
 ## ACC-03 Keyboard and focus
 
@@ -58,3 +60,9 @@ alternative.
 Status messages (added to cart, saved, an error after submit) outside a live region; content
 loaded or replaced without the screen reader hearing of it; notifications that vanish before
 they can be read.
+
+## ACC-09 Zoom, reflow and touch targets
+
+A viewport that blocks zooming (`maximum-scale=1`, `user-scalable=no`, as some mobile starters
+ship); fixed widths or hidden overflow that make content scroll sideways at 320 CSS pixels; touch
+targets smaller than 24 by 24 CSS pixels without the spacing that excuses them.

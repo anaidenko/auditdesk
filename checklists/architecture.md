@@ -28,7 +28,9 @@ modelled differently in two places.
 
 Errors swallowed (`catch {}`, `.catch(() => {})`, a promise neither awaited nor caught), errors
 turned into success responses, inconsistent error shapes from one API, no error boundary in
-React or global `ErrorHandler` in Angular, no handler for unhandled rejections in Node.js.
+React or global `ErrorHandler` in Angular, no handler for unhandled rejections in Node.js. While
+API design runs, the status codes and error shapes an HTTP API answers with are API-02's, and
+this item keeps the errors lost inside the code.
 
 ## ARC-04 Configuration
 
@@ -47,8 +49,9 @@ cleanup; derived data stored instead of computed.
 ## ARC-06 Long work and side effects
 
 Slow work inside a request (emails, PDFs, imports, AI calls) with no queue and no timeout;
-fire-and-forget promises; retries of non-idempotent work; scheduled jobs inside the web process
-that run once per instance.
+fire-and-forget promises; retries of non-idempotent work (a client's retried HTTP request is
+API-05's while API design runs); scheduled jobs inside the web process that run once per
+instance.
 
 ## ARC-07 Contracts between parts
 

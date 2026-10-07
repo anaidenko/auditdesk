@@ -324,6 +324,8 @@ entries:
     kind: finding
     severity: medium
     title: A refused cancellation is answered with status 200
+    alsoItems:
+      - ARC-03
     file: src/app/api/orders/[id]/cancel/route.ts
     startLine: 12
     endLine: 12
@@ -351,6 +353,9 @@ entries:
     kind: finding
     severity: high
     title: A retried checkout request creates a second order and charges the card again
+    alsoItems:
+      - ARC-06
+      - DAT-04
     file: src/app/api/checkout/route.ts
     startLine: 41
     endLine: 41
@@ -514,6 +519,31 @@ known:
     file: src/lib/db.ts
   - checklistItem: API-02
     title: Errors are plain text in some routes and JSON in others
+    file: src/app/api/checkout/route.ts
+  - checklistItem: API-02
+    title: Errors are plain text in some routes and JSON in others
+    file: src/app/api/orders/route.ts
+  - checklistItem: API-02
+    title: Errors are plain text in some routes and JSON in others
+    file: src/app/api/orders/[id]/route.ts
+  - checklistItem: API-02
+    title: Errors are plain text in some routes and JSON in others
+    file: src/app/api/products/route.ts
+  - checklistItem: API-02
+    title: Errors are plain text in some routes and JSON in others
+    file: src/app/api/products/[id]/describe/route.ts
+  - checklistItem: API-02
+    title: Errors are plain text in some routes and JSON in others
+    file: src/app/api/profile/avatar/route.ts
+  - checklistItem: API-02
+    title: Errors are plain text in some routes and JSON in others
+    file: src/app/api/reports/sales/route.ts
+  - checklistItem: API-02
+    title: Errors are plain text in some routes and JSON in others
+    file: src/app/api/signup/route.ts
+  - checklistItem: API-02
+    title: Errors are plain text in some routes and JSON in others
+    file: src/app/api/webhooks/payments/route.ts
   - checklistItem: API-03
     title: The order list stops at 50 orders with no way to page further
     file: src/app/api/orders/route.ts
@@ -548,3 +578,24 @@ known:
   - checklistItem: ACC-08
     title: The shipping estimate appears without being announced
     file: src/components/ShippingEstimate.tsx
+  - checklistItem: ACC-04
+    title: The admin product table has no header cells
+    file: src/app/admin/page.tsx
+  - checklistItem: ACC-05
+    title: The admin product table has no header cells
+    file: src/app/admin/page.tsx
+  - checklistItem: ACC-05
+    title: The home page jumps from its h1 to the cards' h3
+    file: src/app/page.tsx
+  - checklistItem: ACC-05
+    title: The home page jumps from its h1 to the cards' h3
+    file: src/components/ProductCard.tsx
+  - checklistItem: DAT-08
+    title: Avatar images are stored as bytes on the user row
+    file: prisma/schema.prisma
+  - checklistItem: PRF-06
+    title: Avatar images are stored as bytes on the user row
+    file: prisma/schema.prisma
+  - checklistItem: PRF-07
+    title: Avatar images are stored as bytes on the user row
+    file: prisma/schema.prisma

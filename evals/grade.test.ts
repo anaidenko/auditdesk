@@ -169,6 +169,27 @@ describe("grade", () => {
         expect(g.leftovers).toEqual(["F-003"]);
     });
 
+    it("takes a known issue beside a planted entry of another item as known, not as a misplaced find", () => {
+        const k = key(
+            [entry({ id: "K1", aspect: "performance", checklistItem: "PRF-04", file: "src/search.tsx", startLine: 17, endLine: 21 })],
+            [{ checklistItem: "ARC-03", title: "A failed request is never handled", file: "src/search.tsx" }]
+        );
+        const g = grade(
+            [
+                finding({
+                    label: "F-001",
+                    aspect: "architecture",
+                    checklistItem: "ARC-03",
+                    evidence: [{ file: "src/search.tsx", startLine: 18, endLine: 20 }]
+                })
+            ],
+            k
+        );
+        expect(g.known).toEqual(["F-001"]);
+        expect(g.locationOnly).toEqual([]);
+        expect(g.leftovers).toEqual([]);
+    });
+
     it("computes recall over the entries the run's aspects could find, and names the missed ones", () => {
         const k = key([
             entry({ id: "K1" }),

@@ -155,7 +155,9 @@ const code = (s: string) => {
 };
 
 function body(f: ReportFinding): string {
-    const refs = f.refs ? [f.refs.top10, f.refs.cwe, ...f.refs.asvs, ...f.refs.cheatsheets, ...f.refs.advisories, f.refs.nist] : [];
+    const refs = f.refs
+        ? [f.refs.top10, f.refs.cwe, ...f.refs.asvs, ...f.refs.wcag, ...f.refs.cheatsheets, ...f.refs.advisories, f.refs.nist]
+        : [];
     const lines = [
         `**Severity:** ${f.severity ?? "question"} · **Checklist item:** ${f.checklistItem ?? "none"} · **Repository:** ${prose(f.repository)}${
             f.effort ? ` · **Effort:** ${f.effort}` : ""

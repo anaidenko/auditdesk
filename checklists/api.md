@@ -10,14 +10,14 @@ this repository's own front end and back end are ARC-07.
 Severity: high when ordinary use of the API does harm (a GET that changes or deletes data, which
 link prefetchers, crawlers and retries all trigger; a retried payment request that charges
 twice). Medium when clients cannot rely on the contract (failures answered with 200, an error
-shape per route, lists returned whole, a breaking change with no version). Low for naming and
+shape per route, lists returned whole, a breaking change with no version). Low for
 documentation gaps.
 
 ## API-01 Methods and resources
 
-GET, HEAD and OPTIONS handlers that change state; actions modelled as verbs in paths where a
-method on a resource would do (`/getOrders`, `/deleteProduct`); naming and pluralisation that
-differ across routes; PUT used for partial updates; handlers that accept any method.
+GET, HEAD and OPTIONS handlers that change state; a method that misleads its client (a POST that
+only reads, a DELETE that archives, PUT used for a partial update); handlers that accept any
+method. How paths are named is style, and not a finding.
 
 ## API-02 Status codes and errors
 
