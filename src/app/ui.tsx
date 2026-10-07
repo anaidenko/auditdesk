@@ -93,7 +93,8 @@ const TONES: Record<Tone, string> = {
 };
 
 const RECHECK: Record<string, { tone: Tone; words: string }> = {
-    open: { tone: "amber", words: "still open" },
+    unchanged: { tone: "zinc", words: "code unchanged" },
+    open: { tone: "amber", words: "confirmed open" },
     fixed: { tone: "emerald", words: "fixed" },
     changed: { tone: "sky", words: "code changed, verify" },
     regressed: { tone: "red", words: "regressed" }

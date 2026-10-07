@@ -5,19 +5,21 @@ import { reportData as data, reportFinding as finding } from "@/test/report-data
 import { renderReport } from "./render";
 
 describe("renderReport", () => {
-    it("compares a re-audit with the last one: what was fixed, what is still open, what came back and what is new", () => {
+    it("compares a re-audit with the last one: what was fixed, what is unchanged, open, back or new", () => {
         const html = renderReport(
             data({
                 findings: [
                     finding({ label: "F-001", severity: "critical", recheck: "regressed" }),
-                    finding({ label: "F-004", severity: "low", recheck: "open" })
+                    finding({ label: "F-004", severity: "low", recheck: "unchanged" }),
+                    finding({ label: "F-005", severity: "low", recheck: "changed" })
                 ],
                 since: {
                     commits: [{ repository: "app", sha: "c".repeat(40) }],
                     fixed: [finding({ label: "F-002", severity: "high", title: "Raw SQL in search" })],
-                    open: 1,
+                    unchanged: 1,
+                    open: 2,
                     regressed: 1,
-                    changed: 0,
+                    changed: ["F-005"],
                     added: 2
                 }
             })
@@ -25,23 +27,32 @@ describe("renderReport", () => {
         expect(html).toContain('<li><a href="#since">Since the last audit</a></li>');
         const since = html.slice(html.indexOf('<section id="since">'), html.indexOf("</section>", html.indexOf('<section id="since">')));
         expect(since).toContain("Re-audited at ccccccc (app).");
-        expect(since).toContain("1 fixed · 1 still open · 1 regressed · 2 new.");
-        expect(since).toContain("F-002");
+        expect(since).toContain("1 fixed · 1 with code unchanged · 2 confirmed open · 1 regressed · 2 new.");
+        expect(since).toContain("Code changed since, not yet verified: F-005.");
         expect(since).toContain("Raw SQL in search");
         expect(since).toContain('<a class="fid" href="#F-001">F-001</a>');
         // A fixed finding is listed here, not among the findings.
         expect(html).not.toContain('id="F-002"');
         expect(html).toContain('<span class="pill regressed">regressed since the last audit</span>');
+        expect(html).toContain('<span class="pill limited">code changed since the last audit</span>');
     });
 
-    it("says how many reported findings have changed code still to verify, and has no comparison without a re-audit", () => {
+    it("says when nothing reported before is fixed yet, and has no comparison without a re-audit", () => {
         const html = renderReport(
             data({
-                since: { commits: [{ repository: "app", sha: "c".repeat(40) }], fixed: [], open: 0, regressed: 0, changed: 2, added: 0 }
+                since: {
+                    commits: [{ repository: "app", sha: "c".repeat(40) }],
+                    fixed: [],
+                    unchanged: 0,
+                    open: 0,
+                    regressed: 0,
+                    changed: [],
+                    added: 0
+                }
             })
         );
-        expect(html).toContain("2 whose code changed are listed until they are verified.");
         expect(html).toContain("None of the findings reported before is fixed yet.");
+        expect(html).not.toContain("not yet verified");
         expect(renderReport(data())).not.toContain('id="since"');
     });
 

@@ -4,10 +4,18 @@ import type { AgentOutcome } from "@/engine/agent/run-aspect";
 import { freshTokens } from "@/engine/budget";
 import { findingLabel, indexLine, scannerDuplicates } from "@/engine/findings";
 import type { PipelineSink } from "@/engine/pipeline";
-import type { EarlierFinding, RecheckStatus } from "@/engine/recheck";
+import type { EarlierFinding, RecheckResult } from "@/engine/recheck";
 import type { ToolVersions } from "@/engine/scanners/types";
 import type { StackProfile } from "@/engine/stack";
-import { type CallRecord, type Evidence, type NewFinding, SEVERITIES, type SeverityName, type Spend } from "@/engine/types";
+import {
+    type CallRecord,
+    type Evidence,
+    type NewFinding,
+    type References,
+    SEVERITIES,
+    type SeverityName,
+    type Spend
+} from "@/engine/types";
 import type { Prisma } from "@/generated/prisma/client";
 import { prisma } from "@/server/db";
 import { createFinding } from "@/server/findings";
@@ -107,7 +115,10 @@ export class PrismaSink implements PipelineSink {
                 evidence: r.evidence as never,
                 title: r.title
             });
-            return r.status === "rejected" ? `${line} (rejected by the auditor: ${r.statusReason}; do not report it again)` : line;
+            if (r.status === "rejected") return `${line} (rejected by the auditor: ${r.statusReason}; do not report it again)`;
+            // Fixed at a re-audit: the same problem in other code is a new finding, not a duplicate.
+            if (r.recheck === "fixed") return `${line} (fixed at ${r.recheckedSha?.slice(0, 7)}; file it again if it is back)`;
+            return line;
         });
     }
 
@@ -155,8 +166,10 @@ export class PrismaSink implements PipelineSink {
                 repositoryId,
                 kind: "finding",
                 status: { in: [...REPORTABLE] },
-                NOT: { runId: this.runId },
-                OR: [{ recheckedSha: null }, { recheckedSha: { not: sha } }]
+                AND: [
+                    { OR: [{ runId: null }, { runId: { not: this.runId } }] },
+                    { OR: [{ recheckedSha: null }, { recheckedSha: { not: sha } }] }
+                ]
             },
             include: { run: { select: { commits: true } } },
             orderBy: { number: "asc" }
@@ -169,23 +182,29 @@ export class PrismaSink implements PipelineSink {
                 label: findingLabel(r.number),
                 source: r.source,
                 fingerprint: r.fingerprint,
+                title: r.title,
+                checklistItem: r.checklistItem,
+                references: r.references as References,
                 evidence: r.evidence as unknown as Evidence[],
-                recheck: r.recheck
+                recheck: r.recheck,
+                recheckDigest: r.recheckDigest,
+                recheckGone: r.recheckGone
             }));
     }
 
-    async filedFingerprints(repositoryId: string) {
-        const rows = await prisma.finding.findMany({ where: { repositoryId, runId: this.runId }, select: { fingerprint: true } });
-        return new Set(rows.map(r => r.fingerprint));
-    }
-
-    async recheckFindings(results: { id: string; status: RecheckStatus }[], sha: string) {
+    async recheckFindings(results: RecheckResult[], sha: string) {
         const at = new Date();
         await prisma.$transaction(
             results.map(r =>
                 prisma.finding.update({
                     where: { id: r.id },
-                    data: { recheck: r.status, recheckedSha: sha, recheckedAt: at, recheckRunId: this.runId }
+                    data: {
+                        recheckDigest: r.digest,
+                        recheckGone: r.gone,
+                        // A finding that stays fixed keeps the commit it was found fixed at: "since the last audit" is news only.
+                        ...(r.keep ? {} : { recheck: r.status, recheckedSha: sha, recheckedAt: at, recheckRunId: this.runId }),
+                        ...(r.evidence ? { evidence: r.evidence as unknown as Prisma.InputJsonArray } : {})
+                    }
                 })
             )
         );

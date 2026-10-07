@@ -187,6 +187,11 @@ function costLine(cost: ReportData["cost"]): string {
     return `<li>Cost of the model calls: ${atLeast}${usd(cost.apiKeyUsd)}${unknown}.</li>`;
 }
 
+const RECHECK_PILL: Record<string, string> = {
+    regressed: ` <span class="pill regressed">regressed since the last audit</span>`,
+    changed: ` <span class="pill limited">code changed since the last audit</span>`
+};
+
 function finding(f: ReportFinding): string {
     const byDefault = f.severity === "critical" || f.severity === "high";
     const call =
@@ -229,7 +234,7 @@ function finding(f: ReportFinding): string {
     return `<details open id="${e(f.label)}" class="finding sev-${e(severityOf(f))}" data-sev="${e(severityOf(f))}" data-aspect="${e(f.aspect)}" data-repo="${e(f.repository)}">
 <summary>${badge(f)}<span class="fid">${e(f.label)}</span><span>${e(f.title)}</span></summary>
 <div class="body">
-<p class="meta">${e(meta)}${f.recheck === "regressed" ? ` <span class="pill regressed">regressed since the last audit</span>` : ""}</p>
+<p class="meta">${e(meta)}${RECHECK_PILL[f.recheck ?? ""] ?? ""}</p>
 <p class="lead">${e(f.summary)}</p>
 ${pair}
 <h4>Details</h4>
@@ -250,13 +255,15 @@ function since(d: ReportData, findings: ReportFinding[]): string {
     const regressed = findings.filter(f => f.recheck === "regressed");
     const counts = [
         `${s.fixed.length} fixed`,
-        `${s.open} still open`,
+        `${s.unchanged} with code unchanged`,
+        ...(s.open ? [`${s.open} confirmed open`] : []),
         ...(s.regressed ? [`${s.regressed} regressed`] : []),
         `${s.added} new`
     ];
     return `<section id="since"><h2>Since the last audit</h2>
 <p>Re-audited at ${s.commits.map(c => `${e(c.sha.slice(0, 7))} (${e(c.repository)})`).join(", ")}.</p>
-<p>${counts.join(" · ")}.${s.changed ? ` ${s.changed} whose code changed ${s.changed === 1 ? "is" : "are"} listed until ${s.changed === 1 ? "it is" : "they are"} verified.` : ""}</p>
+<p>${counts.join(" · ")}.</p>
+${s.changed.length ? `<p>Code changed since, not yet verified: ${s.changed.map(e).join(", ")}.</p>` : ""}
 <h3>Fixed</h3>
 ${s.fixed.length ? `<ul class="risks">${s.fixed.map(f => item(f, false)).join("")}</ul>` : `<p class="muted">None of the findings reported before is fixed yet.</p>`}
 ${regressed.length ? `<h3>Regressed</h3><ul class="risks">${regressed.map(f => item(f, true)).join("")}</ul>` : ""}

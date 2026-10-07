@@ -64,6 +64,9 @@ export async function readFileRange(root: string, path: string, startLine: numbe
     return [`${rel}, lines ${start}-${end} of ${all.length}`, ...body].join("\n");
 }
 
+/** The note a line cut to `LIMITS.lineChars` ends with; a re-audit matches the line by what was kept. */
+export const CUT_NOTE = / … \[line cut: \d+ characters\]$/;
+
 function cap(line: string): string {
     return line.length > LIMITS.lineChars ? `${line.slice(0, LIMITS.lineChars)} … [line cut: ${line.length} characters]` : line;
 }

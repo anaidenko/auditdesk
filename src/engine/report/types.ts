@@ -24,7 +24,7 @@ export interface ReportFinding {
     /** Resolved from references/ (design § 10); absent in data built without them. */
     refs?: FindingReferences;
     /** What the latest re-audit found of it (design § 9). */
-    recheck?: "open" | "fixed" | "changed" | "regressed" | null;
+    recheck?: "unchanged" | "open" | "fixed" | "changed" | "regressed" | null;
 }
 
 export interface ReportData {
@@ -52,12 +52,17 @@ export interface ReportData {
      * ran. Fixed findings are listed here and left out of `findings`.
      */
     since?: {
+        /** The commit each repository was re-checked at. */
         commits: { repository: string; sha: string }[];
+        /** Found fixed at this re-audit; fixes from before it are no news. */
         fixed: ReportFinding[];
+        /** Code unchanged: the re-audit's own reading, not a verdict. */
+        unchanged: number;
+        /** Confirmed still open by the auditor. */
         open: number;
         regressed: number;
-        /** Cited code changed and Andrii has not yet verified it: still in `findings`. */
-        changed: number;
+        /** Labels whose cited code changed and the auditor has not yet verified: still in `findings`. */
+        changed: string[];
         /** Reported findings the re-audit's run filed. */
         added: number;
     } | null;

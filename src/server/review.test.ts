@@ -145,11 +145,17 @@ describe("review", () => {
             data: { status: "accepted", recheck: "changed", recheckedSha: "c".repeat(40) }
         });
         await confirmRecheck(a.id, "fixed");
+        // Its code was already gone when he verified the fix: its return would be a regression.
         expect(await prisma.finding.findUniqueOrThrow({ where: { id: a.id } })).toMatchObject({
             recheck: "fixed",
+            recheckGone: true,
             status: "accepted",
             recheckedSha: "c".repeat(40)
         });
+        await prisma.finding.update({ where: { id: a.id }, data: { recheck: "unchanged" } });
+        await confirmRecheck(a.id, "fixed");
+        // Fixed elsewhere while the cited code stays: the code being there is no regression.
+        expect((await prisma.finding.findUniqueOrThrow({ where: { id: a.id } })).recheckGone).toBe(false);
         await confirmRecheck(a.id, "open");
         expect((await prisma.finding.findUniqueOrThrow({ where: { id: a.id } })).recheck).toBe("open");
         await expect(confirmRecheck(b.id, "fixed")).rejects.toThrow(/F-002 has not been re-checked/);
@@ -165,6 +171,14 @@ describe("review", () => {
         const { project } = await twoFindings();
         expect((await listFindings(project.id)).map(f => f.label)).toEqual(["F-002", "F-001"]);
         expect((await listFindings(project.id, { q: "search" })).map(f => f.label)).toEqual(["F-002"]);
+    });
+
+    it("lists the findings a re-audit left to verify", async () => {
+        const { project, a, b } = await twoFindings();
+        await prisma.finding.update({ where: { id: a.id }, data: { recheck: "changed" } });
+        await prisma.finding.update({ where: { id: b.id }, data: { recheck: "unchanged" } });
+        expect((await listFindings(project.id, { recheck: "changed" })).map(f => f.id)).toEqual([a.id]);
+        expect(await listFindings(project.id, { recheck: "bogus" })).toHaveLength(2);
     });
 
     it("filters by aspect, and ignores an aspect it does not know", async () => {

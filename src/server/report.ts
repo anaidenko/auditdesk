@@ -51,23 +51,33 @@ export async function reportRepositoryNames(projectId: string): Promise<string[]
  * The latest re-audit against the findings reported before it (design § 9): what it fixed, left
  * open, found back or changed, and how many reported findings its own run filed. Null until one ran.
  */
-async function sinceLastAudit<
-    R extends { recheck: string | null; recheckRunId: string | null; recheckedAt: Date | null; runId: string | null }
->(rows: R[], names: Map<string, string>, toReport: (r: R) => ReportFinding): Promise<ReportData["since"]> {
+function sinceLastAudit<
+    R extends {
+        recheck: string | null;
+        recheckRunId: string | null;
+        recheckedAt: Date | null;
+        recheckedSha: string | null;
+        runId: string | null;
+        repositoryId: string | null;
+        number: number;
+    }
+>(rows: R[], names: Map<string, string>, toReport: (r: R) => ReportFinding): ReportData["since"] {
     const rechecked = rows.filter(r => r.recheck && r.recheckRunId);
     if (!rechecked.length) return null;
     const latest = rechecked.reduce((a, b) => (b.recheckedAt! > a.recheckedAt! ? b : a)).recheckRunId!;
-    const run = await prisma.run.findUnique({ where: { id: latest }, select: { commits: true } });
-    const count = (status: string) => rechecked.filter(r => r.recheck === status).length;
+    // Only what the latest re-audit checked: a fix found at an earlier one is no news now.
+    const now = rechecked.filter(r => r.recheckRunId === latest);
+    const count = (status: string) => now.filter(r => r.recheck === status).length;
     return {
-        commits: Object.entries((run?.commits as Record<string, string> | null) ?? {}).map(([id, sha]) => ({
+        commits: [...new Map(now.map(r => [r.repositoryId ?? "", r.recheckedSha ?? ""] as const)).entries()].map(([id, sha]) => ({
             repository: names.get(id) ?? "—",
             sha
         })),
-        fixed: rechecked.filter(r => r.recheck === "fixed").map(toReport),
+        fixed: now.filter(r => r.recheck === "fixed").map(toReport),
+        unchanged: count("unchanged"),
         open: count("open"),
         regressed: count("regressed"),
-        changed: count("changed"),
+        changed: now.filter(r => r.recheck === "changed").map(r => findingLabel(r.number)),
         added: rows.filter(r => r.runId === latest).length
     };
 }

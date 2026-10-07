@@ -27,13 +27,19 @@ export default async function FindingsPage({
     searchParams
 }: {
     params: Promise<{ projectId: string }>;
-    searchParams: Promise<{ q?: string; status?: string; aspect?: string }>;
+    searchParams: Promise<{ q?: string; status?: string; aspect?: string; recheck?: string }>;
 }) {
     const { projectId } = await params;
-    const { q, status, aspect } = await searchParams;
+    const { q, status, aspect, recheck } = await searchParams;
     const project = await prisma.project.findUnique({ where: { id: projectId } });
     if (!project) notFound();
-    const findings = await listFindings(projectId, { q: q || undefined, status: status || undefined, aspect: aspect || undefined });
+    const findings = await listFindings(projectId, {
+        q: q || undefined,
+        status: status || undefined,
+        aspect: aspect || undefined,
+        recheck: recheck || undefined
+    });
+    const toVerify = await prisma.finding.count({ where: { projectId, recheck: "changed", status: { in: ["accepted", "edited"] } } });
     const counts = await prisma.finding.groupBy({ by: ["status"], where: { projectId }, _count: { _all: true } });
 
     return (
@@ -48,6 +54,14 @@ export default async function FindingsPage({
                 actions={<ReportExport projectId={projectId} />}
             >
                 <span className="flex flex-wrap gap-1.5">
+                    {toVerify > 0 && (
+                        <Link
+                            href={`/projects/${projectId}/findings?recheck=changed`}
+                            className="text-xs font-medium text-sky-700 hover:underline"
+                        >
+                            {toVerify} to verify after the re-audit
+                        </Link>
+                    )}
                     {counts.map(c => (
                         <span key={c.status} className="inline-flex items-center gap-1">
                             <FindingStatus status={c.status} />

@@ -207,6 +207,7 @@ model RunEvent {
 }
 
 enum RecheckStatus {
+  unchanged
   open
   fixed
   changed
@@ -251,6 +252,10 @@ model Finding {
   recheckedSha     String?
   recheckedAt      DateTime?
   recheckRunId     String?
+  /// The cited code at the last re-check: Andrii's "still open" stands while it is the same.
+  recheckDigest    String?
+  /// The cited code was absent at a re-check after the fix: its return is a regression.
+  recheckGone      Boolean                  @default(false)
   search           Unsupported("tsvector")?
   createdAt        DateTime                 @default(now())
   updatedAt        DateTime                 @updatedAt

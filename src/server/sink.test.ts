@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it } from "vitest";
 
+import type { RecheckResult } from "@/engine/recheck";
 import { EMPTY_STACK } from "@/engine/stack";
 import { prisma } from "@/server/db";
 import { createFinding } from "@/server/findings";
@@ -52,18 +53,33 @@ describe("PrismaSink", () => {
         await add(before.id, "accepted", { kind: "question", severity: null });
         const atSame = await add(same.id, "accepted");
         const filed = await add(now.id, "unreviewed", { fingerprint: "fp-now" });
+        const orphan = await add(before.id, "accepted");
+        await prisma.finding.update({ where: { id: orphan.id }, data: { runId: null } });
         const sink = new PrismaSink(now.id, project.id);
 
         const earlier = await sink.earlierFindings(repo.id, "b".repeat(40));
-        expect(earlier.map(f => f.label).sort()).toEqual([accepted.label, edited.label]);
-        expect(earlier.find(f => f.id === edited.id)).toMatchObject({ source: "scanner", recheck: null });
-        expect(await sink.filedFingerprints(repo.id)).toEqual(new Set(["fp-now"]));
+        expect(earlier.map(f => f.label).sort()).toEqual([accepted.label, edited.label, orphan.label].sort());
+        expect(earlier.find(f => f.id === edited.id)).toMatchObject({
+            source: "scanner",
+            recheck: null,
+            recheckGone: false,
+            recheckDigest: null
+        });
         expect(filed).toBeTruthy();
 
+        const result = (id: string, over: Partial<RecheckResult>): RecheckResult => ({
+            id,
+            label: "",
+            status: "changed",
+            digest: "d1",
+            gone: false,
+            keep: false,
+            ...over
+        });
         await sink.recheckFindings(
             [
-                { id: accepted.id, status: "changed" },
-                { id: edited.id, status: "fixed" }
+                result(accepted.id, { evidence: [{ file: "a.ts", startLine: 5, endLine: 6, snippet: "x" }] }),
+                result(edited.id, { status: "fixed", gone: true })
             ],
             "b".repeat(40)
         );
@@ -71,17 +87,27 @@ describe("PrismaSink", () => {
             recheck: "fixed",
             recheckedSha: "b".repeat(40),
             recheckRunId: now.id,
+            recheckGone: true,
+            recheckDigest: "d1",
             status: "edited"
         });
+        expect((await prisma.finding.findUniqueOrThrow({ where: { id: accepted.id } })).evidence).toEqual([
+            { file: "a.ts", startLine: 5, endLine: 6, snippet: "x" }
+        ]);
         // Re-checked at this commit already: a second run there has nothing new to say of it.
-        expect((await sink.earlierFindings(repo.id, "b".repeat(40))).map(f => f.id)).toEqual([]);
-        expect((await sink.earlierFindings(repo.id, "c".repeat(40))).map(f => [f.id, f.recheck]).sort()).toEqual(
-            [
-                [accepted.id, "changed"],
-                [edited.id, "fixed"],
-                [atSame.id, null]
-            ].sort()
+        expect((await sink.earlierFindings(repo.id, "b".repeat(40))).map(f => f.id)).toEqual([orphan.id]);
+        // A finding that stays fixed keeps the commit and the run it was found fixed at.
+        const later = new PrismaSink(same.id, project.id);
+        await later.recheckFindings([result(edited.id, { status: "fixed", keep: true, digest: "d2" })], "c".repeat(40));
+        expect(await prisma.finding.findUniqueOrThrow({ where: { id: edited.id } })).toMatchObject({
+            recheckedSha: "b".repeat(40),
+            recheckRunId: now.id,
+            recheckDigest: "d2"
+        });
+        expect(await sink.findingIndex(repo.id)).toContainEqual(
+            expect.stringMatching(/\(fixed at bbbbbbb; file it again if it is back\)$/)
         );
+        expect(atSame).toBeTruthy();
     });
 
     it("supersedes only the unreviewed agent findings of the re-run aspect", async () => {
