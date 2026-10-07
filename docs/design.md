@@ -3,7 +3,7 @@
 Auditdesk is a local web app for auditing a client's codebase. It clones the repositories, runs
 deterministic scanners, has Claude investigate each chosen aspect with read-only tools, lets the
 auditor accept, edit or reject every finding, and exports a client-ready report as HTML and PDF.
-An eval measures how many known defects the agents find, at what cost.
+An eval, being built, measures how many known defects the agents find, and at what cost.
 
 It is not a pull-request reviewer for a team's daily flow. It is a workbench for an engagement:
 a few repositories, a brief from the client, a report a founder can read and engineers can act
@@ -13,14 +13,16 @@ on, signed off finding by finding by a human auditor.
 
 - **The deliverable is the product:** plain-language findings ranked by severity, with stable
   IDs, evidence, a recommendation, an effort, and links to the standards they are relevant to.
-- **Local first:** the client's code stays on the auditor's machine. The model sees only the
-  files the agent reads, with secrets masked. osv-scanner sends dependency names and versions to
-  the OSV API; nothing else leaves the machine.
+- **Local first:** the client's code stays on the auditor's machine. The model sees the
+  repository map (directories with file counts and sizes, scripts, routes, schema models,
+  environment variable names, test files), the stack profile, the brief, the scanner findings and
+  the files the agent reads, all with secrets masked. osv-scanner sends dependency names and
+  versions to the OSV API. Nothing else leaves the machine.
 - **The client's code is data:** nothing from a repository is installed, built or run, and text
   in it that tries to instruct the model is itself a finding.
 - **A human signs off:** only findings the auditor accepted or edited reach the report.
-- **Measured:** every model call is priced by the model that served it, and an eval scores recall
-  on fixtures with known defects.
+- **Measured:** every model call is priced by the model that served it, and an eval scores
+  recall on fixtures with known defects.
 
 ## Architecture
 
@@ -39,8 +41,7 @@ engine (imports nothing from Next.js): workspace, scanners, masker, repository m
 - **One process.** A Server Action writes a job; a runner started from `instrumentation.ts`
   claims jobs one at a time. The UI and the runner talk only through PostgreSQL, so the runner
   could move to its own process without a rewrite.
-- **Progress** is written to the database and announced with `NOTIFY` in the same transaction;
-  an SSE Route Handler `LISTEN`s, re-reads the run's state on each notification and on a timer,
+- **Progress** is written to the database and announced with `NOTIFY`; an SSE Route Handler `LISTEN`s, re-reads the run's state on each notification and on a timer,
   and streams it. A missed notification costs nothing.
 - **Restarts:** jobs left running or queued are marked interrupted on startup and re-run only by
   hand, so a job that crashes the process cannot loop and keep spending.
@@ -51,17 +52,18 @@ engine (imports nothing from Next.js): workspace, scanners, masker, repository m
    in full into a workspace outside the app's tree (a local path is cloned too, so uncommitted
    edits cannot make the recorded commit false). The auditor writes a brief and per-repository
    instructions and records the client's consent to an AI review.
-2. **Scanners,** in pinned Docker images and on the app's own configuration, never the client's
+2. **Stack detection,** before the run, from a shallow clone: it reads manifests, Prisma schemas
+   and SQL migrations as text, never the code, for languages, frameworks, databases, ORMs,
+   authentication, LLM SDKs, tenancy keys and signs of AI-assisted development. The auditor
+   confirms or edits the profile; it suggests the conditional aspects, and a language outside the
+   audit's coverage is reported as not covered. A run with no confirmed profile detects one itself.
+3. **Scanners,** in pinned Docker images and on the app's own configuration, never the client's
    ignore files: gitleaks over every branch's history, osv-scanner over the lock files, Semgrep
    with named rulesets. Their results become findings, and gitleaks' secrets feed the masker.
    Every repository is scanned before any agent starts, so the brief, which every agent reads,
    is masked with the secrets of all of them.
-3. **Stack detection** reads manifests, Prisma schemas and SQL migrations as text, never the
-   code: languages, frameworks, databases, ORMs, authentication, LLM SDKs, tenancy keys and
-   signs of AI-assisted development. The auditor confirms or edits the profile; it suggests the
-   conditional aspects, and a language outside the audit's coverage is reported as not covered.
-4. **Repository map:** the file tree with sizes, entry points, routes, the data schema,
-   environment variables and the test layout, so agents start oriented.
+4. **Repository map:** the directories with file counts and sizes, entry points, routes, the
+   data schema, environment variable names and the test layout, so agents start oriented.
 5. **Aspect agents,** one per aspect and repository, one after another, security first.
 
 ## Aspects
@@ -88,10 +90,11 @@ findings in their own section.
 ## The agent
 
 Each agent runs on the Messages API's tool runner (or, by choice per project, on the Claude Agent
-SDK with the same tools) with read-only tools: `list_files`, `read_file` over a line range,
-`grep`, `repo_map`, `scanner_results`, a strict `report_finding` whose schema is the finding, and
-`finish_aspect` with the coverage. Every file tool resolves its path inside the clone, refusing
-`..` and symlinks that leave it.
+SDK with the same tools) with seven tools. Five read the clone: `list_files`, `read_file` over a
+line range, `grep`, `repo_map` and `scanner_results`. Two file results: a strict `report_finding`
+whose schema is the finding, and `finish_aspect` with the coverage. None writes to the clone or
+runs code. Every file tool resolves its path inside the clone, refusing `..` and symlinks that
+leave it.
 
 - **Caching.** Tools, the system prompt, the stack profile, the repository map and the brief form
   a prefix shared by every aspect of a repository, cached once; the aspect's checklist follows
@@ -130,24 +133,26 @@ dependencies, OWASP Cheat Sheets and, for authentication, NIST SP 800-63B. The m
 
 An eval runs the engine directly, without the server, on fixtures cloned at pinned commits:
 
-- **An own fixture,** a small Next.js and PostgreSQL storefront platform with defects planted
+- **Auditdesk's own fixture,** a small Next.js and PostgreSQL storefront platform with defects planted
   for every aspect and an answer key kept outside its tree. Nothing in the fixture names a
   defect; each key entry carries an anchor its first line must hold, other places the same
   defect shows, and the true issues that were not planted, so a correct finding on them is not
   counted as false.
-- **OWASP Juice Shop** at a pinned release, its answer markers stripped before the run and the
-  key generated from them, for comparison; it is public and likely known to the model.
+- **OWASP Juice Shop** at a pinned release, for comparison: its answer markers are to be
+  stripped before the run and its key generated from them. It is public and likely known to the
+  model.
 
 Grading is deterministic on file, overlapping lines and checklist item, with a judge only for the
 leftovers. The metrics are recall, false findings, cost and duration per model and effort.
 
-Status: the own fixture and its answer key exist; the eval harness and the first scores are the
-next step, and this section will quote them.
+Status: the fixture and its answer key exist. Juice Shop's prep and key, the harness and the
+first scores come next, and this section will quote them.
 
 ## The tool's own security
 
 Bound to 127.0.0.1 with no login; `proxy.ts` allows only a `Host` of localhost or 127.0.0.1,
 which stops DNS rebinding; every mutation is a Server Action (POST, origin-checked); Route
-Handlers change nothing; PostgreSQL is published on 127.0.0.1 only. Credentials live in
+Handlers are GET only and change no data (a report download keeps a copy beside the clones, and
+refuses a request another site started); PostgreSQL is published on 127.0.0.1 only. Credentials live in
 `.env.local` or a 0600 file outside the database, never in a prompt. A pre-commit hook runs
 gitleaks on the staged files.
