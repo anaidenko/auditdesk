@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
+import { Fragment, useEffect, useState } from "react";
 
 import { stopRun } from "@/app/actions";
 import { RunStatus, button, cx } from "@/app/ui";
@@ -60,9 +60,20 @@ export function RunProgress({ runId }: { runId: string }) {
                     <span className="basis-full space-y-0.5">
                         {snap.byModel.map(m => (
                             <span key={m.model} data-testid="served-by" className="block text-xs text-zinc-500 tabular-nums">
-                                {m.model}
-                                {m.fallback ? " (fallback)" : ""} · {m.calls} {m.calls === 1 ? "call" : "calls"} ·{" "}
-                                {m.freshTokens.toLocaleString("en-US")} fresh tokens · {m.unpriced ? "unpriced" : `$${m.usd.toFixed(2)}`}
+                                {[
+                                    `${m.model}${m.fallback ? " (fallback)" : ""}`,
+                                    `${m.calls} ${m.calls === 1 ? "call" : "calls"}`,
+                                    `${m.freshTokens.toLocaleString("en-US")} fresh tokens`,
+                                    m.unpriced ? "unpriced" : `$${m.usd.toFixed(2)}`
+                                ].map((part, i, all) => (
+                                    <Fragment key={i}>
+                                        {i > 0 && " "}
+                                        <span className="whitespace-nowrap">
+                                            {part}
+                                            {i < all.length - 1 && " ·"}
+                                        </span>
+                                    </Fragment>
+                                ))}
                             </span>
                         ))}
                     </span>
