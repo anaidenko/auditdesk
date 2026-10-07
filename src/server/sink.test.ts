@@ -20,6 +20,70 @@ async function setup() {
 }
 
 describe("PrismaSink", () => {
+    it("gives a re-audit the repository's reported findings from runs at another commit, and stores what it found", async () => {
+        const { project, repo } = await projectWithRepo();
+        const runAt = (sha: string | null) =>
+            prisma.run.create({
+                data: {
+                    projectId: project.id,
+                    model: "m",
+                    effort: "low",
+                    aspects: ["security"],
+                    budgetUsd: 1,
+                    budgetTokens: 20_000,
+                    status: "done",
+                    ...(sha ? { commits: { [repo.id]: sha } } : {})
+                }
+            });
+        const before = await runAt("a".repeat(40));
+        const same = await runAt("b".repeat(40));
+        const now = await prisma.run.create({
+            data: { projectId: project.id, model: "m", effort: "low", aspects: ["security"], budgetUsd: 1, budgetTokens: 20_000 }
+        });
+        const add = async (runId: string, status: "accepted" | "edited" | "unreviewed" | "rejected", over = {}) => {
+            const f = await createFinding(project.id, runId, sampleFinding(repo.id, over));
+            await prisma.finding.update({ where: { id: f.id }, data: { status } });
+            return f;
+        };
+        const accepted = await add(before.id, "accepted", { fingerprint: "fp-a" });
+        const edited = await add(before.id, "edited", { source: "scanner" });
+        await add(before.id, "unreviewed");
+        await add(before.id, "rejected");
+        await add(before.id, "accepted", { kind: "question", severity: null });
+        const atSame = await add(same.id, "accepted");
+        const filed = await add(now.id, "unreviewed", { fingerprint: "fp-now" });
+        const sink = new PrismaSink(now.id, project.id);
+
+        const earlier = await sink.earlierFindings(repo.id, "b".repeat(40));
+        expect(earlier.map(f => f.label).sort()).toEqual([accepted.label, edited.label]);
+        expect(earlier.find(f => f.id === edited.id)).toMatchObject({ source: "scanner", recheck: null });
+        expect(await sink.filedFingerprints(repo.id)).toEqual(new Set(["fp-now"]));
+        expect(filed).toBeTruthy();
+
+        await sink.recheckFindings(
+            [
+                { id: accepted.id, status: "changed" },
+                { id: edited.id, status: "fixed" }
+            ],
+            "b".repeat(40)
+        );
+        expect(await prisma.finding.findUniqueOrThrow({ where: { id: edited.id } })).toMatchObject({
+            recheck: "fixed",
+            recheckedSha: "b".repeat(40),
+            recheckRunId: now.id,
+            status: "edited"
+        });
+        // Re-checked at this commit already: a second run there has nothing new to say of it.
+        expect((await sink.earlierFindings(repo.id, "b".repeat(40))).map(f => f.id)).toEqual([]);
+        expect((await sink.earlierFindings(repo.id, "c".repeat(40))).map(f => [f.id, f.recheck]).sort()).toEqual(
+            [
+                [accepted.id, "changed"],
+                [edited.id, "fixed"],
+                [atSame.id, null]
+            ].sort()
+        );
+    });
+
     it("supersedes only the unreviewed agent findings of the re-run aspect", async () => {
         const { sink, repo, add } = await setup();
         const agentNew = await add({ source: "agent", title: "new" });

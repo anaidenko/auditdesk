@@ -92,6 +92,25 @@ const TONES: Record<Tone, string> = {
     blue: "bg-blue-50 text-blue-700 ring-blue-600/20"
 };
 
+const RECHECK: Record<string, { tone: Tone; words: string }> = {
+    open: { tone: "amber", words: "still open" },
+    fixed: { tone: "emerald", words: "fixed" },
+    changed: { tone: "sky", words: "code changed, verify" },
+    regressed: { tone: "red", words: "regressed" }
+};
+
+/** What the last re-audit found of a finding, at which commit (design § 9). */
+export function RecheckBadge({ recheck, sha }: { recheck: string | null; sha: string | null }) {
+    if (!recheck) return null;
+    const r = RECHECK[recheck];
+    return (
+        <Badge tone={r.tone} data-testid="recheck">
+            {r.words}
+            {sha && <span className="font-mono opacity-70">{sha.slice(0, 7)}</span>}
+        </Badge>
+    );
+}
+
 export function Badge({
     tone = "zinc",
     dot,

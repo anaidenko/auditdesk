@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it } from "vitest";
 
 import { prisma } from "@/server/db";
 import { createFinding } from "@/server/findings";
-import { accept, edit, exclude, listFindings, merge, reject } from "@/server/review";
+import { accept, confirmRecheck, edit, exclude, listFindings, merge, reject } from "@/server/review";
 import { resetDb } from "@/test/db";
 import { projectWithRepo, sampleFinding } from "@/test/factories";
 
@@ -136,6 +136,23 @@ describe("review", () => {
     it("refuses to merge a finding into itself", async () => {
         const { a } = await twoFindings();
         await expect(merge(a.id, "F-001")).rejects.toThrow(/itself/);
+    });
+
+    it("takes Andrii's call on a re-checked finding, and refuses one no re-audit has seen", async () => {
+        const { a, b } = await twoFindings();
+        await prisma.finding.update({
+            where: { id: a.id },
+            data: { status: "accepted", recheck: "changed", recheckedSha: "c".repeat(40) }
+        });
+        await confirmRecheck(a.id, "fixed");
+        expect(await prisma.finding.findUniqueOrThrow({ where: { id: a.id } })).toMatchObject({
+            recheck: "fixed",
+            status: "accepted",
+            recheckedSha: "c".repeat(40)
+        });
+        await confirmRecheck(a.id, "open");
+        expect((await prisma.finding.findUniqueOrThrow({ where: { id: a.id } })).recheck).toBe("open");
+        await expect(confirmRecheck(b.id, "fixed")).rejects.toThrow(/F-002 has not been re-checked/);
     });
 
     it("excludes a valid finding from the report, with a reason", async () => {

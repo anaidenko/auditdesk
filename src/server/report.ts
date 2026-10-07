@@ -47,6 +47,31 @@ export async function reportRepositoryNames(projectId: string): Promise<string[]
     return [...reportNames(repositories).values()];
 }
 
+/**
+ * The latest re-audit against the findings reported before it (design § 9): what it fixed, left
+ * open, found back or changed, and how many reported findings its own run filed. Null until one ran.
+ */
+async function sinceLastAudit<
+    R extends { recheck: string | null; recheckRunId: string | null; recheckedAt: Date | null; runId: string | null }
+>(rows: R[], names: Map<string, string>, toReport: (r: R) => ReportFinding): Promise<ReportData["since"]> {
+    const rechecked = rows.filter(r => r.recheck && r.recheckRunId);
+    if (!rechecked.length) return null;
+    const latest = rechecked.reduce((a, b) => (b.recheckedAt! > a.recheckedAt! ? b : a)).recheckRunId!;
+    const run = await prisma.run.findUnique({ where: { id: latest }, select: { commits: true } });
+    const count = (status: string) => rechecked.filter(r => r.recheck === status).length;
+    return {
+        commits: Object.entries((run?.commits as Record<string, string> | null) ?? {}).map(([id, sha]) => ({
+            repository: names.get(id) ?? "—",
+            sha
+        })),
+        fixed: rechecked.filter(r => r.recheck === "fixed").map(toReport),
+        open: count("open"),
+        regressed: count("regressed"),
+        changed: count("changed"),
+        added: rows.filter(r => r.runId === latest).length
+    };
+}
+
 /** `includeCost`: Andrii ticked the cost at export (design § 8); otherwise the report states none. */
 export async function loadReportData(projectId: string, o: { includeCost?: boolean } = {}): Promise<ReportData> {
     const project = await prisma.project.findUniqueOrThrow({
@@ -74,7 +99,8 @@ export async function loadReportData(projectId: string, o: { includeCost?: boole
         repository: names.get(r.repositoryId ?? "") ?? "—",
         tags: r.tags,
         fixBeforeSignoff: r.fixBeforeSignoff,
-        refs: referencesFor(referenceData, r.checklistItem, r.references as References, { question: r.kind === "question" })
+        refs: referencesFor(referenceData, r.checklistItem, r.references as References, { question: r.kind === "question" }),
+        recheck: r.recheck
     });
     // Per repository and aspect, the latest agent that finished, across runs: a re-run adds a second
     // agent to its run, and a run that failed before its agents started has none.
@@ -145,7 +171,12 @@ export async function loadReportData(projectId: string, o: { includeCost?: boole
         servedModels: served.map(s => s.servedModel),
         modelAccess: accesses.map(a => a.modelAccess),
         toolVersions: (scanned?.toolVersions as ToolVersions | null) ?? null,
-        findings: rows.filter(r => r.kind === "finding").map(toReport),
+        findings: rows.filter(r => r.kind === "finding" && r.recheck !== "fixed").map(toReport),
+        since: await sinceLastAudit(
+            rows.filter(r => r.kind === "finding"),
+            names,
+            toReport
+        ),
         questions: rows.filter(r => r.kind === "question").map(toReport),
         cost: o.includeCost
             ? {

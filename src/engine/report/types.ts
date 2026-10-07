@@ -23,6 +23,8 @@ export interface ReportFinding {
     fixBeforeSignoff?: boolean | null;
     /** Resolved from references/ (design § 10); absent in data built without them. */
     refs?: FindingReferences;
+    /** What the latest re-audit found of it (design § 9). */
+    recheck?: "open" | "fixed" | "changed" | "regressed" | null;
 }
 
 export interface ReportData {
@@ -45,4 +47,18 @@ export interface ReportData {
     aiBuilt: boolean;
     /** Every catalogue item's title, for an item filed under an aspect that did not run (a scanner's DEP-01). */
     itemTitles?: Record<string, string>;
+    /**
+     * The latest re-audit against the findings reported before it (design § 9); absent when none
+     * ran. Fixed findings are listed here and left out of `findings`.
+     */
+    since?: {
+        commits: { repository: string; sha: string }[];
+        fixed: ReportFinding[];
+        open: number;
+        regressed: number;
+        /** Cited code changed and Andrii has not yet verified it: still in `findings`. */
+        changed: number;
+        /** Reported findings the re-audit's run filed. */
+        added: number;
+    } | null;
 }

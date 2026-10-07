@@ -4,6 +4,7 @@ import type { AgentOutcome } from "@/engine/agent/run-aspect";
 import { freshTokens } from "@/engine/budget";
 import { findingLabel, indexLine, scannerDuplicates } from "@/engine/findings";
 import type { PipelineSink } from "@/engine/pipeline";
+import type { EarlierFinding, RecheckStatus } from "@/engine/recheck";
 import type { ToolVersions } from "@/engine/scanners/types";
 import type { StackProfile } from "@/engine/stack";
 import { type CallRecord, type Evidence, type NewFinding, SEVERITIES, type SeverityName, type Spend } from "@/engine/types";
@@ -11,7 +12,7 @@ import type { Prisma } from "@/generated/prisma/client";
 import { prisma } from "@/server/db";
 import { createFinding } from "@/server/findings";
 import { RUN_CHANNEL } from "@/server/pg";
-import { merge } from "@/server/review";
+import { REPORTABLE, merge } from "@/server/review";
 
 // Rejected findings stay in the agent's index, marked, so a re-run does not file them again (design § 9).
 const INDEXED = ["unreviewed", "accepted", "edited", "excluded", "rejected"] as const;
@@ -146,6 +147,49 @@ export class PrismaSink implements PipelineSink {
         }
         if (folded.length) await this.notify();
         return folded;
+    }
+
+    async earlierFindings(repositoryId: string, sha: string): Promise<EarlierFinding[]> {
+        const rows = await prisma.finding.findMany({
+            where: {
+                repositoryId,
+                kind: "finding",
+                status: { in: [...REPORTABLE] },
+                NOT: { runId: this.runId },
+                OR: [{ recheckedSha: null }, { recheckedSha: { not: sha } }]
+            },
+            include: { run: { select: { commits: true } } },
+            orderBy: { number: "asc" }
+        });
+        // A finding filed at this very commit has nothing to re-check.
+        return rows
+            .filter(r => (r.run?.commits as Record<string, string> | null)?.[repositoryId] !== sha)
+            .map(r => ({
+                id: r.id,
+                label: findingLabel(r.number),
+                source: r.source,
+                fingerprint: r.fingerprint,
+                evidence: r.evidence as unknown as Evidence[],
+                recheck: r.recheck
+            }));
+    }
+
+    async filedFingerprints(repositoryId: string) {
+        const rows = await prisma.finding.findMany({ where: { repositoryId, runId: this.runId }, select: { fingerprint: true } });
+        return new Set(rows.map(r => r.fingerprint));
+    }
+
+    async recheckFindings(results: { id: string; status: RecheckStatus }[], sha: string) {
+        const at = new Date();
+        await prisma.$transaction(
+            results.map(r =>
+                prisma.finding.update({
+                    where: { id: r.id },
+                    data: { recheck: r.status, recheckedSha: sha, recheckedAt: at, recheckRunId: this.runId }
+                })
+            )
+        );
+        await this.notify();
     }
 
     async knownFingerprints(repositoryId: string) {

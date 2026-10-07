@@ -1,4 +1,5 @@
 import { type Page, expect, test } from "@playwright/test";
+import { execFileSync } from "node:child_process";
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { request as httpRequest } from "node:http";
 import { tmpdir } from "node:os";
@@ -6,13 +7,13 @@ import { join } from "node:path";
 
 const samplePath = () => readFileSync("e2e/.sample-path", "utf8").trim();
 
-async function newProject(page: Page, name: string) {
+async function newProject(page: Page, name: string, source = samplePath()) {
     await page.goto("/");
     await page.getByLabel("Project name").fill(name);
     await page.getByRole("button", { name: "New project" }).click();
-    await page.getByLabel("Repository URL or path").fill(samplePath());
+    await page.getByLabel("Repository URL or path").fill(source);
     await page.getByRole("button", { name: "Add repository" }).click();
-    await expect(page.getByText(samplePath())).toBeVisible();
+    await expect(page.getByText(source)).toBeVisible();
 }
 
 test("a run from project to downloaded report", async ({ page }) => {
@@ -46,6 +47,57 @@ test("a run from project to downloaded report", async ({ page }) => {
     expect(log.runs[0].results.map((r: { properties: { label: string } }) => r.properties.label)).toEqual([label]);
     // New projects default to Claude plan: the main flow ran the SDK engine against the fake server.
     expect(html).toContain("through the Claude Agent SDK");
+});
+
+test("a re-audit on the client's new commit marks a changed finding, and the report lists it once Andrii verifies the fix", async ({
+    page
+}) => {
+    // A clone of its own: the client's fix must not reach the sample the other tests audit.
+    const repo = join(mkdtempSync(join(tmpdir(), "reaudit-")), "sample");
+    execFileSync("git", ["clone", "-q", samplePath(), repo]);
+    await newProject(page, "Re-audit", repo);
+    const projectUrl = page.url();
+    await page.getByLabel(/client agreed/).check();
+    await page.getByRole("button", { name: "Save", exact: true }).click();
+    await page.getByRole("button", { name: "Start run" }).click();
+    await expect(page.getByTestId("run-status")).toHaveText("done", { timeout: 60_000 });
+    await page.getByRole("link", { name: "Review the findings" }).click();
+    const evalFinding = page.locator("details", { hasText: "User input reaches eval" });
+    await evalFinding.locator("summary").click();
+    await evalFinding.getByRole("button", { name: "Accept" }).click();
+    await expect(evalFinding).toContainText("accepted");
+
+    const server = join(repo, "src/server.js");
+    writeFileSync(server, readFileSync(server, "utf8").replace("String(eval(req.query.expr))", "String(calc(req.query.expr))"));
+    execFileSync("git", [
+        "-C",
+        repo,
+        "-c",
+        "user.name=Client",
+        "-c",
+        "user.email=client@example.com",
+        "commit",
+        "-qam",
+        "Fix the calculator"
+    ]);
+    await page.goto(projectUrl);
+    await page.getByRole("button", { name: "Start run" }).click();
+    await expect(page.getByTestId("run-status")).toHaveText("done", { timeout: 60_000 });
+    await expect(page.getByText(/Re-checked \d+ earlier findings? against [0-9a-f]{7}: .*changed, to verify/)).toBeVisible();
+
+    await page.getByRole("link", { name: "Review the findings" }).click();
+    const earlier = page
+        .locator("details")
+        .filter({ has: page.getByTestId("recheck") })
+        .filter({ hasText: "User input reaches eval" });
+    await expect(earlier.getByTestId("recheck")).toContainText("code changed, verify");
+    await earlier.locator("summary").click();
+    await earlier.getByRole("button", { name: "Verified fixed" }).click();
+    await expect(earlier.getByTestId("recheck")).toContainText("fixed");
+    const html = await (await page.request.get(page.url().replace(/\/findings.*$/, "/report"))).text();
+    const since = html.slice(html.indexOf('<section id="since">'), html.indexOf("</section>", html.indexOf('<section id="since">')));
+    expect(since).toContain("1 fixed");
+    expect(since).toContain("User input reaches eval");
 });
 
 test("a run over two aspects files findings under both, and the report covers both", async ({ page }) => {

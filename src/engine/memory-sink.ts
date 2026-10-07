@@ -63,6 +63,10 @@ export class MemorySink implements AuditSink {
             return { from, into, ...(raised ? { raised } : {}) };
         });
     }
+    /** Every finding here is this run's. */
+    async filedFingerprints(repositoryId: string) {
+        return this.knownFingerprints(repositoryId);
+    }
     async knownFingerprints(repositoryId: string) {
         return new Set(this.findings.filter(f => f.repositoryId === repositoryId).map(f => f.fingerprint));
     }

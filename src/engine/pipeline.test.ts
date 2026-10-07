@@ -11,6 +11,7 @@ import { SAMPLE_KEY, makeSampleRepo } from "@/test/sample-repo";
 import { type AspectInput, type AspectRunner, apiAspectRunner } from "./agent/run-aspect";
 import { MemorySink } from "./memory-sink";
 import { type AuditDeps, type AuditInput, type PipelineSink, runAudit } from "./pipeline";
+import type { EarlierFinding, RecheckStatus } from "./recheck";
 import { REPLAY_RULESETS, replayRunner } from "./scanners/replay";
 import type { ScannerRunner } from "./scanners/types";
 import type { StackProfile } from "./stack";
@@ -32,6 +33,10 @@ class TestSink extends MemorySink implements PipelineSink {
         this.agents.find(a => a.id === id)!.status = outcome.status;
     }
     async supersedeUnreviewed() {}
+    async earlierFindings(_repositoryId: string, _sha: string): Promise<EarlierFinding[]> {
+        return [];
+    }
+    async recheckFindings(_results: { id: string; status: RecheckStatus }[], _sha: string) {}
 }
 
 const finish = () =>
@@ -73,6 +78,66 @@ async function audit(
 }
 
 describe("runAudit", () => {
+    it("re-checks the earlier reported findings against the new commit, and says what it found", async () => {
+        const repo = await makeSampleRepo();
+        const ws = await mkdtemp(join(tmpdir(), "ws-"));
+        const first = new TestSink();
+        await audit(first, repo, ws);
+        const leak = first.findings.find(f => f.source === "scanner")!;
+        class Rechecking extends TestSink {
+            rechecks: { results: { id: string; status: RecheckStatus }[]; sha: string }[] = [];
+            override async earlierFindings(_r: string, sha: string) {
+                expect(sha).toMatch(/^[0-9a-f]{40}$/);
+                const agent = (id: string, snippet: string) => ({
+                    id,
+                    label: id,
+                    source: "agent" as const,
+                    fingerprint: `fp-${id}`,
+                    evidence: [{ file: "src/server.js", startLine: 7, endLine: 7, snippet }],
+                    recheck: null
+                });
+                return [
+                    { id: "leak", label: "F-001", source: "scanner" as const, fingerprint: leak.fingerprint, evidence: [], recheck: null },
+                    { id: "gone", label: "F-002", source: "scanner" as const, fingerprint: "upgraded-away", evidence: [], recheck: null },
+                    agent("eval", 'app.get("/calc", (req, res) => res.send(String(eval(req.query.expr))));'),
+                    agent("rewritten", 'app.get("/calc", (req, res) => res.send(calc(req.query.expr)));')
+                ];
+            }
+            override async recheckFindings(results: { id: string; status: RecheckStatus }[], sha: string) {
+                this.rechecks.push({ results, sha });
+            }
+        }
+        const sink = new Rechecking();
+        await audit(sink, repo, ws);
+        expect(sink.rechecks).toHaveLength(1);
+        expect(sink.rechecks[0].results.map(r => [r.id, r.status])).toEqual([
+            ["leak", "open"],
+            ["gone", "fixed"],
+            ["eval", "open"],
+            ["rewritten", "changed"]
+        ]);
+        expect(sink.events).toContainEqual(
+            expect.stringMatching(
+                /^Re-checked 4 earlier findings against [0-9a-f]{7}: 1 fixed \(F-002\), 2 still open, 1 changed, to verify \(rewritten\)\.$/
+            )
+        );
+    });
+
+    it("re-checks nothing on a re-run of one aspect", async () => {
+        class Counting extends TestSink {
+            asked = 0;
+            override async earlierFindings() {
+                this.asked++;
+                return [];
+            }
+        }
+        const sink = new Counting();
+        await audit(sink, await makeSampleRepo(), await mkdtemp(join(tmpdir(), "ws-")), {
+            only: { repositoryId: "r", aspect: "security" }
+        });
+        expect(sink.asked).toBe(0);
+    });
+
     it("folds a scanner finding the agent filed again into the agent's, and says so", async () => {
         const sink = new TestSink();
         const evalAtLine7 = finding({

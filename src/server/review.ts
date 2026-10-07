@@ -40,6 +40,13 @@ async function withReason(id: string, status: "rejected" | "excluded", reason: s
     await prisma.finding.update({ where: { id }, data: { status, statusReason: reason.trim() } });
 }
 
+/** Andrii's call on what a re-audit found: a fix he verified, or a finding still open (design § 9). */
+export async function confirmRecheck(id: string, status: "fixed" | "open") {
+    const f = await prisma.finding.findUniqueOrThrow({ where: { id } });
+    if (!f.recheck) throw new Error(`${findingLabel(f.number)} has not been re-checked by a later run.`);
+    await prisma.finding.update({ where: { id }, data: { recheck: status } });
+}
+
 export const reject = (id: string, reason: string) => withReason(id, "rejected", reason);
 export const exclude = (id: string, reason: string) => withReason(id, "excluded", reason);
 

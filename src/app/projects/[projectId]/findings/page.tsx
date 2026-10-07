@@ -3,8 +3,8 @@ import { notFound } from "next/navigation";
 
 import { ActionForm } from "@/app/ActionForm";
 import { ReportExport } from "@/app/ReportExport";
-import { acceptAction, excludeAction, rejectAction } from "@/app/review-actions";
-import { Badge, FindingStatus, Icon, PageHeader, SeverityBadge, button, field, input } from "@/app/ui";
+import { acceptAction, confirmRecheckAction, excludeAction, rejectAction } from "@/app/review-actions";
+import { Badge, FindingStatus, Icon, PageHeader, RecheckBadge, SeverityBadge, button, field, input } from "@/app/ui";
 import { ASPECTS, aspectTitle } from "@/engine/aspects";
 import { prisma } from "@/server/db";
 import { listFindings } from "@/server/review";
@@ -97,6 +97,7 @@ export default async function FindingsPage({
                                     <Badge tone="slate">{aspectTitle(f.aspect)}</Badge>
                                     <Badge tone="slate">{f.source}</Badge>
                                 </span>
+                                <RecheckBadge recheck={f.recheck} sha={f.recheckedSha} />
                                 <FindingStatus status={f.status} />
                                 <svg
                                     aria-hidden
@@ -171,6 +172,16 @@ export default async function FindingsPage({
                                     />
                                     <button className={`${button.danger} ${button.small}`}>Reject</button>
                                 </ActionForm>
+                                {f.recheck && (
+                                    <>
+                                        <ActionForm action={confirmRecheckAction.bind(null, f.id, "fixed")}>
+                                            <button className={`${button.secondary} ${button.small}`}>Verified fixed</button>
+                                        </ActionForm>
+                                        <ActionForm action={confirmRecheckAction.bind(null, f.id, "open")}>
+                                            <button className={`${button.secondary} ${button.small}`}>Still open</button>
+                                        </ActionForm>
+                                    </>
+                                )}
                                 <Link
                                     href={`/projects/${projectId}/findings/${f.number}`}
                                     className="ml-auto self-center text-sm font-medium text-indigo-700 hover:underline"

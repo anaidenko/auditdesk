@@ -206,6 +206,13 @@ model RunEvent {
   @@index([runId, id])
 }
 
+enum RecheckStatus {
+  open
+  fixed
+  changed
+  regressed
+}
+
 model Finding {
   id               String                   @id @default(uuid())
   projectId        String
@@ -239,6 +246,11 @@ model Finding {
   statusReason     String?
   note             String?
   mergedIntoId     String?
+  /// What the last re-audit found of it at a later commit, or Andrii's call on that (design § 9).
+  recheck          RecheckStatus?
+  recheckedSha     String?
+  recheckedAt      DateTime?
+  recheckRunId     String?
   search           Unsupported("tsvector")?
   createdAt        DateTime                 @default(now())
   updatedAt        DateTime                 @updatedAt
