@@ -1,4 +1,5 @@
 import { compareFindings } from "../findings";
+import type { Ref } from "../references";
 import { type ModelAccess, SEVERITIES } from "../types";
 
 import type { ReportData, ReportFinding } from "./types";
@@ -64,10 +65,16 @@ pre{margin:0;padding:.6rem 0;background:#fcfcfd;overflow-x:auto;white-space:pre-
 pre code{display:block}.ln{display:inline-block;width:3.4em;padding-right:.9em;text-align:right;color:var(--faint);user-select:none}
 .callout{background:#eef2ff;border:1px solid #e0e7ff;border-radius:8px;padding:.15rem .95rem .6rem;margin:1rem 0 .4rem}.callout h4{color:var(--accent)}
 .refs{font-size:.82rem;color:var(--muted)}
+@media screen{.off{display:none!important}}
+.filters{display:flex;flex-wrap:wrap;gap:.6rem 1rem;align-items:end;margin:1rem 0;padding:.8rem 1rem;border:1px solid var(--line);border-radius:10px;font-size:.82rem;color:var(--muted)}
+.filters label{display:flex;flex-direction:column;gap:.25rem}
+.filters select,.filters input{font:inherit;color:var(--ink);padding:.3rem .5rem;border:1px solid var(--line);border-radius:6px;background:#fff}
+.filters output{margin-left:auto}
 .disclaimer{font-size:.92rem;color:var(--muted)}
 .colophon{margin-top:3rem;padding-top:1rem;border-top:1px solid var(--line);font-size:.78rem;color:var(--faint)}
 @page{size:A4;margin:16mm 15mm 18mm}
 @media print{
+.filters{display:none}
 body{background:#fff;font-size:10.5pt}
 .doc{max-width:none;margin:0;border:0;border-radius:0;box-shadow:none;padding:0}
 .cover{min-height:245mm;display:flex;flex-direction:column;justify-content:center;break-after:page}
@@ -114,16 +121,96 @@ function evidence(ev: ReportFinding["evidence"][number]): string {
     return `<figure><figcaption>${e(ev.file)} · ${where}</figcaption>${ev.snippet ? `<pre><code>${code}</code></pre>` : ""}</figure>`;
 }
 
+// The report's one script: it filters and searches the findings in the browser, reaching nothing outside the file.
+// The report's one script: it filters and searches the findings and questions in the browser,
+// reaching nothing outside the file. It hides with a class that only the screen honours, so a
+// printout is always complete.
+const FILTER_SCRIPT = `(()=>{const f=document.querySelector(".filters");if(!f)return;
+const rank={critical:0,high:1,medium:2,low:3,info:4,question:5};
+const cards=[...document.querySelectorAll("section#findings .finding")];
+const questions=[...document.querySelectorAll("section#questions .finding")];
+const rows=[...document.querySelectorAll("section#findings tbody tr")];
+const groups=[...document.querySelectorAll("section#findings .repo-group")];
+const val=n=>{const el=f.querySelector("[name="+n+"]");return el?el.value:""};
+const apply=()=>{const min=val("sev"),asp=val("aspect"),repo=val("repo"),q=val("q").trim().toLowerCase();const active=!!(min||asp||repo||q);const shown=new Set();let asked=0;
+const ok=c=>(!min||rank[c.dataset.sev]<=rank[min])&&(!asp||c.dataset.aspect===asp)&&(!repo||c.dataset.repo===repo)&&(!q||c.textContent.toLowerCase().includes(q));
+for(const c of cards){const v=ok(c);c.classList.toggle("off",!v);if(v)shown.add(c.id)}
+for(const c of questions){const v=ok(c);c.classList.toggle("off",!v);if(v)asked++}
+for(const r of rows)r.classList.toggle("off",!shown.has(r.dataset.id));
+for(const g of groups)g.classList.toggle("off",active&&![...g.querySelectorAll(".finding")].some(c=>shown.has(c.id)));
+f.querySelector("output").textContent=shown.size+" of "+cards.length+" findings"+(questions.length?" and "+asked+" of "+questions.length+(questions.length===1?" question":" questions"):"")+" shown";};
+const reveal=()=>{const t=location.hash&&document.getElementById(decodeURIComponent(location.hash.slice(1)));if(t&&t.closest(".off")){f.reset();apply();t.scrollIntoView()}};
+f.addEventListener("input",apply);window.addEventListener("hashchange",reveal);apply();reveal();})();`;
+
+const SIZES = [
+    ["S", "small", "under 2 hours"],
+    ["M", "medium", "under 2 days"],
+    ["L", "large", "over 2 days"]
+] as const;
+
+/** The hours Andrii set, added up, and the other findings counted by size. */
+function effortSummary(findings: ReportFinding[]): string | null {
+    if (!findings.length) return null;
+    const estimated = findings.filter(f => f.effortHours != null);
+    const rest = findings.filter(f => f.effortHours == null);
+    const noun = (n: number) => (n === 1 ? "finding" : "findings");
+    const parts = [
+        ...SIZES.map(
+            ([s, size, span]) => [rest.filter(f => f.effort === s).length, (n: number) => `${size} ${noun(n)} (${span})`] as const
+        ),
+        [rest.filter(f => !f.effort).length, (n: number) => `${noun(n)} not sized`] as const
+    ]
+        .filter(([n]) => n > 0)
+        .map(([n, words]) => `${n} ${words(n)}`);
+    if (!estimated.length && parts.length === 1 && rest.every(f => !f.effort)) return "Effort: not estimated.";
+    const list = (xs: string[]) => (xs.length > 1 ? `${xs.slice(0, -1).join(", ")} and ${xs.at(-1)}` : (xs[0] ?? ""));
+    const hours = estimated.reduce((sum, f) => sum + (f.effortHours ?? 0), 0);
+    const head = estimated.length
+        ? `${hours} h for the ${estimated.length === 1 ? "finding" : `${estimated.length} findings`} with hours set`
+        : "";
+    return `Estimated effort: ${head && parts.length ? `${head}, plus ${list(parts)}` : head || list(parts)}.`;
+}
+
 function finding(f: ReportFinding): string {
-    const meta = [f.repository, f.aspect, f.checklistItem, f.effort && `effort ${f.effort}${f.effortHours ? ` (${f.effortHours} h)` : ""}`]
+    const byDefault = f.severity === "critical" || f.severity === "high";
+    const call =
+        f.severity !== null && f.fixBeforeSignoff != null && f.fixBeforeSignoff !== byDefault
+            ? f.fixBeforeSignoff
+                ? "agreed to fix before sign-off"
+                : "agreed to fix after sign-off"
+            : null;
+    const meta = [
+        f.repository,
+        f.aspect,
+        f.checklistItem,
+        f.effort && `effort ${f.effort}${f.effortHours != null ? ` (${f.effortHours} h)` : ""}`,
+        call
+    ]
         .filter(Boolean)
         .join(" · ");
-    const refs = [f.references.cwe, ...(f.references.advisories ?? [])].filter(Boolean).join(", ");
+    const link = (r: Ref) => (r.url ? `<a href="${e(r.url)}">${e(r.label)}</a>` : e(r.label));
+    const R = f.refs;
+    const refs = R
+        ? [
+              (R.top10 || R.asvs.length) &&
+                  `Relevant to: ${[R.top10, ...R.asvs]
+                      .filter((r): r is Ref => !!r)
+                      .map(link)
+                      .join("; ")}.`,
+              R.cwe && `Weakness: ${link(R.cwe)}.`,
+              R.advisories.length && `Advisories: ${R.advisories.map(link).join(", ")}.`,
+              (R.cheatsheets.length || R.nist) &&
+                  `Further reading: ${[...R.cheatsheets, R.nist]
+                      .filter((r): r is Ref => !!r)
+                      .map(link)
+                      .join("; ")}.`
+          ].filter(Boolean)
+        : [[f.references.cwe, ...(f.references.advisories ?? [])].filter(Boolean).join(", ")].filter(Boolean).map(e);
     const pair =
         f.likelihood || f.impact
             ? `<div class="pair${f.likelihood && f.impact ? "" : " one"}">${f.likelihood ? `<div><h4>Likelihood</h4><p>${e(f.likelihood)}</p></div>` : ""}${f.impact ? `<div><h4>Impact</h4><p>${e(f.impact)}</p></div>` : ""}</div>`
             : "";
-    return `<details open id="${e(f.label)}" class="finding sev-${e(severityOf(f))}">
+    return `<details open id="${e(f.label)}" class="finding sev-${e(severityOf(f))}" data-sev="${e(severityOf(f))}" data-aspect="${e(f.aspect)}" data-repo="${e(f.repository)}">
 <summary>${badge(f)}<span class="fid">${e(f.label)}</span><span>${e(f.title)}</span></summary>
 <div class="body">
 <p class="meta">${e(meta)}</p>
@@ -133,7 +220,7 @@ ${pair}
 <p class="prose">${e(f.explanation)}</p>
 ${f.evidence.length ? `<h4>Evidence</h4>\n${f.evidence.map(evidence).join("\n")}` : ""}
 <div class="callout"><h4>Recommendation</h4><p class="prose">${e(f.recommendation)}</p></div>
-${refs ? `<p class="refs">References: ${e(refs)}</p>` : ""}
+${refs.length ? `<div class="refs"><h4>References</h4>${refs.map(r => `<p>${r}</p>`).join("")}</div>` : ""}
 </div>
 </details>`;
 }
@@ -142,7 +229,15 @@ export function renderReport(d: ReportData): string {
     const number = (f: ReportFinding) => Number(f.label.replace(/\D/g, ""));
     const findings = [...d.findings].sort((a, b) => compareFindings({ ...a, number: number(a) }, { ...b, number: number(b) }));
     const count = (s: string) => findings.filter(f => f.severity === s).length;
-    const top = findings.filter(f => f.severity === "critical" || f.severity === "high");
+    // Andrii's call per finding wins; otherwise critical and high come before sign-off (design § 10).
+    const before = (f: ReportFinding) => f.fixBeforeSignoff ?? (f.severity === "critical" || f.severity === "high");
+    const fixFirst = findings.filter(before);
+    const canWait = findings.filter(f => !before(f));
+    const riskList = (list: ReportFinding[], none: string) =>
+        list.length
+            ? `<ul class="risks">${list.map(f => `<li>${badge(f)}<a class="fid" href="#${e(f.label)}">${e(f.label)}</a><span>${e(f.title)}</span></li>`).join("")}</ul>`
+            : `<p class="muted">${e(none)}</p>`;
+    const effortLine = effortSummary(findings);
     const tocItems = (list: ReportFinding[]) =>
         list.length
             ? `<ul>${list.map(f => `<li>${badge(f)}<a class="fid" href="#${e(f.label)}">${e(f.label)}</a><span>${e(f.title)}</span></li>`).join("")}</ul>`
@@ -160,6 +255,14 @@ export function renderReport(d: ReportData): string {
     }
     // A repository with nothing accepted keeps its heading, or a reader might take it for unaudited.
     const groups = manyRepos ? names.map(n => ({ name: n, list: findings.filter(f => f.repository === n) })) : [];
+    const option = (v: string, label = v) => `<option value="${e(v)}">${e(label)}</option>`;
+    const filters = `<form class="filters" onsubmit="return false">
+<label>Severity <select name="sev">${option("", "All")}${option("critical", "Critical")}${option("high", "High and above")}${option("medium", "Medium and above")}${option("low", "Low and above")}</select></label>
+<label>Aspect <select name="aspect">${option("", "All")}${[...new Set(findings.map(f => f.aspect))].map(a => option(a)).join("")}</select></label>
+${manyRepos ? `<label>Repository <select name="repo">${option("", "All")}${names.map(n => option(n)).join("")}</select></label>` : ""}
+<label>Search <input name="q" type="search" placeholder="Words in a finding"></label>
+<output></output>
+</form>`;
     const repoHead = (n: string) => `<h3 class="repo" id="${e(ids.get(n)!)}">${e(n)}</h3>`;
 
     const tiles = SEVERITIES.map(s => `<div class="tile ${s}${count(s) ? "" : " zero"}"><b>${count(s)}</b><span>${s}</span></div>`).join(
@@ -196,7 +299,7 @@ ${
     const rows = findings
         .map(
             f =>
-                `<tr><td class="nowrap"><a href="#${e(f.label)}">${e(f.label)}</a></td><td>${badge(f)}</td><td>${e(f.title)}</td><td>${e(f.aspect)}</td>${manyRepos ? `<td>${e(f.repository)}</td>` : ""}<td class="nowrap">${e(f.effort ?? "")}</td></tr>`
+                `<tr data-id="${e(f.label)}"><td class="nowrap"><a href="#${e(f.label)}">${e(f.label)}</a></td><td>${badge(f)}</td><td>${e(f.title)}</td><td>${e(f.aspect)}</td>${manyRepos ? `<td>${e(f.repository)}</td>` : ""}<td class="nowrap">${e(f.effort ?? "")}</td></tr>`
         )
         .join("");
     const aiBuilt = d.aiBuilt ? [...findings, ...d.questions].filter(f => f.tags?.includes("ai-built")) : [];
@@ -248,8 +351,13 @@ ${d.questions.length ? `<li><a href="#questions">Open questions</a>${tocItems(d.
 
 <section id="summary"><h2>Summary</h2>
 <p>${SEVERITIES.map(s => `${count(s)} ${s}`).join(" · ")}.</p>
-<h3>Top risks</h3>
-${top.length ? `<ul class="risks">${top.map(f => `<li>${badge(f)}<a class="fid" href="#${e(f.label)}">${e(f.label)}</a><span>${e(f.title)}</span></li>`).join("")}</ul>` : `<p class="muted">No critical or high findings.</p>`}
+<h3>Fix before sign-off</h3>
+${riskList(fixFirst, "Nothing needs fixing before sign-off.")}
+<h3>Can wait</h3>
+${canWait.length ? `<p class="muted">Still to fix, after sign-off.</p>` : ""}
+${riskList(canWait, "Nothing else was found.")}
+${d.questions.length ? `<p>${d.questions.length === 1 ? "1 open question needs the team's answer." : `${d.questions.length} open questions need the team's answers.`}</p>` : ""}
+${effortLine ? `<p>${e(effortLine)}</p>` : ""}
 </section>
 
 <section id="scope"><h2>Scope and method</h2>
@@ -272,13 +380,14 @@ ${d.repositories
 </section>
 
 <section id="findings"><h2>Findings</h2>
+${findings.length ? filters : ""}
 ${findings.length ? `<table><thead><tr><th>ID</th><th>Severity</th><th>Title</th><th>Aspect</th>${manyRepos ? "<th>Repository</th>" : ""}<th>Effort</th></tr></thead><tbody>${rows}</tbody></table>` : `<p class="muted">No findings were accepted for this report.</p>`}
 ${
     manyRepos
         ? groups
               .map(
                   g =>
-                      `${repoHead(g.name)}\n${g.list.length ? g.list.map(finding).join("\n") : `<p class="muted">No findings were accepted for this repository.</p>`}`
+                      `<div class="repo-group">${repoHead(g.name)}\n${g.list.length ? g.list.map(finding).join("\n") : `<p class="muted">No findings were accepted for this repository.</p>`}</div>`
               )
               .join("\n")
         : findings.map(finding).join("\n")
@@ -292,6 +401,7 @@ ${questions}
 </section>
 <p class="colophon">${e(d.auditor)} · ${e(d.generatedAt)}</p>
 </main>
+<script>${FILTER_SCRIPT}</script>
 </body>
 </html>
 `;

@@ -42,7 +42,7 @@ export default async function FindingPage({ params }: { params: Promise<{ projec
                         Title
                         <input name="title" defaultValue={f.title} required className={field} />
                     </label>
-                    <div className="grid grid-cols-3 gap-4">
+                    <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
                         <label className={label}>
                             Severity
                             <select name="severity" defaultValue={f.severity ?? ""} disabled={question} className={field}>
@@ -63,6 +63,19 @@ export default async function FindingPage({ params }: { params: Promise<{ projec
                         <label className={label}>
                             Hours
                             <input name="effortHours" type="number" min="0" defaultValue={f.effortHours ?? ""} className={field} />
+                        </label>
+                        <label className={label}>
+                            Sign-off
+                            <select
+                                name="signoff"
+                                defaultValue={f.fixBeforeSignoff === null ? "" : f.fixBeforeSignoff ? "before" : "later"}
+                                disabled={question}
+                                className={field}
+                            >
+                                <option value="">By severity</option>
+                                <option value="before">Fix before sign-off</option>
+                                <option value="later">Can wait</option>
+                            </select>
                         </label>
                     </div>
                     <div className="grid gap-4 sm:grid-cols-2">

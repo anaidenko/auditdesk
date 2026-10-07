@@ -1,3 +1,4 @@
+import type { FindingReferences } from "../references";
 import type { ToolVersions } from "../scanners/types";
 import type { Evidence, ModelAccess, References, SeverityName } from "../types";
 
@@ -18,6 +19,10 @@ export interface ReportFinding {
     references: References;
     repository: string;
     tags?: string[];
+    /** Andrii's call; null follows the severity (critical and high before sign-off). */
+    fixBeforeSignoff?: boolean | null;
+    /** Resolved from references/ (design § 10); absent in data built without them. */
+    refs?: FindingReferences;
 }
 
 export interface ReportData {

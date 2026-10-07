@@ -207,39 +207,41 @@ model RunEvent {
 }
 
 model Finding {
-  id             String                   @id @default(uuid())
-  projectId      String
-  project        Project                  @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  number         Int
-  runId          String?
-  run            Run?                     @relation(fields: [runId], references: [id], onDelete: SetNull)
-  repositoryId   String?
-  repository     Repository?              @relation(fields: [repositoryId], references: [id], onDelete: SetNull)
-  agentRunId     String?
-  aspect         String
-  kind           FindingKind
-  checklistItem  String?
-  title          String
-  severity       Severity?
-  likelihood     String?
-  impact         String?
-  summary        String
-  explanation    String
-  recommendation String
-  effort         String?
-  effortHours    Int?
-  evidence       Json                     @db.JsonB
-  references     Json                     @default("{}") @db.JsonB
-  tags           String[]
-  source         FindingSource
-  fingerprint    String
-  status         FindingStatus            @default(unreviewed)
-  statusReason   String?
-  note           String?
-  mergedIntoId   String?
-  search         Unsupported("tsvector")?
-  createdAt      DateTime                 @default(now())
-  updatedAt      DateTime                 @updatedAt
+  id               String                   @id @default(uuid())
+  projectId        String
+  project          Project                  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  number           Int
+  runId            String?
+  run              Run?                     @relation(fields: [runId], references: [id], onDelete: SetNull)
+  repositoryId     String?
+  repository       Repository?              @relation(fields: [repositoryId], references: [id], onDelete: SetNull)
+  agentRunId       String?
+  aspect           String
+  kind             FindingKind
+  checklistItem    String?
+  title            String
+  severity         Severity?
+  likelihood       String?
+  impact           String?
+  summary          String
+  explanation      String
+  recommendation   String
+  effort           String?
+  effortHours      Int?
+  /// Andrii's call on fixing it before sign-off; null follows the severity (design § 10).
+  fixBeforeSignoff Boolean?
+  evidence         Json                     @db.JsonB
+  references       Json                     @default("{}") @db.JsonB
+  tags             String[]
+  source           FindingSource
+  fingerprint      String
+  status           FindingStatus            @default(unreviewed)
+  statusReason     String?
+  note             String?
+  mergedIntoId     String?
+  search           Unsupported("tsvector")?
+  createdAt        DateTime                 @default(now())
+  updatedAt        DateTime                 @updatedAt
 
   @@unique([projectId, number])
   @@index([projectId, fingerprint])

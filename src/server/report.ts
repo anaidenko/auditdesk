@@ -6,6 +6,7 @@ import { ASPECTS, aspectTitle } from "@/engine/aspects";
 import { loadChecklist } from "@/engine/checklists";
 import { workspaceDir } from "@/engine/config";
 import { findingLabel } from "@/engine/findings";
+import { loadReferences, referencesFor } from "@/engine/references";
 import type { ReportData, ReportFinding } from "@/engine/report/types";
 import type { ToolVersions } from "@/engine/scanners/types";
 import type { StackProfile } from "@/engine/stack";
@@ -33,6 +34,7 @@ export async function loadReportData(projectId: string): Promise<ReportData> {
         include: { repositories: { orderBy: { createdAt: "asc" } } }
     });
     // Names are unique in a report: two repositories of one name are told apart by branch, then by number.
+    const referenceData = loadReferences();
     const names = new Map<string, string>();
     for (const r of project.repositories) {
         const base = repoName(r.source);
@@ -58,7 +60,9 @@ export async function loadReportData(projectId: string): Promise<ReportData> {
         evidence: r.evidence as unknown as Evidence[],
         references: r.references as References,
         repository: names.get(r.repositoryId ?? "") ?? "—",
-        tags: r.tags
+        tags: r.tags,
+        fixBeforeSignoff: r.fixBeforeSignoff,
+        refs: referencesFor(referenceData, r.checklistItem, r.references as References, { question: r.kind === "question" })
     });
     // Per repository and aspect, the latest agent that finished, across runs: a re-run adds a second
     // agent to its run, and a run that failed before its agents started has none.

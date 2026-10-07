@@ -1,0 +1,133 @@
+# Each checklist item's references in the client's report (design § 10). The OWASP Top 10:2025
+# category follows from the finding's own CWE when the agent names one, else from the item's cwe,
+# else from the item's top10; only the finding's own CWE is printed as its weakness, and a question
+# gets no category. An item's cwe is given only where one CWE describes the whole item, and never
+# one MITRE prohibits for mapping. The report links, never quotes, and says "relevant to", never
+# "compliant".
+#
+# asvs: a section (V8.3) or a requirement (1.3.6) of ASVS 5.0.0, as listed in asvs-5.0.0.yaml.
+# nist: NIST SP 800-63B-4, for authentication only.
+# cheatsheets: names of OWASP Cheat Sheets, each from the list below.
+
+# Each answered HTTP 200 at cheatsheetseries.owasp.org/cheatsheets/<name>_Cheat_Sheet.html on 2026-10-07,
+# under the title its page gives.
+cheatsheets:
+  AI_Agent_Security: "AI Agent Security Cheat Sheet"
+  Authentication: "Authentication Cheat Sheet"
+  Authorization: "Authorization Cheat Sheet"
+  CI_CD_Security: "CI/CD Security Cheat Sheet"
+  Content_Security_Policy: "Content Security Policy Cheat Sheet"
+  Cross-Site_Request_Forgery_Prevention: "Cross-Site Request Forgery Prevention Cheat Sheet"
+  Cross_Site_Scripting_Prevention: "Cross Site Scripting Prevention Cheat Sheet"
+  Cryptographic_Storage: "Cryptographic Storage Cheat Sheet"
+  Database_Security: "Database Security Cheat Sheet"
+  Denial_of_Service: "Denial of Service Cheat Sheet"
+  Deserialization: "Deserialization Cheat Sheet"
+  Docker_Security: "Docker Security Cheat Sheet"
+  DOM_based_XSS_Prevention: "DOM based XSS Prevention Cheat Sheet"
+  Error_Handling: "Error Handling Cheat Sheet"
+  File_Upload: "File Upload Cheat Sheet"
+  Forgot_Password: "Forgot Password Cheat Sheet"
+  HTTP_Headers: "HTTP Security Response Headers Cheat Sheet"
+  HTTP_Strict_Transport_Security: "HTTP Strict Transport Security Cheat Sheet"
+  Injection_Prevention: "Injection Prevention Cheat Sheet"
+  Input_Validation: "Input Validation Cheat Sheet"
+  Insecure_Direct_Object_Reference_Prevention: "Insecure Direct Object Reference Prevention Cheat Sheet"
+  LLM_Prompt_Injection_Prevention: "LLM Prompt Injection Prevention Cheat Sheet"
+  Logging: "Logging Cheat Sheet"
+  Mass_Assignment: "Mass Assignment Cheat Sheet"
+  Multi_Tenant_Security: "Multi-Tenant Application Security Cheat Sheet"
+  Nodejs_Security: "NodeJS Security Cheat Sheet"
+  NodeJS_Docker: "Node.js Docker Cheat Sheet"
+  NPM_Security: "NPM Security best practices"
+  OS_Command_Injection_Defense: "OS Command Injection Defense Cheat Sheet"
+  Password_Storage: "Password Storage Cheat Sheet"
+  Prototype_Pollution_Prevention: "Prototype Pollution Prevention Cheat Sheet"
+  Secrets_Management: "Secrets Management Cheat Sheet"
+  Server_Side_Request_Forgery_Prevention: "Server-Side Request Forgery Prevention Cheat Sheet"
+  Session_Management: "Session Management Cheat Sheet"
+  Software_Supply_Chain_Security: "Software Supply Chain Security"
+  SQL_Injection_Prevention: "SQL Injection Prevention Cheat Sheet"
+  Vulnerable_Dependency_Management: "Vulnerable Dependency Management Cheat Sheet"
+
+items:
+  SEC-01: { cwe: 1390, asvs: [V6.2, V6.3, V6.4, 11.4.2], nist: true, cheatsheets: [Authentication, Password_Storage, Forgot_Password] }
+  SEC-02: { cwe: 613, asvs: [V7.2, V7.3, V7.4, V9.1, V3.3], cheatsheets: [Session_Management] }
+  SEC-03: { cwe: 862, asvs: [V8.2, V8.3, V14.2], cheatsheets: [Authorization, Insecure_Direct_Object_Reference_Prevention] }
+  SEC-04:
+    { cwe: 74, asvs: [V1.2], cheatsheets: [Injection_Prevention, SQL_Injection_Prevention, OS_Command_Injection_Defense, Nodejs_Security] }
+  SEC-05: { cwe: 79, asvs: [V1.1, V1.3, V3.2], cheatsheets: [Cross_Site_Scripting_Prevention, DOM_based_XSS_Prevention] }
+  SEC-06: { cwe: 352, asvs: [V3.5, V3.4], cheatsheets: [Cross-Site_Request_Forgery_Prevention] }
+  SEC-07: { cwe: 918, asvs: [1.3.6], cheatsheets: [Server_Side_Request_Forgery_Prevention] }
+  SEC-08: { cwe: 434, asvs: [V5.2, V5.3, V5.4], cheatsheets: [File_Upload] }
+  SEC-09: { asvs: [V2.2, 15.3.3], cheatsheets: [Input_Validation, Mass_Assignment] }
+  SEC-10: { cwe: 798, asvs: [V13.3], cheatsheets: [Secrets_Management] }
+  SEC-11: { top10: "A02:2025", asvs: [V3.4, V12.2], cheatsheets: [HTTP_Headers, Content_Security_Policy, HTTP_Strict_Transport_Security] }
+  SEC-12: { cwe: 799, asvs: [2.4.1], cheatsheets: [Denial_of_Service] }
+  SEC-13: { asvs: [V16.2, V16.5, 13.4.2], cheatsheets: [Logging, Error_Handling] }
+  SEC-14: { cwe: 327, asvs: [V11.3, V11.4, V11.5], cheatsheets: [Cryptographic_Storage] }
+  SEC-15: { asvs: [V15.3, V1.5], cheatsheets: [Nodejs_Security, Deserialization, Prototype_Pollution_Prevention] }
+  SEC-16: { cwe: 862, asvs: [V8.2, V8.3, V2.2], cheatsheets: [Authorization] }
+
+  DEP-01: { cwe: 1395, asvs: [V15.2], cheatsheets: [Vulnerable_Dependency_Management] }
+  DEP-02: { cwe: 1357, asvs: [V15.2], cheatsheets: [NPM_Security, Software_Supply_Chain_Security] }
+  DEP-03: { cwe: 1357, asvs: [V15.2], cheatsheets: [NPM_Security] }
+  DEP-04: { cwe: 1104, asvs: [V15.2], cheatsheets: [Vulnerable_Dependency_Management] }
+  DEP-05: { cwe: 1104, cheatsheets: [Vulnerable_Dependency_Management] }
+  DEP-06: { cwe: 829, cheatsheets: [NPM_Security, Software_Supply_Chain_Security] }
+  DEP-07: { cheatsheets: [NPM_Security] }
+  DEP-08: {}
+  DEP-09: { cwe: 1357, cheatsheets: [Software_Supply_Chain_Security] }
+
+  ARC-01: {}
+  ARC-02: {}
+  ARC-03: { cwe: 390, asvs: [V16.5], cheatsheets: [Error_Handling] }
+  ARC-04: {}
+  ARC-05: {}
+  ARC-06: {}
+  ARC-07: {}
+  ARC-08: {}
+
+  DAT-01: {}
+  DAT-02: {}
+  DAT-03: {}
+  DAT-04: { cwe: 362, asvs: [V15.4] }
+  DAT-05: {}
+  DAT-06: { cheatsheets: [Database_Security] }
+  DAT-07: { asvs: [V14.2] }
+  DAT-08: {}
+
+  QUA-01: {}
+  QUA-02: {}
+  QUA-03: {}
+  QUA-04: {}
+  QUA-05: {}
+  QUA-06: {}
+  QUA-07: {}
+  QUA-08: {}
+
+  PRD-01: { asvs: [V13.3], cheatsheets: [Secrets_Management] }
+  PRD-02: { asvs: [V16.2], cheatsheets: [Logging] }
+  PRD-03: { cwe: 778, asvs: [V16.3], cheatsheets: [Logging] }
+  PRD-04: {}
+  PRD-05: { cheatsheets: [Docker_Security, NodeJS_Docker, CI_CD_Security] }
+  PRD-06: {}
+  PRD-07: {}
+  PRD-08: {}
+
+  LLM-01: { cwe: 1427, cheatsheets: [LLM_Prompt_Injection_Prevention] }
+  LLM-02: { asvs: [V8.3], cheatsheets: [AI_Agent_Security] }
+  LLM-03: { cheatsheets: [LLM_Prompt_Injection_Prevention, Cross_Site_Scripting_Prevention] }
+  LLM-04: { cwe: 799, cheatsheets: [Denial_of_Service] }
+  LLM-05: { asvs: [V14.2] }
+  LLM-06: { cheatsheets: [Secrets_Management] }
+  LLM-07: {}
+  LLM-08: {}
+
+  TEN-01: { cheatsheets: [Multi_Tenant_Security] }
+  TEN-02: { cwe: 639, asvs: [V8.2], cheatsheets: [Multi_Tenant_Security] }
+  TEN-03: { cwe: 639, asvs: [V8.3], cheatsheets: [Multi_Tenant_Security, Insecure_Direct_Object_Reference_Prevention] }
+  TEN-04: { cheatsheets: [Multi_Tenant_Security] }
+  TEN-05: { cheatsheets: [Multi_Tenant_Security] }
+  TEN-06: { cheatsheets: [Multi_Tenant_Security] }
+  TEN-07: { cheatsheets: [Multi_Tenant_Security] }

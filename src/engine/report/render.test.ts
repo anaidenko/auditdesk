@@ -130,8 +130,8 @@ describe("renderReport", () => {
         );
         const body = html.slice(html.indexOf('<section id="findings">'));
         expect(body.indexOf('<h3 class="repo" id="repo-web">web</h3>')).toBeGreaterThan(0);
-        expect(body.indexOf('id="F-002"')).toBeLessThan(body.indexOf('<h3 class="repo" id="repo-api">api</h3>'));
-        expect(body.indexOf('<h3 class="repo" id="repo-api">api</h3>')).toBeLessThan(body.indexOf('id="F-001"'));
+        expect(body.indexOf('open id="F-002"')).toBeLessThan(body.indexOf('<h3 class="repo" id="repo-api">api</h3>'));
+        expect(body.indexOf('<h3 class="repo" id="repo-api">api</h3>')).toBeLessThan(body.indexOf('open id="F-001"'));
         const toc = between(html, '<nav class="toc">', "</nav>");
         expect(toc.indexOf("F-002")).toBeLessThan(toc.indexOf("F-001"));
         expect(toc).toContain('<a href="#repo-api">api</a>');
@@ -139,6 +139,182 @@ describe("renderReport", () => {
 
     it("adds no repository headings for a single repository", () => {
         expect(renderReport(data())).not.toContain('class="repo"');
+    });
+
+    it("links a finding's references as relevant to standards, never as compliance with them", () => {
+        const html = renderReport(
+            data({
+                findings: [
+                    finding({
+                        refs: {
+                            top10: {
+                                label: "A01:2025 Broken Access Control",
+                                url: "https://owasp.org/Top10/2025/A01_2025-Broken_Access_Control/"
+                            },
+                            cwe: { label: "CWE-862", url: "https://cwe.mitre.org/data/definitions/862.html" },
+                            asvs: [
+                                {
+                                    label: "ASVS 5.0.0 V8.3 Operation Level Authorization",
+                                    url: "https://github.com/OWASP/ASVS/blob/v5.0.0/5.0/en/0x17-V8-Authorization.md"
+                                }
+                            ],
+                            cheatsheets: [
+                                {
+                                    label: "Authorization Cheat Sheet",
+                                    url: "https://cheatsheetseries.owasp.org/cheatsheets/Authorization_Cheat_Sheet.html"
+                                }
+                            ],
+                            advisories: [],
+                            nist: null
+                        }
+                    })
+                ]
+            })
+        );
+        const card = between(html, 'id="F-001"', "</details>");
+        expect(card).toMatch(
+            /Relevant to: <a href="https:\/\/owasp\.org\/Top10\/2025\/A01_2025-Broken_Access_Control\/">A01:2025 Broken Access Control<\/a>/
+        );
+        expect(card).toContain('<a href="https://cwe.mitre.org/data/definitions/862.html">CWE-862</a>');
+        expect(card).toContain("Authorization Cheat Sheet</a>");
+        expect(html).not.toMatch(/complian/i);
+    });
+
+    describe("the summary", () => {
+        const summary = (html: string) => between(html, '<section id="summary">', "</section>");
+        const listed = (html: string, heading: string) => {
+            const part = summary(html).split(`<h3>${heading}`)[1] ?? "";
+            return [...part.split("<h3>")[0].matchAll(/href="#(F-\d{3})"/g)].map(m => m[1]);
+        };
+
+        it("puts critical and high findings before sign-off by default, and the rest under can wait", () => {
+            const html = renderReport(
+                data({
+                    findings: [
+                        finding({ label: "F-001", severity: "critical" }),
+                        finding({ label: "F-002", severity: "high" }),
+                        finding({ label: "F-003", severity: "medium" }),
+                        finding({ label: "F-004", severity: "low" })
+                    ]
+                })
+            );
+            expect(listed(html, "Fix before sign-off")).toEqual(["F-001", "F-002"]);
+            expect(listed(html, "Can wait")).toEqual(["F-003", "F-004"]);
+        });
+
+        it("follows Andrii's override over the default", () => {
+            const html = renderReport(
+                data({
+                    findings: [
+                        finding({ label: "F-001", severity: "high", fixBeforeSignoff: false }),
+                        finding({ label: "F-002", severity: "low", fixBeforeSignoff: true })
+                    ]
+                })
+            );
+            expect(listed(html, "Fix before sign-off")).toEqual(["F-002"]);
+            expect(listed(html, "Can wait")).toEqual(["F-001"]);
+        });
+
+        it("adds up the hours Andrii set and counts the rest by size", () => {
+            const html = renderReport(
+                data({
+                    findings: [
+                        finding({ label: "F-001", effort: "S", effortHours: 3 }),
+                        finding({ label: "F-002", effort: "M", effortHours: 10 }),
+                        finding({ label: "F-003", effort: "M" }),
+                        finding({ label: "F-004", effort: "L" }),
+                        finding({ label: "F-005", effort: null })
+                    ]
+                })
+            );
+            expect(summary(html)).toContain(
+                "Estimated effort: 13 h for the 2 findings with hours set, plus 1 medium finding (under 2 days), 1 large finding (over 2 days) and 1 finding not sized."
+            );
+        });
+    });
+
+    it("filters by severity, aspect and repository, and searches, from inline script only", () => {
+        const html = renderReport(
+            data({
+                repositories: [
+                    { name: "web", branch: "main", sha: "0123456789abcdef", notCovered: [] },
+                    { name: "api", branch: "main", sha: "fedcba9876543210", notCovered: [] }
+                ],
+                findings: [finding({ label: "F-001", repository: "web", aspect: "Security" })]
+            })
+        );
+        const filters = between(html, '<form class="filters"', "</form>");
+        expect(filters).toContain('name="sev"');
+        expect(filters).toContain('<option value="Security">Security</option>');
+        expect(filters).toContain('<option value="api">api</option>');
+        expect(filters).toContain('name="q"');
+        expect(html).toMatch(/<details open id="F-001" class="finding sev-high" data-sev="high" data-aspect="Security" data-repo="web">/);
+        expect(html).toMatch(/<script>[\s\S]*?querySelector[\s\S]*?<\/script>/);
+        expect(html).not.toMatch(/<script[^>]+src=/);
+        expect(between(html, "@media print{", "</style>")).toMatch(/\.filters\{display:none/);
+    });
+
+    describe("the summary's edge cases", () => {
+        const summary = (html: string) => between(html, '<section id="summary">', "</section>");
+        it("says the effort is not estimated when nothing is sized", () => {
+            expect(summary(renderReport(data({ findings: [finding({ effort: null })] })))).toContain("Effort: not estimated.");
+        });
+        it("counts hours set to zero as hours, as the card does", () => {
+            const html = renderReport(data({ findings: [finding({ effort: "S", effortHours: 0 })] }));
+            expect(summary(html)).toContain("Estimated effort: 0 h for the finding with hours set.");
+            expect(between(html, 'id="F-001"', "</details>")).toContain("effort S (0 h)");
+        });
+        it("says the findings that can wait still need fixing, and shows Andrii's call on the card", () => {
+            const html = renderReport(data({ findings: [finding({ label: "F-001", severity: "critical", fixBeforeSignoff: false })] }));
+            expect(summary(html)).toContain("Still to fix, after sign-off.");
+            expect(between(html, 'open id="F-001"', "</details>")).toContain("agreed to fix after sign-off");
+        });
+        it("counts the open questions the team must answer", () => {
+            expect(summary(renderReport(data({ questions: [finding({ label: "F-009", severity: null })] })))).toContain(
+                "1 open question needs the team's answer."
+            );
+        });
+    });
+
+    it("shows a reference it cannot link as plain text", () => {
+        const html = renderReport(
+            data({
+                findings: [
+                    finding({
+                        refs: {
+                            top10: null,
+                            cwe: { label: "SQL injection", url: null },
+                            asvs: [],
+                            cheatsheets: [],
+                            advisories: [],
+                            nist: null
+                        }
+                    })
+                ]
+            })
+        );
+        expect(html).toContain("Weakness: SQL injection.");
+    });
+
+    it("hides filtered findings on screen only, so a printout is always complete", () => {
+        const html = renderReport(data());
+        expect(html).toMatch(/@media screen\{\.off\{display:none!important\}\}/);
+        expect(html).not.toMatch(/\[hidden\]\{display:none/);
+        expect(html).toMatch(/classList\.toggle\("off"/);
+    });
+
+    it("groups each repository's findings so a filter can hide an emptied heading", () => {
+        const html = renderReport(
+            data({
+                repositories: [
+                    { name: "web", branch: "main", sha: "0123456789abcdef", notCovered: [] },
+                    { name: "api", branch: "main", sha: "fedcba9876543210", notCovered: [] }
+                ],
+                findings: [finding({ label: "F-001", repository: "web" })]
+            })
+        );
+        expect(html).toMatch(/<div class="repo-group"><h3 class="repo" id="repo-web">web<\/h3>/);
+        expect(html).toMatch(/hashchange/);
     });
 
     it("gathers the findings tagged ai-built under Signs of AI-generated code", () => {
@@ -161,6 +337,11 @@ describe("renderReport", () => {
     it("gathers tagged questions under Signs of AI-generated code too", () => {
         const html = renderReport(data({ aiBuilt: true, questions: [finding({ label: "F-009", severity: null, tags: ["ai-built"] })] }));
         expect(between(html, '<section id="ai-built">', "</section>")).toContain('href="#F-009"');
+    });
+
+    it("filters and searches the open questions too", () => {
+        const html = renderReport(data({ questions: [finding({ label: "F-009", severity: null })] }));
+        expect(html).toMatch(/section#questions \.finding/);
     });
 
     it("leaves the AI-generated code section out when the mode is off", () => {

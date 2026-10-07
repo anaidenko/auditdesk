@@ -137,6 +137,32 @@ describe("repositories in the report", () => {
     });
 });
 
+describe("references in the report", () => {
+    it("resolves each finding's references from its item, its own CWE first", async () => {
+        const { project, repo } = await projectWithRepo();
+        const f = await createFinding(
+            project.id,
+            null,
+            sampleFinding(repo.id, { checklistItem: "SEC-03", references: { cwe: "CWE-918" } })
+        );
+        await prisma.finding.update({ where: { id: f.id }, data: { status: "accepted" } });
+        const [finding] = (await loadReportData(project.id)).findings;
+        expect(finding.refs?.cwe?.label).toBe("CWE-918");
+        expect(finding.refs?.top10?.label).toBe("A01:2025 Broken Access Control");
+        expect(finding.refs?.cheatsheets.map(c => c.label)).toContain("Authorization Cheat Sheet");
+        expect(finding.fixBeforeSignoff).toBeNull();
+        const q = await createFinding(
+            project.id,
+            null,
+            sampleFinding(repo.id, { kind: "question", severity: null, checklistItem: "SEC-10" })
+        );
+        await prisma.finding.update({ where: { id: q.id }, data: { status: "accepted" } });
+        const [question] = (await loadReportData(project.id)).questions;
+        expect(question.refs?.top10).toBeNull();
+        expect(question.refs?.cheatsheets.map(c => c.label)).toEqual(["Secrets Management Cheat Sheet"]);
+    });
+});
+
 describe("the report's file name", () => {
     it("joins the project's name and the date with one hyphen, whatever the name ends with", () => {
         const d = { projectName: "naidenko.dev (own site)", generatedAt: "2026-10-06" } as ReportData;
