@@ -2,6 +2,8 @@ import type { FindingReferences } from "../references";
 import type { ToolVersions } from "../scanners/types";
 import type { Evidence, ModelAccess, References, SeverityName } from "../types";
 
+import type { RepoLinks } from "./links";
+
 export interface ReportFinding {
     label: string;
     severity: SeverityName | null;
@@ -32,8 +34,17 @@ export interface ReportData {
     generatedAt: string;
     /** AUDITOR_NAME; null leaves the name off the report. */
     auditor: string | null;
-    /** Names are unique within a report; `notCovered` lists languages the audit could not analyse. */
-    repositories: { name: string; branch: string; sha: string; notCovered: string[] }[];
+    /** AUDITOR_URL: the auditor's name links to it. */
+    auditorUrl?: string | null;
+    /** AUDIT_METHOD_URL: the method in full, linked from Scope and method. */
+    methodUrl?: string | null;
+    /**
+     * Names are unique within a report; `notCovered` lists languages the audit could not analyse;
+     * `links` only for a repository cloned from a known web host.
+     */
+    repositories: { name: string; branch: string; sha: string; notCovered: string[]; links?: RepoLinks }[];
+    /** The findings filed (questions and superseded ones apart), by what the review made of them. */
+    review?: { filed: number; reported: number; fixed: number; merged: number; rejected: number; excluded: number; unreviewed: number };
     /** The name a seams finding's path starts with, per repository; present when there are seams findings. */
     seamsPaths?: { path: string; repository: string }[];
     aspects: {

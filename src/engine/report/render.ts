@@ -35,11 +35,11 @@ section,.toc{margin-top:3rem}
 .facts dt{font-size:.7rem;font-weight:600;letter-spacing:.07em;text-transform:uppercase;color:var(--muted)}
 .facts dd{margin:.2rem 0 0}.facts ul{margin:0;padding:0;list-style:none}
 .facts .repos{grid-column:1/-1}.facts .repos li{margin:.15rem 0}
-.tiles{display:grid;grid-template-columns:repeat(5,1fr);gap:.6rem}
+.tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(5.5rem,1fr));gap:.6rem}
 .tile{border-radius:10px;padding:.75rem .9rem;border:1px solid transparent}
 .tile b{display:block;font-size:1.75rem;line-height:1.1;font-variant-numeric:tabular-nums}
 .tile span{font-size:.75rem;font-weight:600;letter-spacing:.05em;text-transform:uppercase}
-.tile.zero{opacity:.45}
+.tile.zero{background:transparent;border-color:var(--line)}.tile.zero b,.tile.zero span{color:var(--muted)}
 .toc ol{margin:0;padding-left:1.2rem}.toc>ol>li{margin:.45rem 0;font-weight:600}
 .toc ul{list-style:none;padding:0;margin:.4rem 0 .7rem;font-weight:400;font-size:.9rem}
 .toc ul li{display:flex;gap:.6rem;align-items:baseline;margin:.25rem 0;break-inside:avoid}
@@ -54,7 +54,7 @@ ${["critical", "high", "medium", "low", "info", "question"].map(s => `.${s}{colo
 .pill{display:inline-block;font-size:.72rem;font-weight:600;padding:.08rem .5rem;border-radius:999px;background:var(--info-bg);color:var(--info);white-space:nowrap}
 .pill.examined,.pill.done{background:#ecfdf5;color:#047857}.pill.partly,.pill.partial,.pill.limited{background:var(--medium-bg);color:var(--medium)}
 .pill.declined,.pill.failed,.pill.stopped,.pill.regressed{background:var(--critical-bg);color:var(--critical)}
-.method,.tech{padding-left:1.1rem}.method li,.tech li{margin:.3rem 0}
+.method,.tech{padding-left:1.1rem}.method a{text-decoration:underline;text-underline-offset:2px}.method li,.tech li{margin:.3rem 0}
 .finding{border:1px solid var(--line);border-left:4px solid var(--info);border-radius:10px;margin:1.1rem 0;background:#fff}
 ${["critical", "high", "medium", "low", "info", "question"].map(s => `.finding.sev-${s}{border-left-color:var(--${s})}`).join("")}
 .finding .head{padding:.85rem 1.1rem .1rem}
@@ -82,7 +82,7 @@ pre code{display:block}.ln{display:inline-block;width:3.4em;padding-right:.9em;t
 .filters button{font:inherit;color:var(--accent);padding:.3rem .7rem;border:1px solid var(--line);border-radius:6px;background:#fff;cursor:pointer}
 .filters output{margin-left:auto}
 .disclaimer{font-size:.92rem;color:var(--muted)}
-.colophon{margin-top:3rem;padding-top:1rem;border-top:1px solid var(--line);font-size:.78rem;color:var(--faint)}
+.colophon{margin-top:3rem;padding-top:1rem;border-top:1px solid var(--line);font-size:.78rem;color:var(--muted)}
 @page{size:A4;margin:16mm 15mm 18mm}
 @media print{
 .filters{display:none}.body>summary{display:none}
@@ -111,6 +111,42 @@ const STATIC_ONLY: Record<string, string> = {
     accessibility:
         "Accessibility was judged from the code alone: no page was rendered and no screen reader was run; contrast was computed only for colour pairs written in the code."
 };
+
+/** "a, b and c" */
+const listed = (parts: string[]) => (parts.length > 1 ? `${parts.slice(0, -1).join(", ")} and ${parts.at(-1)}` : (parts[0] ?? ""));
+
+/** The audit's steps as they ran: the scanners, an agent per aspect, and what the review made of the findings. */
+function method(d: ReportData): string {
+    const steps: string[] = [];
+    if (d.toolVersions)
+        steps.push(
+            "Scanners first: gitleaks over the history of every branch cloned, osv-scanner over the lock files and Semgrep; their pinned images are under Technical details."
+        );
+    if (d.aspects.length)
+        steps.push(
+            `Then one agent per aspect${d.repositories.length > 1 ? " and repository" : ""} read the code through read-only tools, against the aspect's checklist; Coverage above shows what each examined.`
+        );
+    const r = d.review;
+    if (r?.filed) {
+        const outcomes = [
+            `${r.reported} ${r.reported === 1 ? "is" : "are"} in this report`,
+            ...(r.fixed ? [`${r.fixed} ${r.fixed === 1 ? "was" : "were"} found fixed at a re-audit`] : []),
+            ...(r.merged ? [`${r.merged} ${r.merged === 1 ? "was" : "were"} merged into others`] : []),
+            ...(r.rejected ? [`${r.rejected} rejected as wrong`] : []),
+            ...(r.excluded ? [`${r.excluded} kept out of the report`] : [])
+        ];
+        const reviewed = r.filed - r.unreviewed;
+        const filed = `${plural(r.filed, "finding", "findings")} the scanners and agents filed`;
+        steps.push(
+            reviewed === 0
+                ? `None of the ${filed} is reviewed yet.`
+                : r.unreviewed
+                  ? `The auditor reviewed ${reviewed} of the ${filed}: ${listed(outcomes)}; ${r.unreviewed} not reviewed yet ${r.unreviewed === 1 ? "is" : "are"} not.`
+                  : `The auditor reviewed ${r.filed === 1 ? "the 1 finding" : `all ${r.filed} findings`} the scanners and agents filed: ${listed(outcomes)}.`
+        );
+    }
+    return steps.map(s => `<li>${s}</li>`).join("\n");
+}
 
 /** Performance and accessibility read from code: what the report cannot claim for them. */
 function staticOnly(d: ReportData): string {
@@ -377,9 +413,14 @@ ${manyRepos ? `<label>Repository <select name="repo">${option("", "All")}${names
     const tiles = SEVERITIES.map(s => `<div class="tile ${s}${count(s) ? "" : " zero"}"><b>${count(s)}</b><span>${s}</span></div>`).join(
         ""
     );
+    const link = (href: string | null | undefined, html: string) => (href ? `<a href="${e(href)}">${html}</a>` : html);
     const repos = d.repositories
-        .map(r => `<li>${e(r.name)} <span class="muted">· ${e(r.branch)} ·</span> <code>${e(r.sha.slice(0, 10))}</code></li>`)
+        .map(
+            r =>
+                `<li>${link(r.links?.repo, e(r.name))} <span class="muted">· ${link(r.links?.branch, e(r.branch))} ·</span> ${link(r.links?.commit, `<code>${e(r.sha.slice(0, 10))}</code>`)}</li>`
+        )
         .join("");
+    const auditor = d.auditor ? link(d.auditorUrl, e(d.auditor)) : "";
     const limited = (a: ReportData["aspects"][number]) => a.status === "done" && limitedReview(a.coverage);
     const aspects = d.aspects.length
         ? `<h3>Coverage</h3>\n<ul class="coverage">${d.aspects
@@ -432,7 +473,7 @@ ${d.questions.map(card).join("\n")}</section>`
 <p class="lede">${plural(findings.length, "finding", "findings")} and ${plural(d.questions.length, "open question", "open questions")} across ${plural(d.repositories.length, "repository", "repositories")}</p>
 <dl class="facts">
 <div><dt>Date</dt><dd>${e(d.generatedAt)}</dd></div>
-${d.auditor ? `<div><dt>Auditor</dt><dd>${e(d.auditor)}</dd></div>` : ""}
+${auditor ? `<div><dt>Auditor</dt><dd>${auditor}</dd></div>` : ""}
 <div class="repos"><dt>Repositories audited (branch, commit)</dt><dd><ul>${repos}</ul></dd></div>
 </dl>
 <div class="tiles">${tiles}</div>
@@ -468,6 +509,7 @@ ${since(d, findings)}
 ${aspects}
 <h3>Method</h3>
 <ul class="method">
+${method(d)}
 <li>The client's code was read, not installed, built or run: no dependency install, no type-check, no project lint.</li>
 ${staticOnly(d)}
 <li>Model access: ${d.modelAccess.map(a => ACCESS_TEXT[a]).join("; ") || "none"}.</li>
@@ -478,6 +520,7 @@ ${d.repositories
             `<li>Not covered in ${e(r.name)}: ${e(r.notCovered.join("; "))}. The audit covers JavaScript and TypeScript; these were not analysed.</li>`
     )
     .join("\n")}
+${d.methodUrl ? `<li>More on the method: <a href="${e(d.methodUrl)}">${e(d.methodUrl.replace(/^https?:\/\//, "").replace(/\/$/, ""))}</a>.</li>` : ""}
 </ul>
 </section>
 
@@ -509,7 +552,7 @@ ${costLine(d.cost)}
 <section id="disclaimer"><h2>Disclaimer</h2>
 <p class="disclaimer">An audit finds issues; it does not certify their absence. Findings describe the code at the commits listed above.</p>
 </section>
-<p class="colophon">${d.auditor ? `${e(d.auditor)} · ` : ""}${e(d.generatedAt)}</p>
+<p class="colophon">${auditor ? `${auditor} · ` : ""}${e(d.generatedAt)}</p>
 </main>
 <script>${FILTER_SCRIPT}</script>
 </body>

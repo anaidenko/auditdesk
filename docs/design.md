@@ -17,7 +17,9 @@ on, signed off finding by finding by a human auditor.
   repository map (directories with file counts and sizes, scripts, routes, schema models,
   environment variable names, test files), the stack profile, the brief, the scanner findings and
   the files the agent reads, all with secrets masked. osv-scanner sends dependency names and
-  versions to the OSV API. Nothing else leaves the machine.
+  versions to the OSV API, and runs with `--no-resolve`: resolving a manifest would send it to
+  deps.dev and fetch a pom.xml's parents from Maven Central and from any repository the client's
+  code names. Nothing else leaves the machine.
 - **The client's code is data:** nothing from a repository is installed, built or run, and text
   in it that tries to instruct the model is itself a finding.
 - **A human signs off:** only findings the auditor accepted or edited reach the report.
@@ -58,7 +60,8 @@ engine (imports nothing from Next.js): workspace, scanners, masker, repository m
    confirms or edits the profile; it suggests the conditional aspects, and a language outside the
    audit's coverage is reported as not covered. A run with no confirmed profile detects one itself.
 3. **Scanners,** in pinned Docker images and on the app's own configuration, never the client's
-   ignore files: gitleaks over every branch's history, osv-scanner over the lock files, Semgrep
+   ignore files: gitleaks over the history of every branch cloned (a URL brings every branch, a
+   local path its local branches), osv-scanner over the lock files, Semgrep
    with named rulesets. Their results become findings, and gitleaks' secrets feed the masker.
    Every repository is scanned before any agent starts, so the brief, which every agent reads,
    is masked with the secrets of all of them.
@@ -156,9 +159,12 @@ problem in other code is filed again.
 ## The report
 
 One self-contained HTML file, opening offline, and a PDF of the same document: a cover with the
-severity counts, a summary (what to fix before sign-off and what can wait, one line per finding
+auditor (linked by `AUDITOR_URL`), each repository's branch and commit (linked when it was cloned
+from GitHub, GitLab or Bitbucket) and the severity counts, a summary (what to fix before sign-off and what can wait, one line per finding
 with its aspect and effort, and the estimated effort), scope and method (each aspect's coverage
-in a line, the items not fully examined, what was not run or not covered), each finding as a card,
+in a line, the items not fully examined, the steps that ran, what the review made of the findings
+filed, what was not run or not covered, and the method in full when `AUDIT_METHOD_URL` names it),
+each finding as a card,
 signs of AI-generated code, open questions, technical details (models that served calls, scanner
 versions, rulesets, budgets) and a disclaimer. Filters and search work in the browser and never
 hide anything from a printout. A card shows its title, meta line and recommendation; its details

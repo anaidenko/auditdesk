@@ -8,6 +8,7 @@ import { workspaceDir } from "@/engine/config";
 import { findingLabel } from "@/engine/findings";
 import { pathNames } from "@/engine/pipeline";
 import { loadReferences, referencesFor } from "@/engine/references";
+import { repoLinks, webUrl } from "@/engine/report/links";
 import type { ReportData, ReportFinding } from "@/engine/report/types";
 import type { ToolVersions } from "@/engine/scanners/types";
 import type { StackProfile } from "@/engine/stack";
@@ -81,6 +82,30 @@ function sinceLastAudit<
         changed: now.filter(r => r.recheck === "changed").map(r => findingLabel(r.number)),
         added: rows.filter(r => r.runId === latest).length
     };
+}
+
+/**
+ * What the review made of the findings filed (design § 10). A finding a re-audit found fixed is left
+ * out of the report's findings, so it is counted apart; one folded into a finding nobody reviewed
+ * yet is not reviewed either.
+ */
+async function reviewTally(projectId: string): Promise<NonNullable<ReportData["review"]>> {
+    const rows = await prisma.finding.findMany({
+        where: { projectId, kind: "finding", status: { not: "superseded" } },
+        select: { id: true, status: true, recheck: true, mergedIntoId: true }
+    });
+    const statusOf = new Map(rows.map(r => [r.id, r.status as string]));
+    const missing = rows.flatMap(r => (r.mergedIntoId && !statusOf.has(r.mergedIntoId) ? [r.mergedIntoId] : []));
+    if (missing.length)
+        for (const t of await prisma.finding.findMany({ where: { id: { in: missing } }, select: { id: true, status: true } }))
+            statusOf.set(t.id, t.status);
+    const tally = { filed: rows.length, reported: 0, fixed: 0, merged: 0, rejected: 0, excluded: 0, unreviewed: 0 };
+    for (const r of rows) {
+        if (r.status === "accepted" || r.status === "edited") tally[r.recheck === "fixed" ? "fixed" : "reported"]++;
+        else if (r.status === "merged") tally[r.mergedIntoId && statusOf.get(r.mergedIntoId) === "unreviewed" ? "unreviewed" : "merged"]++;
+        else if (r.status === "rejected" || r.status === "excluded" || r.status === "unreviewed") tally[r.status]++;
+    }
+    return tally;
 }
 
 /** `includeCost`: Andrii ticked the cost at export (design § 8); otherwise the report states none. */
@@ -174,12 +199,19 @@ export async function loadReportData(projectId: string, o: { includeCost?: boole
         projectName: project.name,
         generatedAt: new Date().toISOString().slice(0, 10),
         auditor: process.env.AUDITOR_NAME?.trim() || null,
-        repositories: project.repositories.map(r => ({
-            name: names.get(r.id)!,
-            branch: r.branch,
-            sha: r.commitSha ?? "not cloned",
-            notCovered: (r.stack as StackProfile | null)?.notCovered ?? []
-        })),
+        auditorUrl: webUrl(process.env.AUDITOR_URL),
+        methodUrl: webUrl(process.env.AUDIT_METHOD_URL),
+        repositories: project.repositories.map(r => {
+            const links = repoLinks(r.source, r.branch, r.commitSha);
+            return {
+                name: names.get(r.id)!,
+                branch: r.branch,
+                sha: r.commitSha ?? "not cloned",
+                notCovered: (r.stack as StackProfile | null)?.notCovered ?? [],
+                ...(links && { links })
+            };
+        }),
+        review: await reviewTally(projectId),
         // A seams finding's paths start with the pipeline's name for each repository, not the report's.
         ...(rows.some(r => r.aspect === SEAMS) && {
             seamsPaths: [...pathNames(project.repositories)].map(([id, path]) => ({ path, repository: names.get(id)! }))

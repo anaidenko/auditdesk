@@ -5,7 +5,7 @@ import { makeRepo } from "@/test/git-repo";
 
 import { Masker } from "../masker";
 
-import { locatePackage, normaliseOsv, osvEvidence, parseOsv } from "./osv";
+import { locatePackage, normaliseOsv, osvArgs, osvEvidence, parseOsv } from "./osv";
 import type { OsvPackage } from "./types";
 
 const PNPM = `lockfileVersion: '9.0'
@@ -72,6 +72,13 @@ const pkg = (over: Partial<OsvPackage> = {}): OsvPackage => ({
     ],
     maxSeverity: 7.5,
     ...over
+});
+
+describe("osvArgs", () => {
+    it("never resolves manifests, so only OSV's API hears of the dependencies", () => {
+        // Resolving a pom.xml fetches its parents from Maven Central and from any repository it names.
+        expect(osvArgs()).toContain("--no-resolve");
+    });
 });
 
 describe("locatePackage", () => {

@@ -10,8 +10,12 @@ import type { OsvPackage } from "./types";
 /** Overrides the client's osv-scanner.toml, whose ignore lists would hide known vulnerabilities. */
 export const OSV_CONFIG = "# Written by Auditdesk for each run: no vulnerability is ignored.\n";
 
+/**
+ * --no-resolve: resolving a manifest without a lock file would send it to deps.dev and fetch a
+ * pom.xml's parents from Maven Central and from any repository the client's code names.
+ */
 export function osvArgs(): string[] {
-    return ["scan", "source", "--recursive", "--config", "/cfg/osv-scanner.toml", "--format", "json", "/src"];
+    return ["scan", "source", "--recursive", "--no-resolve", "--config", "/cfg/osv-scanner.toml", "--format", "json", "/src"];
 }
 
 interface OsvJson {

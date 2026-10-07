@@ -82,7 +82,9 @@ if (command === "run") {
     const data = await loadReportData(projectId);
     const sha = data.repositories[0]?.sha ?? "";
     // The method names what the sample audited, so its line numbers can be found again.
-    const note = `<li>This sample audited OWASP Juice Shop ${RELEASE} (upstream <code>${spec.sha}</code>) as Auditdesk's eval prepares it (<a href="https://github.com/anaidenko/auditdesk/tree/main/evals/prep">evals/prep</a>): the answers to its coding challenges removed and its challenges renamed, in one commit, <code>${sha.slice(0, 12)}</code>. Line numbers refer to that prepared tree.</li>`;
+    // The upstream tree is linked; the prepared commit exists only on this machine, so it is not.
+    const upstream = `${spec.url!.replace(/\.git$/, "")}/tree/${spec.sha}`;
+    const note = `<li>This sample audited OWASP Juice Shop ${RELEASE} (upstream <a href="${upstream}"><code>${spec.sha.slice(0, 12)}</code></a>) as Auditdesk's eval prepares it (<code>evals/prep</code>): the answers to its coding challenges removed and its challenges renamed, in one commit, <code>${sha.slice(0, 12)}</code>. Line numbers refer to that prepared tree.</li>`;
     const html = renderReport(data).replace('<ul class="method">', `<ul class="method">\n${note}`);
     if (!html.includes(note)) throw new Error("The report's method list was not found.");
     await writeFile("docs/sample-report.html", html);

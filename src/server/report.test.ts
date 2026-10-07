@@ -63,6 +63,81 @@ describe("the report's auditor", () => {
     });
 });
 
+describe("the report's links", () => {
+    afterEach(() => vi.unstubAllEnvs());
+
+    it("takes AUDITOR_URL and AUDIT_METHOD_URL when they are web addresses, and nothing else", async () => {
+        const { project } = await projectWithRepo();
+        vi.stubEnv("AUDITOR_URL", "https://naidenko.dev");
+        vi.stubEnv("AUDIT_METHOD_URL", "https://naidenko.dev/audit");
+        let d = await loadReportData(project.id);
+        expect([d.auditorUrl, d.methodUrl]).toEqual(["https://naidenko.dev/", "https://naidenko.dev/audit"]);
+        vi.stubEnv("AUDITOR_URL", "javascript:alert(1)");
+        vi.stubEnv("AUDIT_METHOD_URL", "");
+        d = await loadReportData(project.id);
+        expect([d.auditorUrl, d.methodUrl]).toEqual([null, null]);
+    });
+
+    it("links a repository on a web host, and a local one not at all", async () => {
+        const sha = "a".repeat(40);
+        const { project, repo } = await projectWithRepo("git@github.com:acme/app.git");
+        await prisma.repository.update({ where: { id: repo.id }, data: { commitSha: sha } });
+        await prisma.repository.create({
+            data: { projectId: project.id, source: "/tmp/web", branch: "main", commitSha: sha, createdAt: new Date(Date.now() + 1000) }
+        });
+        const [github, local] = (await loadReportData(project.id)).repositories;
+        expect(github.links).toEqual({
+            repo: "https://github.com/acme/app",
+            branch: "https://github.com/acme/app/tree/main",
+            commit: `https://github.com/acme/app/commit/${sha}`
+        });
+        expect(local.links).toBeUndefined();
+    });
+});
+
+describe("the report's review tally", () => {
+    it("counts the findings filed by what the review made of them, leaving questions and superseded ones out", async () => {
+        const { project, repo } = await projectWithRepo();
+        const statuses = ["accepted", "edited", "merged", "rejected", "rejected", "excluded", "unreviewed", "superseded"] as const;
+        for (const status of statuses) {
+            const { id } = await createFinding(project.id, null, sampleFinding(repo.id));
+            await prisma.finding.update({ where: { id }, data: { status } });
+        }
+        const question = await createFinding(project.id, null, sampleFinding(repo.id, { kind: "question" }));
+        await prisma.finding.update({ where: { id: question.id }, data: { status: "accepted" } });
+        expect((await loadReportData(project.id)).review).toEqual({
+            filed: 7,
+            reported: 2,
+            fixed: 0,
+            merged: 1,
+            rejected: 2,
+            excluded: 1,
+            unreviewed: 1
+        });
+    });
+
+    it("counts a finding a re-audit found fixed apart, so the reported count matches the report's findings", async () => {
+        const { project, repo } = await projectWithRepo();
+        for (const recheck of [null, "fixed", "unchanged"] as const) {
+            const { id } = await createFinding(project.id, null, sampleFinding(repo.id));
+            await prisma.finding.update({ where: { id }, data: { status: "accepted", recheck } });
+        }
+        const d = await loadReportData(project.id);
+        expect(d.review).toMatchObject({ filed: 3, reported: 2, fixed: 1 });
+        expect(d.review!.reported).toBe(d.findings.length);
+    });
+
+    it("counts a finding folded into one not reviewed yet as not reviewed, since the auditor has not seen it", async () => {
+        const { project, repo } = await projectWithRepo();
+        const agent = await createFinding(project.id, null, sampleFinding(repo.id));
+        const scanner = await createFinding(project.id, null, sampleFinding(repo.id, { source: "scanner" }));
+        await prisma.finding.update({ where: { id: scanner.id }, data: { status: "merged", mergedIntoId: agent.id } });
+        expect((await loadReportData(project.id)).review).toMatchObject({ filed: 2, merged: 0, unreviewed: 2 });
+        await prisma.finding.update({ where: { id: agent.id }, data: { status: "accepted" } });
+        expect((await loadReportData(project.id)).review).toMatchObject({ filed: 2, reported: 1, merged: 1, unreviewed: 0 });
+    });
+});
+
 describe("the report's scope", () => {
     it("shows each aspect of each repository once, from its latest finished agent", async () => {
         const { project, repo } = await projectWithRepo();

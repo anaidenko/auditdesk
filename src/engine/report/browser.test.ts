@@ -24,6 +24,52 @@ describe("the report in a browser", { timeout: 60_000 }, () => {
     const bodies = (page: Page) => page.locator(".finding > .body").evaluateAll(els => els.map(d => (d as HTMLDetailsElement).open));
     const toggle = (page: Page) => page.locator(".filters button.all");
 
+    // WCAG 2.1 AA: 4.5:1 for small text (1.4.3); a link in running text is underlined (1.4.1).
+    const contrast = (page: Page, selector: string) =>
+        page
+            .locator(selector)
+            .first()
+            .evaluate(el => {
+                const rgba = (s: string) => (s.match(/[\d.]+/g) ?? []).map(Number);
+                let bg: number[] | null = null;
+                let opacity = 1;
+                for (let n: Element | null = el; n; n = n.parentElement) {
+                    const style = getComputedStyle(n);
+                    opacity *= Number(style.opacity);
+                    const c = rgba(style.backgroundColor);
+                    if (!bg && (c[3] ?? 1) > 0) bg = c.slice(0, 3);
+                }
+                const base = bg ?? [255, 255, 255];
+                const fg = rgba(getComputedStyle(el).color)
+                    .slice(0, 3)
+                    .map((v, i) => v * opacity + base[i] * (1 - opacity));
+                const lum = (c: number[]) => {
+                    const [r, g, b] = c.map(v => (v / 255 <= 0.03928 ? v / 255 / 12.92 : ((v / 255 + 0.055) / 1.055) ** 2.4));
+                    return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+                };
+                const [hi, lo] = [lum(fg), lum(base)].sort((x, y) => y - x);
+                return (hi + 0.05) / (lo + 0.05);
+            });
+
+    it("fits a phone's width: the severity tiles wrap instead of running off the page", async () => {
+        const page = await browser.newPage({ viewport: { width: 375, height: 800 } });
+        await page.setContent(renderReport(data()), { waitUntil: "load" });
+        expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(375);
+    });
+
+    it("keeps its quiet text readable: an empty severity tile, the colophon, and a link inside the method", async () => {
+        const page = await open(renderReport(data({ auditorUrl: "https://naidenko.dev/", methodUrl: "https://naidenko.dev/audit" })));
+        expect(await contrast(page, ".tile.zero span")).toBeGreaterThanOrEqual(4.5);
+        expect(await contrast(page, ".tile.zero b")).toBeGreaterThanOrEqual(4.5);
+        expect(await contrast(page, ".colophon")).toBeGreaterThanOrEqual(4.5);
+        expect(
+            await page
+                .locator(".method a")
+                .first()
+                .evaluate(a => getComputedStyle(a).textDecorationLine)
+        ).toBe("underline");
+    });
+
     it("opens each card's details on demand, and every one with Expand all", async () => {
         const page = await open(renderReport(data()));
         expect(await bodies(page)).toEqual([false, false]);
