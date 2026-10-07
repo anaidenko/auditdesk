@@ -263,6 +263,38 @@ describe("renderReport", () => {
         expect(gaps).not.toContain("SEC-01");
     });
 
+    it("keeps scanner digests and ruleset hashes out of the method, in Technical details before the Disclaimer", () => {
+        const html = renderReport(
+            data({
+                toolVersions: {
+                    images: {
+                        gitleaks: { image: "ghcr.io/gitleaks/gitleaks:v8.30.1", digest: "sha256:aaa" },
+                        osv: { image: "ghcr.io/google/osv-scanner:v2.6.0", digest: "sha256:bbb" },
+                        semgrep: { image: "semgrep/semgrep:1.179.0", digest: "sha256:ccc" }
+                    },
+                    rulesets: [{ name: "p-javascript", sha256: "d".repeat(64), rules: 10 }],
+                    osvQueriedAt: "2026-10-07T10:00:00Z"
+                },
+                cost: { apiKeyUsd: 1, planUsd: 0, unpriced: 0 }
+            })
+        );
+        const method = between(html, '<ul class="method">', "</ul>");
+        expect(method).not.toMatch(/sha256|Models that served|Budgets are checked|Cost of the model calls/);
+        expect(method).toContain("Model access:");
+        const tech = between(html, '<section id="technical">', "</section>");
+        for (const s of [
+            "sha256:aaa",
+            "sha256 dddddddddddd",
+            "OSV queried 2026-10-07",
+            "Models that served calls",
+            "Budgets are checked",
+            "Cost of the model calls"
+        ])
+            expect(tech).toContain(s);
+        expect(html.indexOf('<section id="technical">')).toBeLessThan(html.indexOf('<section id="disclaimer">'));
+        expect(between(html, '<nav class="toc"', "</nav>")).toContain('<a href="#technical">Technical details</a>');
+    });
+
     it("names a one-line range as one line", () => {
         const html = renderReport(
             data({ findings: [finding({ evidence: [{ file: "pnpm-lock.yaml", startLine: 9, endLine: 9, snippet: "x" }] })] })

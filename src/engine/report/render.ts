@@ -51,7 +51,7 @@ ${["critical", "high", "medium", "low", "info", "question"].map(s => `.${s}{colo
 .pill{display:inline-block;font-size:.72rem;font-weight:600;padding:.08rem .5rem;border-radius:999px;background:var(--info-bg);color:var(--info);white-space:nowrap}
 .pill.examined,.pill.done{background:#ecfdf5;color:#047857}.pill.partly,.pill.partial,.pill.limited{background:var(--medium-bg);color:var(--medium)}
 .pill.declined,.pill.failed,.pill.stopped,.pill.regressed{background:var(--critical-bg);color:var(--critical)}
-.method{padding-left:1.1rem}.method li{margin:.3rem 0}
+.method,.tech{padding-left:1.1rem}.method li,.tech li{margin:.3rem 0}
 .finding{border:1px solid var(--line);border-left:4px solid var(--info);border-radius:10px;margin:1.1rem 0;background:#fff}
 ${["critical", "high", "medium", "low", "info", "question"].map(s => `.finding.sev-${s}{border-left-color:var(--${s})}`).join("")}
 .finding summary{display:flex;gap:.7rem;align-items:baseline;padding:.85rem 1.1rem;cursor:pointer;list-style:none;font-weight:600}
@@ -394,6 +394,7 @@ ${d.since ? `<li><a href="#since">Since the last audit</a></li>` : ""}
     }</li>
 ${aiBuilt.length ? `<li><a href="#ai-built">Signs of AI-generated code (${aiBuilt.length})</a></li>` : ""}
 ${d.questions.length ? `<li><a href="#questions">Open questions (${d.questions.length})</a></li>` : ""}
+<li><a href="#technical">Technical details</a></li>
 <li><a href="#disclaimer">Disclaimer</a></li>
 </ol></nav>
 
@@ -414,11 +415,7 @@ ${aspects}
 <ul class="method">
 <li>The client's code was read, not installed, built or run: no dependency install, no type-check, no project lint.</li>
 ${staticOnly(d)}
-<li>Models that served calls: ${e(d.servedModels.join(", ") || "none")}.</li>
 <li>Model access: ${d.modelAccess.map(a => ACCESS_TEXT[a]).join("; ") || "none"}.</li>
-${tools}
-<li>Budgets are checked between model calls; a call in progress may exceed its share by its own cost.</li>
-${costLine(d.cost)}
 ${d.repositories
     .filter(r => r.notCovered.length)
     .map(
@@ -444,6 +441,15 @@ ${
 </section>
 ${aiSection}
 ${questions}
+
+<section id="technical"><h2>Technical details</h2>
+<ul class="tech">
+<li>Models that served calls: ${e(d.servedModels.join(", ") || "none")}.</li>
+${tools}
+<li>Budgets are checked between model calls; a call in progress may exceed its share by its own cost.</li>
+${costLine(d.cost)}
+</ul>
+</section>
 
 <section id="disclaimer"><h2>Disclaimer</h2>
 <p class="disclaimer">An audit finds issues; it does not certify their absence. Findings describe the code at the commits listed above.</p>
