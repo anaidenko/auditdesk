@@ -49,7 +49,7 @@ td{padding:.5rem .6rem;border-bottom:1px solid var(--line);vertical-align:top}td
 .aspect{border:1px solid var(--line);border-radius:10px;padding:.2rem 1.1rem 1rem;margin:1rem 0}
 .pill{display:inline-block;font-size:.72rem;font-weight:600;padding:.08rem .5rem;border-radius:999px;background:var(--info-bg);color:var(--info);white-space:nowrap}
 .pill.examined,.pill.done{background:#ecfdf5;color:#047857}.pill.partly,.pill.partial,.pill.limited{background:var(--medium-bg);color:var(--medium)}
-.pill.declined,.pill.failed,.pill.stopped{background:var(--critical-bg);color:var(--critical)}
+.pill.declined,.pill.failed,.pill.stopped,.pill.regressed{background:var(--critical-bg);color:var(--critical)}
 .method{padding-left:1.1rem}.method li{margin:.3rem 0}
 .finding{border:1px solid var(--line);border-left:4px solid var(--info);border-radius:10px;margin:1.1rem 0;background:#fff}
 ${["critical", "high", "medium", "low", "info", "question"].map(s => `.finding.sev-${s}{border-left-color:var(--${s})}`).join("")}
@@ -187,6 +187,11 @@ function costLine(cost: ReportData["cost"]): string {
     return `<li>Cost of the model calls: ${atLeast}${usd(cost.apiKeyUsd)}${unknown}.</li>`;
 }
 
+const RECHECK_PILL: Record<string, string> = {
+    regressed: ` <span class="pill regressed">regressed since the last audit</span>`,
+    changed: ` <span class="pill limited">code changed since the last audit</span>`
+};
+
 function finding(f: ReportFinding): string {
     const byDefault = f.severity === "critical" || f.severity === "high";
     const call =
@@ -229,7 +234,7 @@ function finding(f: ReportFinding): string {
     return `<details open id="${e(f.label)}" class="finding sev-${e(severityOf(f))}" data-sev="${e(severityOf(f))}" data-aspect="${e(f.aspect)}" data-repo="${e(f.repository)}">
 <summary>${badge(f)}<span class="fid">${e(f.label)}</span><span>${e(f.title)}</span></summary>
 <div class="body">
-<p class="meta">${e(meta)}</p>
+<p class="meta">${e(meta)}${RECHECK_PILL[f.recheck ?? ""] ?? ""}</p>
 <p class="lead">${e(f.summary)}</p>
 ${pair}
 <h4>Details</h4>
@@ -239,6 +244,30 @@ ${f.evidence.length ? `<h4>Evidence</h4>\n${f.evidence.map(evidence).join("\n")}
 ${refs.length ? `<div class="refs"><h4>References</h4>${refs.map(r => `<p>${r}</p>`).join("")}</div>` : ""}
 </div>
 </details>`;
+}
+
+/** The re-audit's comparison with the findings reported before it (design § 9). */
+function since(d: ReportData, findings: ReportFinding[]): string {
+    const s = d.since;
+    if (!s) return "";
+    const item = (f: ReportFinding, linked: boolean) =>
+        `<li>${badge(f)}${linked ? `<a class="fid" href="#${e(f.label)}">${e(f.label)}</a>` : `<span class="fid">${e(f.label)}</span>`}<span>${e(f.title)}</span></li>`;
+    const regressed = findings.filter(f => f.recheck === "regressed");
+    const counts = [
+        `${s.fixed.length} fixed`,
+        `${s.unchanged} with code unchanged`,
+        ...(s.open ? [`${s.open} confirmed open`] : []),
+        ...(s.regressed ? [`${s.regressed} regressed`] : []),
+        `${s.added} new`
+    ];
+    return `<section id="since"><h2>Since the last audit</h2>
+<p>Re-audited at ${s.commits.map(c => `${e(c.sha.slice(0, 7))} (${e(c.repository)})`).join(", ")}.</p>
+<p>${counts.join(" · ")}.</p>
+${s.changed.length ? `<p>Code changed since, not yet verified: ${s.changed.map(e).join(", ")}.</p>` : ""}
+<h3>Fixed</h3>
+${s.fixed.length ? `<ul class="risks">${s.fixed.map(f => item(f, false)).join("")}</ul>` : `<p class="muted">None of the findings reported before is fixed yet.</p>`}
+${regressed.length ? `<h3>Regressed</h3><ul class="risks">${regressed.map(f => item(f, true)).join("")}</ul>` : ""}
+</section>`;
 }
 
 export function renderReport(d: ReportData): string {
@@ -358,6 +387,7 @@ ${d.auditor ? `<div><dt>Auditor</dt><dd>${e(d.auditor)}</dd></div>` : ""}
 
 <nav class="toc"><h2>Contents</h2><ol>
 <li><a href="#summary">Summary</a></li>
+${d.since ? `<li><a href="#since">Since the last audit</a></li>` : ""}
 <li><a href="#scope">Scope and method</a></li>
 <li><a href="#findings">Findings</a>${
         manyRepos
@@ -379,6 +409,7 @@ ${riskList(canWait, "Nothing else was found.")}
 ${d.questions.length ? `<p>${d.questions.length === 1 ? "1 open question needs the team's answer." : `${d.questions.length} open questions need the team's answers.`}</p>` : ""}
 ${effortLine ? `<p>${e(effortLine)}</p>` : ""}
 </section>
+${since(d, findings)}
 
 <section id="scope"><h2>Scope and method</h2>
 ${aspects}

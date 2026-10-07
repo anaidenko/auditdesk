@@ -3,7 +3,7 @@ import "server-only";
 import { ASPECTS } from "@/engine/aspects";
 import { compareFindings, findingLabel } from "@/engine/findings";
 import type { Evidence, SeverityName } from "@/engine/types";
-import { FindingStatus } from "@/generated/prisma/enums";
+import { FindingStatus, RecheckStatus } from "@/generated/prisma/enums";
 import { prisma } from "@/server/db";
 
 export const REPORTABLE = ["accepted", "edited"] as const;
@@ -38,6 +38,15 @@ export async function accept(id: string) {
 async function withReason(id: string, status: "rejected" | "excluded", reason: string) {
     if (!reason.trim()) throw new Error("Give a reason; it is kept as eval data and for the record.");
     await prisma.finding.update({ where: { id }, data: { status, statusReason: reason.trim() } });
+}
+
+/** Andrii's call on what a re-audit found: a fix he verified, or a finding still open (design § 9). */
+export async function confirmRecheck(id: string, status: "fixed" | "open") {
+    const f = await prisma.finding.findUniqueOrThrow({ where: { id } });
+    if (!f.recheck) throw new Error(`${findingLabel(f.number)} has not been re-checked by a later run.`);
+    // A later re-audit calls it regressed only if its code was gone after the fix and came back.
+    const gone = status === "fixed" && (f.recheck === "changed" || (f.recheck === "fixed" && f.recheckGone));
+    await prisma.finding.update({ where: { id }, data: { recheck: status, recheckGone: gone } });
 }
 
 export const reject = (id: string, reason: string) => withReason(id, "rejected", reason);
@@ -81,7 +90,7 @@ export async function merge(sourceId: string, targetLabel: string, o: { onlyUnre
     });
 }
 
-export async function listFindings(projectId: string, o: { status?: string; q?: string; aspect?: string } = {}) {
+export async function listFindings(projectId: string, o: { status?: string; q?: string; aspect?: string; recheck?: string } = {}) {
     const ids = o.q
         ? (
               await prisma.$queryRaw<{ id: string }[]>`
@@ -93,6 +102,7 @@ export async function listFindings(projectId: string, o: { status?: string; q?: 
             projectId,
             ...(ids && { id: { in: ids } }),
             ...(ASPECTS.some(a => a.key === o.aspect) && { aspect: o.aspect }),
+            ...(Object.values<string>(RecheckStatus).includes(o.recheck ?? "") && { recheck: o.recheck as RecheckStatus }),
             status: isStatus(o.status) ? o.status : { notIn: ["merged", "superseded"] }
         }
     });

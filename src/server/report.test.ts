@@ -99,6 +99,49 @@ describe("aspects in the report", () => {
         ]);
     });
 
+    it("leaves a fixed finding out of the findings and compares the latest re-audit with the report before it", async () => {
+        const { project, repo } = await projectWithRepo();
+        const before = await run(project.id, "done", null, new Date("2026-10-01"));
+        const after = await run(project.id, "done", null, new Date("2026-10-08"));
+        await prisma.run.update({ where: { id: after.id }, data: { commits: { [repo.id]: "d".repeat(40) } } });
+        const add = async (runId: string, title: string, data: object = {}) => {
+            const f = await createFinding(project.id, runId, sampleFinding(repo.id, { title }));
+            await prisma.finding.update({ where: { id: f.id }, data: { status: "accepted", ...data } });
+        };
+        const at = { recheckedSha: "d".repeat(40), recheckRunId: after.id, recheckedAt: new Date("2026-10-08") };
+        await add(before.id, "Fixed SQL", { recheck: "fixed", ...at });
+        // Fixed at an earlier re-audit: left out of the findings, and no news in this comparison.
+        await add(before.id, "Fixed long ago", {
+            recheck: "fixed",
+            recheckedSha: "e".repeat(40),
+            recheckRunId: before.id,
+            recheckedAt: new Date("2026-10-02")
+        });
+        await add(before.id, "Open SQL", { recheck: "open", ...at });
+        await add(before.id, "Rewritten SQL", { recheck: "changed", ...at });
+        await add(before.id, "Back again", { recheck: "regressed", ...at });
+        await add(after.id, "New XSS");
+        const d = await loadReportData(project.id);
+        expect(d.findings.map(f => f.title).sort()).toEqual(["Back again", "New XSS", "Open SQL", "Rewritten SQL"]);
+        expect(d.findings.find(f => f.title === "Back again")?.recheck).toBe("regressed");
+        expect(d.since).toMatchObject({
+            commits: [{ repository: "x", sha: "d".repeat(40) }],
+            unchanged: 0,
+            open: 1,
+            regressed: 1,
+            changed: [expect.stringMatching(/^F-\d{3}$/)],
+            added: 1
+        });
+        expect(d.since?.fixed.map(f => f.title)).toEqual(["Fixed SQL"]);
+    });
+
+    it("has no comparison until a re-audit ran", async () => {
+        const { project, repo } = await projectWithRepo();
+        const f = await createFinding(project.id, null, sampleFinding(repo.id));
+        await prisma.finding.update({ where: { id: f.id }, data: { status: "accepted" } });
+        expect((await loadReportData(project.id)).since).toBeNull();
+    });
+
     it("names a finding's aspect by its title", async () => {
         const { project, repo } = await projectWithRepo();
         const f = await createFinding(project.id, null, sampleFinding(repo.id, { aspect: "quality", checklistItem: "QUA-02" }));

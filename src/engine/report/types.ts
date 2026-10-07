@@ -23,6 +23,8 @@ export interface ReportFinding {
     fixBeforeSignoff?: boolean | null;
     /** Resolved from references/ (design § 10); absent in data built without them. */
     refs?: FindingReferences;
+    /** What the latest re-audit found of it (design § 9). */
+    recheck?: "unchanged" | "open" | "fixed" | "changed" | "regressed" | null;
 }
 
 export interface ReportData {
@@ -45,4 +47,23 @@ export interface ReportData {
     aiBuilt: boolean;
     /** Every catalogue item's title, for an item filed under an aspect that did not run (a scanner's DEP-01). */
     itemTitles?: Record<string, string>;
+    /**
+     * The latest re-audit against the findings reported before it (design § 9); absent when none
+     * ran. Fixed findings are listed here and left out of `findings`.
+     */
+    since?: {
+        /** The commit each repository was re-checked at. */
+        commits: { repository: string; sha: string }[];
+        /** Found fixed at this re-audit; fixes from before it are no news. */
+        fixed: ReportFinding[];
+        /** Code unchanged: the re-audit's own reading, not a verdict. */
+        unchanged: number;
+        /** Confirmed still open by the auditor. */
+        open: number;
+        regressed: number;
+        /** Labels whose cited code changed and the auditor has not yet verified: still in `findings`. */
+        changed: string[];
+        /** Reported findings the re-audit's run filed. */
+        added: number;
+    } | null;
 }

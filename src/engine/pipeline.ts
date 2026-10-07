@@ -1,3 +1,4 @@
+import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 
 import type { Effort } from "./agent/request";
@@ -7,7 +8,9 @@ import { shareFor } from "./budget";
 import { forMode, loadChecklist } from "./checklists";
 import { readSnippet } from "./files";
 import { Masker } from "./masker";
+import { resolveInClone } from "./paths";
 import { type Brief, aspectMessage, briefText, prefixBlocks } from "./prompts";
+import { type EarlierFinding, type RecheckResult, type RecheckStatus, recheck } from "./recheck";
 import { buildRepoMap } from "./repomap";
 import { normaliseGitleaks } from "./scanners/gitleaks";
 import { type ScanResults, leakInTree, leakMasks, runGitleaks, runScanners } from "./scanners/index";
@@ -30,6 +33,9 @@ export interface PipelineSink extends AuditSink {
      * `raised` is the scanner's higher severity, which the agent's finding takes.
      */
     foldScannerDuplicates(repositoryId: string, agentRunId: string): Promise<{ from: string; into: string; raised?: SeverityName }[]>;
+    /** The repository's reported findings from runs at another commit, which a full run re-checks (design § 9). */
+    earlierFindings(repositoryId: string, sha: string): Promise<EarlierFinding[]>;
+    recheckFindings(results: RecheckResult[], sha: string): Promise<void>;
 }
 
 export interface AuditInput {
@@ -75,7 +81,7 @@ export async function runAudit(input: AuditInput, deps: AuditDeps): Promise<{ st
     // Every repository is cloned and scanned before any agent starts: the brief reaches every agent,
     // so it is masked with the secrets gitleaks found in all of them (design § 6). A re-run of one
     // repository runs gitleaks alone on the others.
-    const scanned: { repo: AuditInput["repositories"][number]; clonePath: string; scan: ScanResults }[] = [];
+    const scanned: { repo: AuditInput["repositories"][number]; sha: string; clonePath: string; scan: ScanResults }[] = [];
     const masks: { value: string; rule: string }[] = [];
     for (const repo of input.repositories) {
         if (await sink.stopRequested()) return { stopped: true };
@@ -106,11 +112,11 @@ export async function runAudit(input: AuditInput, deps: AuditDeps): Promise<{ st
         });
         await sink.toolVersions(scan.versions);
         masks.push(...(await leakMasks(clonePath, scan.leaks)));
-        scanned.push({ repo, clonePath, scan });
+        scanned.push({ repo, sha, clonePath, scan });
     }
     const masker = new Masker(masks);
 
-    for (const { repo, clonePath, scan } of scanned) {
+    for (const { repo, sha, clonePath, scan } of scanned) {
         const inTree = new Set<string>();
         for (const leak of scan.leaks) if (await leakInTree(clonePath, leak)) inTree.add(`${leak.File}:${leak.StartLine}:${leak.Commit}`);
         const known = await sink.knownFingerprints(repo.id);
@@ -147,6 +153,40 @@ export async function runAudit(input: AuditInput, deps: AuditDeps): Promise<{ st
         await sink.progress(
             `Scanners filed ${count(filed, "new finding", "new findings")} (${count(scan.leaks.length, "secret", "secrets")} masked from here on).`
         );
+
+        // Before the agents, so a run stopped or failed later still has its re-check.
+        if (!input.only) {
+            const earlier = await sink.earlierFindings(repo.id, sha);
+            if (earlier.length) {
+                const results = await recheck(earlier, {
+                    scanners: scannerFindings,
+                    read: async file => {
+                        try {
+                            const { abs } = await resolveInClone(clonePath, file);
+                            return (await readFile(abs, "utf8")).split(/\r?\n/).map(l => masker.mask(l));
+                        } catch {
+                            return null;
+                        }
+                    }
+                });
+                await sink.recheckFindings(results, sha);
+                const news = results.filter(r => !r.keep);
+                const of = (status: RecheckStatus) => news.filter(r => r.status === status).map(r => r.label);
+                const part = (status: RecheckStatus, words: string, list: boolean) =>
+                    of(status).length ? `${of(status).length} ${words}${list ? ` (${of(status).join(", ")})` : ""}` : "";
+                const parts = [
+                    part("fixed", "fixed", true),
+                    part("unchanged", "with code unchanged", false),
+                    part("open", "still open as confirmed", false),
+                    part("regressed", "regressed", true),
+                    part("changed", "changed, to verify", true),
+                    results.length - news.length ? `${results.length - news.length} fixed before` : ""
+                ].filter(Boolean);
+                await sink.progress(
+                    `Re-checked ${count(earlier.length, "earlier finding", "earlier findings")} against ${sha.slice(0, 7)}: ${parts.join(", ")}.`
+                );
+            }
+        }
 
         await sink.progress("Building the repository map…");
         const repoMap = await buildRepoMap(clonePath, masker);

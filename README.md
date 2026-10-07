@@ -22,6 +22,10 @@ Local only: it binds 127.0.0.1 and has no login. The design is in [docs/design.m
   reach the report. A scanner finding that an agent filed again is folded into the agent's, and
   results in test, fixture, seed or example files are rated lower and say so. IDs (`F-012`) are never reused, and a reviewed finding keeps its ID through
   re-runs.
+- **Re-audit:** a run on the client's later commit re-checks each reported finding: a dependency
+  or Semgrep result that is gone is fixed, cited code that is still there reads "code unchanged",
+  code that moved on is for the auditor to verify, and a fix that comes back is regressed. The
+  report opens with what changed since the last audit.
 - **The report:** one self-contained HTML file with filters and search, and a PDF. A summary of
   what to fix before sign-off and what can wait, scope and coverage, each finding with its
   evidence, and links to the OWASP Top 10:2025, ASVS 5.0.0, CWE and Cheat Sheets it is relevant
