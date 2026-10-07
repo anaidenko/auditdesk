@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { PLAN_RESERVE, overReserve, planUsageLine, readPlanUsage, recordPlanUsage, reserveRefusal } from "./plan-usage";
+import { PLAN_RESERVE, overReserve, planReserve, planUsageLine, readPlanUsage, recordPlanUsage, reserveRefusal } from "./plan-usage";
 
 const now = () => Math.floor(Date.now() / 1000);
 
@@ -24,6 +24,13 @@ describe("plan usage", () => {
     it("forgets a reading once its window has reset", async () => {
         await recordPlanUsage({ utilization: 0.9, resetsAt: now() - 1 });
         await expect(readPlanUsage()).resolves.toBeNull();
+    });
+
+    it("takes the reserve from AUDITDESK_PLAN_RESERVE for one command, half the window otherwise", () => {
+        expect(planReserve(undefined)).toBe(0.5);
+        expect(planReserve("")).toBe(0.5);
+        expect(planReserve("0.8")).toBe(0.8);
+        for (const bad of ["80", "0", "-0.2", "half"]) expect(() => planReserve(bad), bad).toThrow(/AUDITDESK_PLAN_RESERVE/);
     });
 
     it("keeps half the window in reserve: over it only above 50%", () => {
