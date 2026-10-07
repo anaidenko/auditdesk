@@ -100,10 +100,20 @@ screenshots above from a replayed run on a sample repository.
 
 ## Evals
 
-Auditdesk's own fixture, a small Next.js storefront platform with defects planted for every
-aspect, is a separate repository, to be published alongside this one; its answer key is in
-`evals/answers/`. The harness and the first scores, by model and effort, come next and will be
-quoted here.
+`pnpm eval` audits a fixture prepared at a pinned commit, without the server, and scores the
+findings against the fixture's answer key: recall (and the agents' share of it), findings outside
+the key, cost by serving model, and what pins the result (both commits, the scanner digests, the
+Semgrep rule hashes, the Auditdesk commit). Grading is deterministic on file, lines and checklist
+item; with `--judge`, an LLM judge reads what the grader could not place, within a cap of its own.
+
+- **Auditdesk's own fixture,** a small Next.js storefront platform with defects planted for every
+  aspect, is a separate repository, to be published alongside this one; its answer key is in
+  `evals/answers/`.
+- **OWASP Juice Shop** v20.2.0, for comparison: the prep removes its coding challenges' answers
+  (fixes, tutorials, translated hints, specs, the code that scores a solve) and renames every
+  challenge, and `pnpm eval:key` reads its key from the markers.
+
+The first scores, by model and effort, come next and will be quoted here.
 
 ## Live checks
 

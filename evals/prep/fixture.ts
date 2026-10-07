@@ -1,0 +1,61 @@
+import { execFile } from "node:child_process";
+import { existsSync } from "node:fs";
+import { mkdir, rm } from "node:fs/promises";
+import { join } from "node:path";
+import { promisify } from "node:util";
+
+import { type LineMap, type StripRules, commitPrepared, stripAnswers } from "./strip";
+
+const run = promisify(execFile);
+const git = async (args: string[], cwd?: string) => (await run("git", args, { cwd, maxBuffer: 64 * 1024 * 1024 })).stdout.trim();
+
+const SNAPSHOT_ENV = {
+    GIT_AUTHOR_NAME: "Auditdesk",
+    GIT_AUTHOR_EMAIL: "eval@auditdesk.invalid",
+    GIT_COMMITTER_NAME: "Auditdesk",
+    GIT_COMMITTER_EMAIL: "eval@auditdesk.invalid",
+    GIT_AUTHOR_DATE: "2026-01-01T00:00:00Z",
+    GIT_COMMITTER_DATE: "2026-01-01T00:00:00Z"
+};
+
+/**
+ * A fixture ready for an eval, under `<workspace>/evals/` (design § 11): the pinned commit as a
+ * snapshot in a fresh repository, then its answers removed and committed, both with a fixed author
+ * and date, so the prepared SHA is the same on every run. The run records it, since the prepared
+ * tree's files no longer match the upstream commit's.
+ */
+export async function prepareFixture(
+    f: { name: string; url: string; sha: string; rules: StripRules },
+    workspaceDir: string
+): Promise<{ path: string; upstreamSha: string; preparedSha: string; lineMap: LineMap; removedImports: string[] }> {
+    const base = join(workspaceDir, "evals");
+    await mkdir(base, { recursive: true });
+    const upstream = join(base, `${f.name}-upstream`);
+    // A partial clone fetches only the blobs of the pinned commit; a local path is copied whole.
+    const remote = /^(https?|ssh|git):\/\/|^git@/.test(f.url);
+    if (!existsSync(upstream)) await git(["clone", "--quiet", ...(remote ? ["--filter=blob:none"] : []), "--no-checkout", f.url, upstream]);
+    const has = () =>
+        git(["cat-file", "-e", `${f.sha}^{commit}`], upstream).then(
+            () => true,
+            () => false
+        );
+    if (!(await has()))
+        await git(["fetch", "--quiet", ...(remote ? ["--filter=blob:none"] : []), "origin", f.sha], upstream).catch(() => {});
+    if (!(await has())) throw new Error(`${f.url} has no commit ${f.sha}`);
+
+    const path = join(base, `${f.name}-${f.sha.slice(0, 12)}`);
+    await rm(path, { recursive: true, force: true });
+    await mkdir(path);
+    const tar = join(base, `${f.name}-${f.sha.slice(0, 12)}.tar`);
+    await git(["archive", "--format=tar", "-o", tar, f.sha], upstream);
+    await run("tar", ["-xf", tar, "-C", path]);
+    await rm(tar);
+    await git(["init", "--quiet", "-b", "main"], path);
+    await git(["add", "-A", "--force"], path);
+    await run("git", ["-c", "commit.gpgsign=false", "commit", "--quiet", "-m", `Snapshot of ${f.name} at ${f.sha}`], {
+        cwd: path,
+        env: { ...process.env, ...SNAPSHOT_ENV }
+    });
+    const { lineMap, removedImports } = await stripAnswers(path, f.rules);
+    return { path, upstreamSha: f.sha, preparedSha: await commitPrepared(path), lineMap, removedImports };
+}
