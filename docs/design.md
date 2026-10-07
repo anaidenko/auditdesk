@@ -84,6 +84,9 @@ Security is always on; the others are ticked per audit.
 | Data model and database | constraints, indexes, N+1, transactions and concurrency, migrations, connections, data lifecycle |
 | Code quality and tests | type safety, which risky modules are tested, duplication that drifted, dead code, tooling |
 | Production readiness | configuration and secrets, logging, monitoring, health and shutdown, deployment, backups, scaling |
+| API design | methods and resources, status codes and errors, lists and pagination, shapes, idempotency, versioning, the published contract |
+| Performance | caching, work on the request path, the client bundle, rendering, images and fonts, memory, database load when Data is not run |
+| Accessibility | text alternatives, forms, keyboard and focus, semantics and ARIA, page structure, colour and contrast, motion, dynamic content; read from the code against WCAG 2.2 AA |
 | LLM integrations | prompt injection, tools and agency, output handling, cost limits, data sent to the provider |
 | Multi-tenancy | the tenant model, resolving the tenant, scoping every query, caches, jobs, defence in depth |
 | Seams between repositories | the API the front end calls against the routes the back end serves, authentication and authorization across the boundary, CORS and cookies, validation only on the client, server secrets in the browser bundle, errors and data across the boundary |
@@ -156,7 +159,8 @@ questions and a disclaimer. Filters and search work in the browser; a printout i
 
 Each finding links what it is relevant to, never claiming compliance: its OWASP Top 10:2025
 category, ASVS 5.0.0 sections or requirements, its CWE when the agent named one, advisories for
-dependencies, OWASP Cheat Sheets and, for authentication, NIST SP 800-63B. The mapping is data in
+dependencies, OWASP Cheat Sheets, WCAG 2.2 success criteria for accessibility and, for
+authentication, NIST SP 800-63B. The mapping is data in
 `references/`, read from the sources and dated.
 
 ## Evals

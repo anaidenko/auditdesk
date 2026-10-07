@@ -8,6 +8,10 @@ import { SKIP_DIRS, resolveInClone } from "./paths";
 export interface StackProfile {
     languages: string[];
     frameworks: string[];
+    /** What serves an HTTP API: a server framework, or a meta-framework's route files by count. */
+    httpApi: string[];
+    /** The frameworks that render a user interface the product ships. */
+    userInterface: string[];
     databases: string[];
     orms: string[];
     auth: string[];
@@ -22,6 +26,8 @@ export interface StackProfile {
 export const EMPTY_STACK: StackProfile = {
     languages: [],
     frameworks: [],
+    httpApi: [],
+    userInterface: [],
     databases: [],
     orms: [],
     auth: [],
@@ -82,6 +88,52 @@ const FRAMEWORKS: Table = [
     ["@trpc/server", "tRPC {v}"],
     ["graphql", "GraphQL"]
 ];
+
+const API_SERVERS: Table = [
+    ...FRAMEWORKS.filter(([name]) => ["express", "fastify", "@nestjs/core", "koa", "hono", "@trpc/server"].includes(name)),
+    ["@apollo/server", "Apollo Server {v}"],
+    ["apollo-server", "Apollo Server {v}"],
+    ["graphql-yoga", "GraphQL Yoga {v}"],
+    ["mercurius", "Mercurius {v}"]
+];
+
+/**
+ * Route files a meta-framework serves as API endpoints, recognised by their names alone. Their
+ * presence shows the framework ships, wherever its manifest lists it (SvelteKit's template keeps it
+ * in devDependencies).
+ */
+const API_ROUTES: { dep: string; label: string; file: RegExp }[] = [
+    { dep: "next", label: "Next.js route handlers", file: /(^|\/)app\/(.+\/)?route\.(ts|js|tsx|jsx|mjs)$|(^|\/)pages\/api\// },
+    { dep: "@sveltejs/kit", label: "SvelteKit endpoints", file: /(^|\/)src\/routes\/(.+\/)?\+server\.(ts|js)$/ },
+    { dep: "nuxt", label: "Nuxt server routes", file: /(^|\/)server\/(api|routes)\// }
+];
+
+/** Routes a library or the framework adds, which say nothing about an API the product serves. */
+const NOT_AN_API =
+    /(^|\/)api\/auth\/\[\.\.\.[^/]+\]\/route\.|(^|\/)(sitemap\.xml|robots\.txt|manifest\.(json|webmanifest)|opengraph-image|twitter-image|icon|apple-icon|favicon\.ico)\/route\./;
+
+/** Packages that render a user interface; `react` counts only beside `react-dom`, since email templates use it too. */
+const UI_PACKAGES = new Set([
+    "next",
+    "react",
+    "@angular/core",
+    "@capacitor/core",
+    "cordova",
+    "vue",
+    "nuxt",
+    "svelte",
+    "@sveltejs/kit",
+    "react-native",
+    "expo",
+    "electron",
+    "@remix-run/react",
+    "astro"
+]);
+// Bundled into what ships although their templates list them as devDependencies.
+const BUNDLED = new Set(["svelte", "@sveltejs/kit", "electron"]);
+
+/** For a profile saved before `userInterface` existed: the frameworks that render one, as their labels start. */
+const UI_FRAMEWORK = /^(Next\.js|React|Angular|Ionic|Capacitor|Cordova|Vue|Nuxt|Svelte|SvelteKit|Expo|Electron|Remix|Astro)\b/;
 
 const DATABASES: Table = [
     ["pg", "PostgreSQL"],
@@ -311,9 +363,22 @@ export async function detectStack(root: string, o: { read?: Reader } = {}): Prom
     ];
     aiBuiltSigns.push(...labels(AI_PACKAGES, deps));
 
+    const routes = API_ROUTES.flatMap(r => {
+        const n = deps.has(r.dep) ? files.filter(f => r.file.test(f) && !NOT_AN_API.test(f)).length : 0;
+        return n ? [`${r.label} (${plural(n)})`] : [];
+    });
+    const ui: Deps = new Map(
+        [...deps]
+            .filter(([name]) => UI_PACKAGES.has(name) || name.startsWith("@ionic/"))
+            .filter(([name, d]) => (d.prod || BUNDLED.has(name)) && (name !== "react" || deps.has("react-dom")))
+            .map(([name, d]) => [name, { ...d, prod: true }])
+    );
+
     return {
         languages,
         frameworks: labels(FRAMEWORKS, deps),
+        httpApi: [...labels(API_SERVERS, deps).filter(shipped), ...routes],
+        userInterface: labels(FRAMEWORKS, ui),
         databases: [...databases].sort(),
         orms: labels(ORMS, deps),
         auth: labels(AUTH, deps),
@@ -329,7 +394,12 @@ export async function detectStack(root: string, o: { read?: Reader } = {}): Prom
 
 /** The conditional aspects the profile calls for (design § 7). */
 export function suggestAspects(s: StackProfile): AspectKey[] {
-    return [...(s.llmSdks.some(shipped) ? (["llm"] as const) : []), ...(s.tenancyHints.length ? (["tenancy"] as const) : [])];
+    return [
+        ...((s.httpApi ?? []).length ? (["api"] as const) : []),
+        ...((s.userInterface ?? s.frameworks.filter(f => UI_FRAMEWORK.test(f) && shipped(f))).length ? (["accessibility"] as const) : []),
+        ...(s.llmSdks.some(shipped) ? (["llm"] as const) : []),
+        ...(s.tenancyHints.length ? (["tenancy"] as const) : [])
+    ];
 }
 
 export function suggestAiBuilt(s: StackProfile): boolean {
@@ -351,7 +421,7 @@ export function suggestionsFor(
     const added = o.lastRunRepositories !== undefined && (o.lastRunRepositories === null || profiles.length > o.lastRunRepositories);
     return {
         aspects: [
-            ...(["llm", "tenancy"] as const).filter(k => keys.has(k)),
+            ...(["api", "accessibility", "llm", "tenancy"] as const).filter(k => keys.has(k)),
             ...(profiles.length > 1 && (known.length || added) ? (["seams"] as const) : [])
         ],
         aiBuiltSigns: [...new Set(known.flatMap(p => p.aiBuiltSigns))].sort()
@@ -376,6 +446,10 @@ export function stackProfileText(s: StackProfile): string {
     return [
         line("Languages", s.languages),
         line("Frameworks", s.frameworks),
+        // A profile saved before these were detected has no such fields, and its text gains no line,
+        // or a confirmed profile would read as a changed detection.
+        ...(s.httpApi ? [line("HTTP API", s.httpApi)] : []),
+        ...(s.userInterface ? [line("User interface", s.userInterface)] : []),
         line("Databases", s.databases),
         line("ORM and query builders", s.orms),
         line("Authentication", s.auth),

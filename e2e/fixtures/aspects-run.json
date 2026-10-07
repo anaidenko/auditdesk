@@ -462,5 +462,131 @@
             ],
             "stop_reason": "tool_use"
         }
+    ],
+    "API design": [
+        {
+            "id": "msg_test_a1",
+            "type": "message",
+            "role": "assistant",
+            "model": "claude-sonnet-5-5",
+            "stop_sequence": null,
+            "stop_details": null,
+            "container": null,
+            "context_management": null,
+            "usage": {
+                "input_tokens": 1000,
+                "output_tokens": 200,
+                "cache_creation_input_tokens": 0,
+                "cache_read_input_tokens": 0,
+                "cache_creation": {
+                    "ephemeral_5m_input_tokens": 0,
+                    "ephemeral_1h_input_tokens": 0
+                },
+                "iterations": null,
+                "server_tool_use": null,
+                "service_tier": null,
+                "inference_geo": null,
+                "fallback_credit": null,
+                "output_tokens_details": null
+            },
+            "content": [
+                {
+                    "type": "tool_use",
+                    "id": "toolu_e2e_a1",
+                    "name": "report_finding",
+                    "input": {
+                        "likelihood": "Any failing query on /user, such as a database restart.",
+                        "impact": "The client waits until its own timeout, with no status to act on.",
+                        "summary": "When the /user query fails, the request is never answered.",
+                        "explanation": "The handler answers only in the query promise's then callback; a rejected query sends no response and no error status.",
+                        "recommendation": "Answer a failed query with a 500 and one error shape, and validate the id first.",
+                        "effort": "S",
+                        "cwe": "",
+                        "tags": [],
+                        "kind": "finding",
+                        "checklist_item": "API-02",
+                        "title": "A failed query on /user is never answered",
+                        "severity": "medium",
+                        "evidence": [
+                            {
+                                "file": "src/server.js",
+                                "start_line": 4,
+                                "end_line": 6
+                            }
+                        ]
+                    },
+                    "caller": null
+                }
+            ],
+            "stop_reason": "tool_use"
+        },
+        {
+            "id": "msg_test_a2",
+            "type": "message",
+            "role": "assistant",
+            "model": "claude-sonnet-5-5",
+            "stop_sequence": null,
+            "stop_details": null,
+            "container": null,
+            "context_management": null,
+            "usage": {
+                "input_tokens": 1000,
+                "output_tokens": 200,
+                "cache_creation_input_tokens": 0,
+                "cache_read_input_tokens": 0,
+                "cache_creation": {
+                    "ephemeral_5m_input_tokens": 0,
+                    "ephemeral_1h_input_tokens": 0
+                },
+                "iterations": null,
+                "server_tool_use": null,
+                "service_tier": null,
+                "inference_geo": null,
+                "fallback_credit": null,
+                "output_tokens_details": null
+            },
+            "content": [
+                {
+                    "type": "tool_use",
+                    "id": "toolu_e2e_a2",
+                    "name": "finish_aspect",
+                    "input": {
+                        "summary": "Examined every item on the sample repository.",
+                        "coverage": [
+                            {
+                                "item": "API-01",
+                                "status": "examined"
+                            },
+                            {
+                                "item": "API-02",
+                                "status": "examined"
+                            },
+                            {
+                                "item": "API-03",
+                                "status": "examined"
+                            },
+                            {
+                                "item": "API-04",
+                                "status": "examined"
+                            },
+                            {
+                                "item": "API-05",
+                                "status": "examined"
+                            },
+                            {
+                                "item": "API-06",
+                                "status": "examined"
+                            },
+                            {
+                                "item": "API-07",
+                                "status": "examined"
+                            }
+                        ]
+                    },
+                    "caller": null
+                }
+            ],
+            "stop_reason": "tool_use"
+        }
     ]
 }

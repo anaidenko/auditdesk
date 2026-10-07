@@ -26,3 +26,5 @@ paths:
   listener: Linux resets it where macOS closes it, and the uncaught `ECONNRESET` fails CI only.
 - **A test that passes before the change exists** is a finding about the test. A red run counts
   only when its message shows the failure under test.
+- **Read `Test Files` as well as `Tests`.** A file that fails to load (a YAML parse error, a bad
+  import) fails no test, so a filtered `Tests  N passed` line hides it.

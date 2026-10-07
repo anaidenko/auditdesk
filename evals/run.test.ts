@@ -238,7 +238,19 @@ describe("evalAspects", () => {
     it("reads all as every aspect but the seams pass, since a fixture is one repository", () => {
         const all = evalAspects({ name: "own", url: "u", sha: "x", aspects: "all" });
         expect(all).not.toContain("seams");
-        expect(all).toEqual(["security", "dependencies", "architecture", "data", "quality", "production", "llm", "tenancy"]);
+        expect(all).toEqual([
+            "security",
+            "dependencies",
+            "architecture",
+            "data",
+            "quality",
+            "production",
+            "api",
+            "performance",
+            "accessibility",
+            "llm",
+            "tenancy"
+        ]);
         expect(evalAspects({ name: "own", url: "u", sha: "x" })).toEqual(all);
     });
 

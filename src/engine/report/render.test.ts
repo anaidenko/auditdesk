@@ -103,6 +103,22 @@ describe("renderReport", () => {
         expect(html).toContain("the budget share was spent");
     });
 
+    it("says what reading the code alone could not show, for performance and for accessibility apart", () => {
+        const aspect = (key: string, title: string) => ({ key, title, status: "done", note: null, coverage: [] });
+        const perf = "<li>Performance was judged from the code alone: no page was rendered or timed.</li>";
+        const a11y =
+            "<li>Accessibility was judged from the code alone: no page was rendered and no screen reader was run; contrast was computed only for colour pairs written in the code.</li>";
+        expect(renderReport(data({ aspects: [aspect("security", "Security")] }))).not.toMatch(/judged from the code alone/);
+        const one = renderReport(data({ aspects: [aspect("accessibility", "Accessibility (web)")] }));
+        expect(one).toContain(a11y);
+        expect(one).not.toContain(perf);
+        const both = renderReport(
+            data({ aspects: [aspect("performance", "Performance (web)"), aspect("accessibility", "Accessibility (web)")] })
+        );
+        expect(both).toContain(perf);
+        expect(both).toContain(a11y);
+    });
+
     it("carries the disclaimer", () => {
         expect(renderReport(data())).toMatch(/does not certify/);
     });
@@ -297,7 +313,8 @@ describe("renderReport", () => {
                                 }
                             ],
                             advisories: [],
-                            nist: null
+                            nist: null,
+                            wcag: []
                         }
                     })
                 ]
@@ -310,6 +327,40 @@ describe("renderReport", () => {
         expect(card).toContain('<a href="https://cwe.mitre.org/data/definitions/862.html">CWE-862</a>');
         expect(card).toContain("Authorization Cheat Sheet</a>");
         expect(html).not.toMatch(/complian/i);
+    });
+
+    it("lists an accessibility finding's WCAG criteria among the standards it is relevant to", () => {
+        const html = renderReport(
+            data({
+                findings: [
+                    finding({
+                        aspect: "accessibility",
+                        checklistItem: "ACC-01",
+                        refs: {
+                            top10: null,
+                            cwe: null,
+                            asvs: [],
+                            cheatsheets: [],
+                            advisories: [],
+                            nist: null,
+                            wcag: [
+                                {
+                                    label: "WCAG 2.2 SC 1.1.1 Non-text Content (Level A)",
+                                    url: "https://www.w3.org/TR/WCAG22/#non-text-content"
+                                },
+                                {
+                                    label: "WCAG 2.2 SC 4.1.2 Name, Role, Value (Level A)",
+                                    url: "https://www.w3.org/TR/WCAG22/#name-role-value"
+                                }
+                            ]
+                        }
+                    })
+                ]
+            })
+        );
+        expect(between(html, 'id="F-001"', "</details>")).toContain(
+            'Relevant to: <a href="https://www.w3.org/TR/WCAG22/#non-text-content">WCAG 2.2 SC 1.1.1 Non-text Content (Level A)</a>; <a href="https://www.w3.org/TR/WCAG22/#name-role-value">WCAG 2.2 SC 4.1.2 Name, Role, Value (Level A)</a>.'
+        );
     });
 
     describe("the summary", () => {
@@ -419,7 +470,8 @@ describe("renderReport", () => {
                             asvs: [],
                             cheatsheets: [],
                             advisories: [],
-                            nist: null
+                            nist: null,
+                            wcag: []
                         }
                     })
                 ]

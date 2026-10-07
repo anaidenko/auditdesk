@@ -18,6 +18,7 @@ export interface FindingReferences {
     cheatsheets: Ref[];
     advisories: Ref[];
     nist: Ref | null;
+    wcag: Ref[];
 }
 
 interface ItemRefs {
@@ -27,11 +28,14 @@ interface ItemRefs {
     asvs?: string[];
     cheatsheets?: string[];
     nist?: boolean;
+    /** WCAG 2.2 success criteria, such as "1.1.1", for Accessibility items. */
+    wcag?: string[];
 }
 
 export interface ReferenceData {
     top10: { id: string; title: string; url: string; cwe: number[] }[];
     asvs: { id: string; title: string; file: string }[];
+    wcag: { id: string; title: string; level: string; anchor: string }[];
     mapping: { cheatsheets: Record<string, string>; items: Record<string, ItemRefs> };
 }
 
@@ -40,11 +44,13 @@ export function loadReferences(dir = "references"): ReferenceData {
     return {
         top10: (read("top10-2025.yaml") as { categories: ReferenceData["top10"] }).categories,
         asvs: (read("asvs-5.0.0.yaml") as { sections: ReferenceData["asvs"] }).sections,
+        wcag: (read("wcag-2.2.yaml") as { criteria: ReferenceData["wcag"] }).criteria,
         mapping: read("mapping.yaml") as ReferenceData["mapping"]
     };
 }
 
 const ASVS_TAG = "https://github.com/OWASP/ASVS/blob/v5.0.0/5.0/en";
+const WCAG_22 = "https://www.w3.org/TR/WCAG22/";
 const NIST_800_63B: Ref = {
     label: "NIST SP 800-63B-4 (Digital Identity Guidelines: Authentication)",
     url: "https://pages.nist.gov/800-63-4/sp800-63b.html"
@@ -109,6 +115,10 @@ export function referencesFor(
             url: `https://cheatsheetseries.owasp.org/cheatsheets/${name}_Cheat_Sheet.html`
         })),
         advisories: (own.advisories ?? []).map(advisory),
-        nist: m.nist ? NIST_800_63B : null
+        nist: m.nist ? NIST_800_63B : null,
+        wcag: (m.wcag ?? []).flatMap(id => {
+            const c = data.wcag.find(x => x.id === id);
+            return c ? [{ label: `WCAG 2.2 SC ${c.id} ${c.title} (Level ${c.level})`, url: `${WCAG_22}#${c.anchor}` }] : [];
+        })
     };
 }

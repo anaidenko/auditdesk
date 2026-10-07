@@ -8,6 +8,7 @@
 # asvs: a section (V8.3) or a requirement (1.3.6) of ASVS 5.0.0, as listed in asvs-5.0.0.yaml.
 # nist: NIST SP 800-63B-4, for authentication only.
 # cheatsheets: names of OWASP Cheat Sheets, each from the list below.
+# wcag: WCAG 2.2 success criteria, for Accessibility items only, as listed in wcag-2.2.yaml.
 
 # Each answered HTTP 200 at cheatsheetseries.owasp.org/cheatsheets/<name>_Cheat_Sheet.html on 2026-10-07,
 # under the title its page gives.
@@ -43,6 +44,7 @@ cheatsheets:
   OS_Command_Injection_Defense: "OS Command Injection Defense Cheat Sheet"
   Password_Storage: "Password Storage Cheat Sheet"
   Prototype_Pollution_Prevention: "Prototype Pollution Prevention Cheat Sheet"
+  REST_Security: "REST Security Cheat Sheet"
   Secrets_Management: "Secrets Management Cheat Sheet"
   Server_Side_Request_Forgery_Prevention: "Server-Side Request Forgery Prevention Cheat Sheet"
   Session_Management: "Session Management Cheat Sheet"
@@ -114,6 +116,32 @@ items:
   PRD-06: {}
   PRD-07: {}
   PRD-08: {}
+
+  API-01: { cheatsheets: [REST_Security] }
+  API-02: { cheatsheets: [REST_Security, Error_Handling] }
+  API-03: {}
+  API-04: {}
+  API-05: {}
+  API-06: {}
+  API-07: {}
+
+  PRF-01: {}
+  PRF-02: {}
+  PRF-03: {}
+  PRF-04: {}
+  PRF-05: {}
+  PRF-06: {}
+  PRF-07: {}
+
+  ACC-01: { wcag: ["1.1.1", "4.1.2"] }
+  ACC-02: { wcag: ["3.3.2", "1.3.1", "3.3.1", "1.3.5", "3.3.8"] }
+  ACC-03: { wcag: ["2.1.1", "2.4.7", "2.4.3"] }
+  ACC-04: { wcag: ["4.1.2", "1.3.1"] }
+  ACC-05: { wcag: ["3.1.1", "2.4.2", "2.4.6", "2.4.1"] }
+  ACC-06: { wcag: ["1.4.3", "1.4.11", "1.4.1", "1.4.5"] }
+  ACC-07: { wcag: ["2.2.2", "1.4.2", "1.2.2"] }
+  ACC-08: { wcag: ["4.1.3"] }
+  ACC-09: { wcag: ["1.4.4", "1.4.10", "2.5.8"] }
 
   LLM-01: { cwe: 1427, cheatsheets: [LLM_Prompt_Injection_Prevention] }
   LLM-02: { asvs: [V8.3], cheatsheets: [AI_Agent_Security] }

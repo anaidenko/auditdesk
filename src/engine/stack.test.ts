@@ -65,6 +65,96 @@ describe("detectStack", () => {
         expect(suggestAspects(s)).toEqual(["llm"]);
     });
 
+    it("suggests API design for a server framework, naming what serves the API", async () => {
+        const root = await makeRepo({ "package.json": pkg({ express: "^4.19.2", pg: "^8.11.0" }), "src/server.js": "\n" });
+        const s = await detectStack(root);
+        expect(s.httpApi).toEqual(["Express 4"]);
+        expect(suggestAspects(s)).toEqual(["api"]);
+    });
+
+    it("suggests API design for Next.js only with route handlers, and Accessibility for any user interface", async () => {
+        const page = { "src/app/page.tsx": "export default function Page() { return null; }\n" };
+        const site = await makeRepo({ "package.json": pkg({ next: "16.3.8", react: "19.3.0" }), ...page });
+        expect(suggestAspects(await detectStack(site))).toEqual(["accessibility"]);
+        const app = await makeRepo({
+            "package.json": pkg({ next: "16.3.8", react: "19.3.0" }),
+            ...page,
+            "src/app/api/orders/route.ts": "export async function GET() {}\n",
+            "src/app/api/orders/[id]/route.ts": "export async function GET() {}\n",
+            "src/pages/api/legacy.ts": "export default function handler() {}\n"
+        });
+        const s = await detectStack(app);
+        expect(s.httpApi).toEqual(["Next.js route handlers (3 files)"]);
+        expect(suggestAspects(s)).toEqual(["api", "accessibility"]);
+        expect(stackProfileText(s)).toMatch(/^HTTP API: Next\.js route handlers \(3 files\)$/m);
+    });
+
+    it("counts SvelteKit endpoints and Nuxt server routes, and takes a bundled Svelte front end as shipped", async () => {
+        const kit = await makeRepo({
+            "package.json": pkg({}, { "svelte": "^5.0.0", "@sveltejs/kit": "^2.0.0", "vite": "^7.0.0" }),
+            "src/routes/+page.svelte": "<h1>Hi</h1>\n",
+            "src/routes/api/orders/+server.ts": "export const GET = () => new Response();\n"
+        });
+        const k = await detectStack(kit);
+        expect(k.httpApi).toEqual(["SvelteKit endpoints (1 file)"]);
+        expect(k.userInterface).toEqual(["Svelte 5", "SvelteKit 2"]);
+        expect(suggestAspects(k)).toEqual(["api", "accessibility"]);
+        const nuxt = await makeRepo({
+            "package.json": pkg({ nuxt: "^4.0.0", vue: "^3.5.0" }),
+            "app.vue": "<template><div /></template>\n",
+            "server/api/products.get.ts": "export default defineEventHandler(() => []);\n"
+        });
+        const n = await detectStack(nuxt);
+        expect(n.httpApi).toEqual(["Nuxt server routes (1 file)"]);
+        expect(suggestAspects(n)).toEqual(["api", "accessibility"]);
+    });
+
+    it("takes an Electron app's bundled renderer as a user interface", async () => {
+        const app = await makeRepo({
+            "package.json": pkg({}, { "electron": "^38.0.0", "react": "19.3.0", "react-dom": "19.3.0" }),
+            "main.ts": "\n"
+        });
+        expect(suggestAspects(await detectStack(app))).toEqual(["accessibility"]);
+    });
+
+    it("needs react-dom to take React for a user interface: email templates render no page", async () => {
+        const root = await makeRepo({
+            "package.json": pkg({ "express": "^5.1.0", "react": "19.3.0", "@react-email/components": "0.5.0" }),
+            "src/server.ts": "\n"
+        });
+        const s = await detectStack(root);
+        expect(s.userInterface).toEqual([]);
+        expect(suggestAspects(s)).toEqual(["api"]);
+    });
+
+    it("does not take an auth catch-all or a metadata route for an API, and detects GraphQL servers", async () => {
+        const site = await makeRepo({
+            "package.json": pkg({ "next": "16.3.8", "react": "19.3.0", "react-dom": "19.3.0", "next-auth": "5.0.0" }),
+            "src/app/page.tsx": "\n",
+            "src/app/api/auth/[...nextauth]/route.ts": "\n",
+            "src/app/sitemap.xml/route.ts": "\n",
+            "src/app/opengraph-image/route.tsx": "\n"
+        });
+        expect((await detectStack(site)).httpApi).toEqual([]);
+        const gql = await makeRepo({ "package.json": pkg({ "@apollo/server": "^5.0.0", "graphql": "^16.0.0" }), "index.ts": "\n" });
+        expect((await detectStack(gql)).httpApi).toEqual(["Apollo Server 5"]);
+    });
+
+    it("suggests Accessibility for a mobile app, and neither aspect for what only devDependencies list", async () => {
+        const mobile = await makeRepo({ "package.json": pkg({ "react-native": "0.79.0" }), "App.tsx": "\n" });
+        expect(suggestAspects(await detectStack(mobile))).toEqual(["accessibility"]);
+        const library = await makeRepo({ "package.json": pkg({}, { react: "19.3.0", express: "^4.19.2" }), "index.ts": "\n" });
+        expect(suggestAspects(await detectStack(library))).toEqual([]);
+    });
+
+    it("reads a profile saved before the HTTP API and the user interface were detected, and adds no line for them", () => {
+        const { httpApi: _, userInterface: __, ...old } = { ...EMPTY_STACK, frameworks: ["Express 4", "React 19"] };
+        const profile = old as typeof EMPTY_STACK;
+        expect(suggestAspects(profile)).toEqual(["accessibility"]);
+        // A confirmed profile is compared with this text: a line the saved profile never had would read as a changed detection.
+        expect(stackProfileText(profile)).not.toMatch(/HTTP API|User interface/);
+    });
+
     it("suggests multi-tenancy when the schema has tenant or organisation keys", async () => {
         const root = await makeRepo({
             "package.json": pkg({ "@prisma/client": "7.10.0" }),
@@ -156,7 +246,7 @@ describe("detectStack on larger repositories", () => {
         expect(suggestAspects(s)).toEqual(["tenancy"]);
     });
 
-    it("marks what only devDependencies list as dev only, and suggests no LLM aspect for it", async () => {
+    it("marks what only devDependencies list as dev only, and suggests no LLM, API or Accessibility aspect for it", async () => {
         const root = await makeRepo({
             "package.json": pkg(
                 { "react": "19.0.0", "@prisma/client": "7.10.0" },
@@ -169,6 +259,7 @@ describe("detectStack on larger repositories", () => {
         expect(s.databases).toEqual(["PostgreSQL (dev only)"]);
         expect(s.orms).toEqual(["Prisma"]);
         expect(s.llmSdks).toEqual(["OpenAI SDK (dev only)"]);
+        expect(s.httpApi).toEqual([]);
         expect(suggestAspects(s)).toEqual([]);
     });
 
@@ -225,10 +316,15 @@ describe("detectStack on larger repositories", () => {
 
 describe("suggestionsFor", () => {
     it("joins the suggestions of every repository with a detected stack", () => {
-        const front = { ...EMPTY_STACK, llmSdks: ["OpenAI SDK"], aiBuiltSigns: [".cursorrules"] };
-        const back = { ...EMPTY_STACK, tenancyHints: ["schema.prisma: orgId"], aiBuiltSigns: [".cursorrules", "CLAUDE.md"] };
+        const front = { ...EMPTY_STACK, userInterface: ["React 19"], llmSdks: ["OpenAI SDK"], aiBuiltSigns: [".cursorrules"] };
+        const back = {
+            ...EMPTY_STACK,
+            httpApi: ["Express 4"],
+            tenancyHints: ["schema.prisma: orgId"],
+            aiBuiltSigns: [".cursorrules", "CLAUDE.md"]
+        };
         expect(suggestionsFor([front, null, back])).toEqual({
-            aspects: ["llm", "tenancy", "seams"],
+            aspects: ["api", "accessibility", "llm", "tenancy", "seams"],
             aiBuiltSigns: [".cursorrules", "CLAUDE.md"]
         });
     });

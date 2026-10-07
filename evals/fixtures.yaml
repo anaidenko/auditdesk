@@ -4,7 +4,7 @@
 fixtures:
   - name: own
     url: https://github.com/anaidenko/auditdesk-fixture
-    sha: 2aff7d01594473443eda3d072e40c0099e098d0f
+    sha: 32aee95a5bfc9ae48f8d25b2c97da263ff078a45
     aspects: all
     aiBuilt: false
     falseFindings: true
