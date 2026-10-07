@@ -166,8 +166,8 @@ describe("references in the report", () => {
 describe("the cost in the report", () => {
     it("carries the cost only when the export asks for it", async () => {
         const { project } = await projectWithRepo();
-        expect((await loadReportData(project.id)).costUsd).toBeNull();
-        expect((await loadReportData(project.id, { includeCost: true })).costUsd).toBe(0);
+        expect((await loadReportData(project.id)).cost).toBeNull();
+        expect((await loadReportData(project.id, { includeCost: true })).cost).toEqual({ apiKeyUsd: 0, planUsd: 0, unpriced: 0 });
     });
 });
 

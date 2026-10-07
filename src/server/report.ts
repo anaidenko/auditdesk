@@ -105,7 +105,10 @@ export async function loadReportData(projectId: string, o: { includeCost?: boole
         distinct: ["servedModel"],
         select: { servedModel: true }
     });
-    const calls = await prisma.apiCall.findMany({ where: { run: { projectId } }, select: { costUsd: true } });
+    const calls = await prisma.apiCall.findMany({
+        where: { run: { projectId } },
+        select: { costUsd: true, run: { select: { modelAccess: true } } }
+    });
     const accesses = await prisma.run.findMany({
         where: { projectId, calls: { some: {} } },
         distinct: ["modelAccess"],
@@ -128,7 +131,13 @@ export async function loadReportData(projectId: string, o: { includeCost?: boole
         toolVersions: (scanned?.toolVersions as ToolVersions | null) ?? null,
         findings: rows.filter(r => r.kind === "finding").map(toReport),
         questions: rows.filter(r => r.kind === "question").map(toReport),
-        costUsd: !o.includeCost || calls.some(c => c.costUsd === null) ? null : calls.reduce((s, c) => s + Number(c.costUsd), 0)
+        cost: o.includeCost
+            ? {
+                  apiKeyUsd: calls.filter(c => c.run.modelAccess === "api_key").reduce((sum, c) => sum + Number(c.costUsd ?? 0), 0),
+                  planUsd: calls.filter(c => c.run.modelAccess === "claude_plan").reduce((sum, c) => sum + Number(c.costUsd ?? 0), 0),
+                  unpriced: calls.filter(c => c.costUsd === null).length
+              }
+            : null
     };
 }
 
