@@ -37,6 +37,8 @@ read-only tools. Setup and commands: README.md.
 
 - **Prettier owns formatting:** 4 spaces, double quotes, sorted imports, sorted Tailwind
   classes. Run `pnpm format` after bulk changes.
+- **A scripted edit** (Python, sed) checks that each anchor it replaces occurs exactly once
+  (`s.count(old) == 1`), its end as well as its start, before it writes.
 - **Default to no comment.** A comment earns its place only by carrying what the code cannot: a
   platform constraint, a rejected alternative and why, or a magic value's source. Never narrate
   the change (`// was X`, `// fixed Y`).
