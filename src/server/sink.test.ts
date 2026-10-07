@@ -21,6 +21,19 @@ async function setup() {
 }
 
 describe("PrismaSink", () => {
+    it("knows a grouped scanner finding's places one by one", async () => {
+        const { sink, repo, add } = await setup();
+        await add({
+            source: "scanner",
+            fingerprint: "a-group",
+            evidence: [
+                { file: "a.js", startLine: 1, endLine: 1, key: "k1" },
+                { file: "b.js", startLine: 2, endLine: 2, key: "k2" }
+            ]
+        });
+        expect(await sink.knownFingerprints(repo.id)).toEqual(new Set(["a-group", "k1", "k2"]));
+    });
+
     it("gives a re-audit the repository's reported findings from runs at another commit, and stores what it found", async () => {
         const { project, repo } = await projectWithRepo();
         const runAt = (sha: string | null) =>

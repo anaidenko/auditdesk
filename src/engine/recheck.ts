@@ -36,6 +36,8 @@ export interface RecheckResult {
     keep: boolean;
     /** The cited lines where the blocks now stand, when every one was found. */
     evidence?: Evidence[];
+    /** A scanner finding of several places: how many the scan still reports (a secret) or whose code is still there (Semgrep). */
+    places?: { left: number; of: number };
 }
 
 /** A snippet shorter than this matches too much of a file to show the finding's code is still there. */
@@ -62,9 +64,11 @@ type Kind = "gitleaks" | "osv" | "semgrep";
 const kindOf = (f: { checklistItem: string | null; title: string; references: References }): Kind =>
     f.checklistItem === "DEP-01" && f.references.advisories?.length
         ? "osv"
-        : f.checklistItem === "SEC-10" && /^Secret in (the code|git history)/.test(f.title)
+        : // A secret is told by its weakness as well as its title, which Andrii may edit: never "fixed" by a scan.
+          f.checklistItem === "SEC-10" && (/^Secrets? in (the code|git history)/.test(f.title) || f.references.cwe === "CWE-798")
           ? "gitleaks"
           : "semgrep";
+const inCode = (title: string) => /^Secrets? in the code/.test(title);
 
 /**
  * Checks each earlier finding against this run's scanners and the new clone, before the agents
@@ -72,38 +76,80 @@ const kindOf = (f: { checklistItem: string | null; title: string; references: Re
  * fix may live elsewhere, so only Andrii says it is open or fixed. Code that moved on reads
  * "changed" for him to verify. A scanner's finding is fixed only when nothing says otherwise: a
  * dependency whose advisories no lock file reports, a Semgrep result whose code is gone. A secret
- * is never fixed by a scan, since none can tell it was rotated. `read` gives a file's lines at the
- * new commit, masked like snippets.
+ * is never fixed by a scan, since none can tell it was rotated. A scanner's finding of several
+ * places is checked place by place: fixed once none is left (Semgrep), changed while some are.
+ * `read` gives a file's lines at the new commit, masked like snippets.
  */
 export async function recheck(
     earlier: EarlierFinding[],
     o: { scanners: NewFinding[]; read: (file: string) => Promise<string[] | null> }
 ): Promise<RecheckResult[]> {
+    // Every place the scanners report now, by its own key; a finding of one place by its fingerprint too.
+    const reported = new Map<string, NewFinding>();
+    for (const s of o.scanners) {
+        reported.set(s.fingerprint, s);
+        for (const e of s.evidence) if (e.key) reported.set(e.key, s);
+    }
     const out: RecheckResult[] = [];
     for (const f of earlier) {
         // true: the finding's code or scanner result is still there; false: gone; null: it changed.
         let present: boolean | null;
         let digest: string;
         let evidence: Evidence[] | undefined;
-        if (f.source === "scanner") {
-            const kind = kindOf(f);
-            const now = o.scanners.find(s => s.fingerprint === f.fingerprint);
-            if (now) present = now.title === f.title ? true : null;
-            else if (kind === "gitleaks") present = null;
-            else if (kind === "osv")
-                present = o.scanners.some(s => s.references.advisories?.some(a => f.references.advisories!.includes(a))) ? null : false;
-            else {
-                const cited = f.evidence[0];
-                const elsewhere = o.scanners.some(
-                    s =>
-                        s.checklistItem === f.checklistItem &&
-                        cited?.snippet &&
-                        squash(s.evidence[0]?.snippet ?? "") === squash(cited.snippet)
-                );
-                const lines = cited?.snippet ? await o.read(cited.file) : null;
-                present = elsewhere || (lines && cited?.snippet && locate(lines, cited.snippet)) ? null : false;
-            }
+        let places: RecheckResult["places"];
+        let back: boolean | null = null;
+        let legacy: string | null = null;
+        if (f.source === "scanner" && kindOf(f) === "osv") {
+            const now = reported.get(f.fingerprint);
+            present = now
+                ? now.title === f.title
+                    ? true
+                    : null
+                : o.scanners.some(s => s.references.advisories?.some(a => f.references.advisories!.includes(a)))
+                  ? null
+                  : false;
             digest = digestOf([String(present), now?.title ?? ""]);
+        } else if (f.source === "scanner") {
+            const kind = kindOf(f);
+            // Each place by its own key. A finding filed before grouping is known by its fingerprint at its
+            // first place; a place merged in by hand has no key and is found by its code.
+            const cited: (Partial<Evidence> & { key?: string })[] = f.evidence.length
+                ? f.evidence.map((e, i) => ({ ...e, key: e.key ?? (i === 0 ? f.fingerprint : undefined) }))
+                : [{ key: f.fingerprint }];
+            // An edited title no longer says whether the secret was in the code or the history.
+            const was = /^Secrets? in (the code|git history)/.test(f.title) ? inCode(f.title) : null;
+            const states: (boolean | null)[] = [];
+            for (const e of cited) {
+                const now = e.key ? reported.get(e.key) : undefined;
+                // A secret moved between the code and the history: the same secret, but the report it gave is no longer true.
+                if (kind === "gitleaks") states.push(now ? (was === null || inCode(now.title) === was ? true : null) : null);
+                else if (now) states.push(true);
+                else {
+                    const snippet = e.snippet;
+                    const elsewhere =
+                        !!snippet &&
+                        o.scanners.some(
+                            s => s.checklistItem === f.checklistItem && s.evidence.some(x => squash(x.snippet ?? "") === squash(snippet))
+                        );
+                    const lines = snippet && e.file ? await o.read(e.file) : null;
+                    states.push(elsewhere || (lines && snippet && locate(lines, snippet)) ? null : false);
+                }
+            }
+            present = states.every(s => s === true) ? true : kind === "semgrep" && states.every(s => s === false) ? false : null;
+            if (cited.length > 1) {
+                // One place of a fixed rule reported again is a regression, though the others stay fixed.
+                back = kind === "semgrep" ? states.some(s => s === true) : present === true;
+                places = {
+                    left:
+                        kind === "gitleaks"
+                            ? cited.filter(e => e.key && reported.has(e.key)).length
+                            : states.filter(s => s !== false).length,
+                    of: cited.length
+                };
+            }
+            digest = digestOf([String(present), ...cited.map((e, i) => `${e.key ?? e.file}:${states[i]}`)]);
+            // The digest before places had keys: Andrii's "still open" on such a finding stands.
+            if (!f.evidence.some(e => e.key) && cited.length === 1) legacy = digestOf([String(present), present ? f.title : ""]);
         } else {
             const cited = f.evidence.filter(e => e.snippet?.trim());
             const readable = cited.length > 0 && cited.every(e => e.endLine - e.startLine < SNIPPET_LINES);
@@ -121,19 +167,29 @@ export async function recheck(
             digest = digestOf(files);
         }
 
+        back ??= present === true;
         let status: RecheckStatus;
         let gone = false;
         if (f.recheck === "fixed") {
-            status = present && f.recheckGone ? "regressed" : "fixed";
-            gone = status === "fixed" && (f.recheckGone || !present);
-        } else if (f.recheck === "open" && f.recheckDigest === digest) status = "open";
-        else if (f.recheck === "regressed" && present) status = "regressed";
+            status = back && f.recheckGone ? "regressed" : "fixed";
+            gone = status === "fixed" && (f.recheckGone || !back);
+        } else if (f.recheck === "open" && (f.recheckDigest === digest || f.recheckDigest === legacy)) status = "open";
+        else if (f.recheck === "regressed" && back) status = "regressed";
         else {
             status = present ? "unchanged" : present === false ? "fixed" : "changed";
             gone = status === "fixed";
         }
         const keep = status === "fixed" && f.recheck === "fixed";
-        out.push({ id: f.id, label: f.label, status, digest, gone, keep, ...(evidence ? { evidence } : {}) });
+        out.push({
+            id: f.id,
+            label: f.label,
+            status,
+            digest,
+            gone,
+            keep,
+            ...(evidence ? { evidence } : {}),
+            ...(places ? { places } : {})
+        });
     }
     return out;
 }

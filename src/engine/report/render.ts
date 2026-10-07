@@ -10,6 +10,8 @@ import type { ReportData, ReportFinding } from "./types";
 const SEAMS_TITLE = aspectTitle(SEAMS);
 
 // The app's palette (zinc, an indigo accent) on paper: light only, system fonts, nothing fetched.
+// In print a card may run onto the next page. Its meta line and summary avoid a break after the title:
+// Chromium 153 then kept the title with its summary at 32 of 32 page offsets, 23 without (2026-10-07).
 const CSS = `
 :root{--ink:#18181b;--muted:#71717a;--faint:#a1a1aa;--line:#e4e4e7;--wash:#fafafa;--accent:#4f46e5;
 --critical:#b91c1c;--critical-bg:#fef2f2;--high:#c2410c;--high-bg:#fff7ed;--medium:#a16207;--medium-bg:#fefce8;
@@ -41,24 +43,22 @@ section,.toc{margin-top:3rem}
 .toc ol{margin:0;padding-left:1.2rem}.toc>ol>li{margin:.45rem 0;font-weight:600}
 .toc ul{list-style:none;padding:0;margin:.4rem 0 .7rem;font-weight:400;font-size:.9rem}
 .toc ul li{display:flex;gap:.6rem;align-items:baseline;margin:.25rem 0;break-inside:avoid}
-.toc .toc-repo{margin:.6rem 0 0;font-size:.9rem}
 h3.repo{margin:1.8rem 0 .8rem;padding-bottom:.35rem;border-bottom:1px solid var(--line);break-after:avoid}
 .badge{flex-shrink:0;display:inline-block;font-size:.68rem;font-weight:700;letter-spacing:.06em;text-transform:uppercase;padding:.12rem .5rem;border-radius:999px;white-space:nowrap;vertical-align:.1em}
 ${["critical", "high", "medium", "low", "info", "question"].map(s => `.${s}{color:var(--${s});background:var(--${s}-bg)}.tile.${s}{border-color:var(--${s}-bg)}`).join("")}
 .risks{list-style:none;padding:0;margin:.5rem 0}.risks li{display:flex;gap:.7rem;align-items:baseline;padding:.5rem 0;border-bottom:1px solid var(--line)}
+.risks .aside{margin-left:auto;padding-left:.5rem;font-size:.82rem;color:var(--muted);white-space:nowrap}
+@media screen and (max-width:640px){.risks li{flex-wrap:wrap}.risks .aside{flex-basis:100%;margin-left:0;padding-left:0;white-space:normal}}
 .fid{flex-shrink:0;white-space:nowrap;font:600 12.5px ui-monospace,SFMono-Regular,Menlo,monospace;color:var(--muted)}
-table{border-collapse:collapse;width:100%;font-size:.88rem}
-th{text-align:left;font-size:.7rem;font-weight:600;letter-spacing:.07em;text-transform:uppercase;color:var(--muted);padding:.5rem .6rem;border-bottom:1px solid var(--line)}
-td{padding:.5rem .6rem;border-bottom:1px solid var(--line);vertical-align:top}td.nowrap{white-space:nowrap}
-.aspect{border:1px solid var(--line);border-radius:10px;padding:.2rem 1.1rem 1rem;margin:1rem 0}
+.coverage{list-style:none;padding:0;margin:.5rem 0}.coverage>li{margin:.7rem 0}.gaps{margin:.3rem 0;padding-left:1.2rem;font-size:.9rem}.gaps li{margin:.15rem 0}
 .pill{display:inline-block;font-size:.72rem;font-weight:600;padding:.08rem .5rem;border-radius:999px;background:var(--info-bg);color:var(--info);white-space:nowrap}
 .pill.examined,.pill.done{background:#ecfdf5;color:#047857}.pill.partly,.pill.partial,.pill.limited{background:var(--medium-bg);color:var(--medium)}
 .pill.declined,.pill.failed,.pill.stopped,.pill.regressed{background:var(--critical-bg);color:var(--critical)}
-.method{padding-left:1.1rem}.method li{margin:.3rem 0}
+.method,.tech{padding-left:1.1rem}.method li,.tech li{margin:.3rem 0}
 .finding{border:1px solid var(--line);border-left:4px solid var(--info);border-radius:10px;margin:1.1rem 0;background:#fff}
 ${["critical", "high", "medium", "low", "info", "question"].map(s => `.finding.sev-${s}{border-left-color:var(--${s})}`).join("")}
-.finding summary{display:flex;gap:.7rem;align-items:baseline;padding:.85rem 1.1rem;cursor:pointer;list-style:none;font-weight:600}
-.finding summary::-webkit-details-marker{display:none}
+.finding>summary{display:flex;gap:.7rem;align-items:baseline;padding:.85rem 1.1rem;cursor:pointer;list-style:none;font-weight:600}
+.finding>summary::-webkit-details-marker{display:none}
 .finding .body{padding:0 1.1rem 1rem;border-top:1px solid var(--line)}
 .meta{font-size:.82rem;color:var(--muted);margin-top:.8rem}
 .lead{font-size:1.02rem}
@@ -70,7 +70,10 @@ pre{margin:0;padding:.6rem 0;background:#fcfcfd;overflow-x:auto;white-space:pre-
 pre code{display:block}.ln{display:inline-block;width:3.4em;padding-right:.9em;text-align:right;color:var(--faint);user-select:none}
 .callout{background:#eef2ff;border:1px solid #e0e7ff;border-radius:8px;padding:.15rem .95rem .6rem;margin:1rem 0 .4rem}.callout h4{color:var(--accent)}
 .refs{font-size:.82rem;color:var(--muted)}
+.more>summary{cursor:pointer;margin:.4rem 0;font-size:.82rem;color:var(--accent)}
+.cut{margin:0;padding:.3rem .7rem;font-size:.75rem;color:var(--muted);border-top:1px solid var(--line)}
 @media screen{.off{display:none!important}}
+@media screen{.print-only{display:none}}
 .filters{display:flex;flex-wrap:wrap;gap:.6rem 1rem;align-items:end;margin:1rem 0;padding:.8rem 1rem;border:1px solid var(--line);border-radius:10px;font-size:.82rem;color:var(--muted)}
 .filters label{display:flex;flex-direction:column;gap:.25rem}
 .filters select,.filters input{font:inherit;color:var(--ink);padding:.3rem .5rem;border:1px solid var(--line);border-radius:6px;background:#fff}
@@ -86,8 +89,9 @@ body{background:#fff;font-size:10.5pt}
 section{margin-top:2.2rem}
 section#findings,section#questions{margin-top:0;break-before:page}
 h2,h3,h4,summary,figcaption{break-after:avoid}
-.finding{break-inside:avoid;-webkit-box-decoration-break:clone;box-decoration-break:clone}.finding summary,.pair,.callout,figure{break-inside:avoid}
-tr,.risks li{break-inside:avoid}
+.finding{-webkit-box-decoration-break:clone;box-decoration-break:clone}.more[open]>summary .print-only{display:none}
+.finding>summary,.finding .lead,.pair,.callout,figure{break-inside:avoid}.finding .meta{break-after:avoid}.rest{display:none}
+.risks li,.gaps li{break-inside:avoid}
 a{color:inherit}
 }
 `;
@@ -132,15 +136,34 @@ const ACCESS_TEXT: Record<ModelAccess, string> = {
 const severityOf = (f: ReportFinding) => f.severity ?? "question";
 const badge = (f: ReportFinding) => `<span class="badge ${e(severityOf(f))}">${e(severityOf(f))}</span>`;
 const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
+const effortText = (f: ReportFinding) => (f.effort ? `effort ${f.effort}${f.effortHours != null ? ` (${f.effortHours} h)` : ""}` : null);
+
+/** The lines of an excerpt a printout shows; the HTML keeps them all. */
+const PRINT_LINES = 12;
 
 function evidence(ev: ReportFinding["evidence"][number]): string {
-    const lines = (ev.snippet ?? "").split("\n");
-    const code = lines.map((line, i) => `<span class="ln">${ev.startLine + i}</span>${e(line)}`).join("\n");
+    const lines = (ev.snippet ?? "").split("\n").map((line, i) => `<span class="ln">${ev.startLine + i}</span>${e(line)}`);
+    const rest = lines.length - PRINT_LINES;
+    const code =
+        rest > 0
+            ? `${lines.slice(0, PRINT_LINES).join("\n")}<span class="rest">\n${lines.slice(PRINT_LINES).join("\n")}</span>`
+            : lines.join("\n");
     const where = ev.startLine === ev.endLine ? `line ${ev.startLine}` : `lines ${ev.startLine}–${ev.endLine}`;
-    return `<figure><figcaption>${e(ev.file)} · ${where}</figcaption>${ev.snippet ? `<pre><code>${code}</code></pre>` : ""}</figure>`;
+    const cut = rest > 0 ? `<p class="cut print-only">${plural(rest, "more line", "more lines")} in the HTML report</p>` : "";
+    return `<figure><figcaption>${e(ev.file)} · ${where}</figcaption>${ev.snippet ? `<pre><code>${code}</code></pre>${cut}` : ""}</figure>`;
 }
 
-// The report's one script: it filters and searches the findings in the browser, reaching nothing outside the file.
+/** The places a card lists before "and N more": a scanner finding of one rule can cite dozens. */
+const SHOWN_PLACES = 10;
+
+function places(list: ReportFinding["evidence"]): string {
+    const more = list.slice(SHOWN_PLACES);
+    const rest = more.length
+        ? `\n<details class="more"><summary>and ${plural(more.length, "more place", "more places")}<span class="print-only"> in the HTML report</span></summary>\n${more.map(evidence).join("\n")}\n</details>`
+        : "";
+    return `${list.slice(0, SHOWN_PLACES).map(evidence).join("\n")}${rest}`;
+}
+
 // The report's one script: it filters and searches the findings and questions in the browser,
 // reaching nothing outside the file. It hides with a class that only the screen honours, so a
 // printout is always complete.
@@ -148,14 +171,13 @@ const FILTER_SCRIPT = `(()=>{const f=document.querySelector(".filters");if(!f)re
 const rank={critical:0,high:1,medium:2,low:3,info:4,question:5};
 const cards=[...document.querySelectorAll("section#findings .finding")];
 const questions=[...document.querySelectorAll("section#questions .finding")];
-const rows=[...document.querySelectorAll("section#findings tbody tr")];
 const groups=[...document.querySelectorAll("section#findings .repo-group")];
 const val=n=>{const el=f.querySelector("[name="+n+"]");return el?el.value:""};
 const apply=()=>{const min=val("sev"),asp=val("aspect"),repo=val("repo"),q=val("q").trim().toLowerCase();const active=!!(min||asp||repo||q);const shown=new Set();let asked=0;
 const ok=c=>(!min||rank[c.dataset.sev]<=rank[min])&&(!asp||c.dataset.aspect===asp)&&(!repo||c.dataset.repo===repo)&&(!q||c.textContent.toLowerCase().includes(q));
 for(const c of cards){const v=ok(c);c.classList.toggle("off",!v);if(v)shown.add(c.id)}
 for(const c of questions){const v=ok(c);c.classList.toggle("off",!v);if(v)asked++}
-for(const r of rows)r.classList.toggle("off",!shown.has(r.dataset.id));
+if(q)for(const m of document.querySelectorAll(".finding .more"))if([...m.querySelectorAll("figure")].some(x=>x.textContent.toLowerCase().includes(q)))m.open=true;
 for(const g of groups)g.classList.toggle("off",active&&![...g.querySelectorAll(".finding")].some(c=>shown.has(c.id)));
 f.querySelector("output").textContent=shown.size+" of "+cards.length+" findings"+(questions.length?" and "+asked+" of "+questions.length+(questions.length===1?" question":" questions"):"")+" shown";};
 const reveal=()=>{const t=location.hash&&document.getElementById(decodeURIComponent(location.hash.slice(1)));if(t&&t.closest(".off")){f.reset();apply();t.scrollIntoView()}};
@@ -218,15 +240,7 @@ function finding(f: ReportFinding): string {
                 ? "agreed to fix before sign-off"
                 : "agreed to fix after sign-off"
             : null;
-    const meta = [
-        f.repository,
-        f.aspect,
-        f.checklistItem,
-        f.effort && `effort ${f.effort}${f.effortHours != null ? ` (${f.effortHours} h)` : ""}`,
-        call
-    ]
-        .filter(Boolean)
-        .join(" · ");
+    const meta = [f.repository, f.aspect, f.checklistItem, effortText(f), call].filter(Boolean).join(" · ");
     const link = (r: Ref) => (r.url ? `<a href="${e(r.url)}">${e(r.label)}</a>` : e(r.label));
     const R = f.refs;
     const refs = R
@@ -257,7 +271,7 @@ function finding(f: ReportFinding): string {
 ${pair}
 <h4>Details</h4>
 <p class="prose">${e(f.explanation)}</p>
-${f.evidence.length ? `<h4>Evidence</h4>\n${f.evidence.map(evidence).join("\n")}` : ""}
+${f.evidence.length ? `<h4>Evidence</h4>\n${places(f.evidence)}` : ""}
 <div class="callout"><h4>Recommendation</h4><p class="prose">${e(f.recommendation)}</p></div>
 ${refs.length ? `<div class="refs"><h4>References</h4>${refs.map(r => `<p>${r}</p>`).join("")}</div>` : ""}
 </div>
@@ -296,17 +310,18 @@ export function renderReport(d: ReportData): string {
     const before = (f: ReportFinding) => f.fixBeforeSignoff ?? (f.severity === "critical" || f.severity === "high");
     const fixFirst = findings.filter(before);
     const canWait = findings.filter(f => !before(f));
+    // The cover names a single repository; a line repeating it only wraps.
+    const manyRepos = d.repositories.length > 1;
+    const aside = (f: ReportFinding) => [manyRepos ? f.repository : null, f.aspect, effortText(f)].filter(Boolean).join(" · ");
     const riskList = (list: ReportFinding[], none: string) =>
         list.length
-            ? `<ul class="risks">${list.map(f => `<li>${badge(f)}<a class="fid" href="#${e(f.label)}">${e(f.label)}</a><span>${e(f.title)}</span></li>`).join("")}</ul>`
+            ? `<ul class="risks">${list.map(f => `<li>${badge(f)}<a class="fid" href="#${e(f.label)}">${e(f.label)}</a><span>${e(f.title)}</span><span class="aside">${e(aside(f))}</span></li>`).join("")}</ul>`
             : `<p class="muted">${e(none)}</p>`;
     const effortLine = effortSummary(findings);
-    const tocItems = (list: ReportFinding[]) =>
+    const titleList = (list: ReportFinding[]) =>
         list.length
             ? `<ul>${list.map(f => `<li>${badge(f)}<a class="fid" href="#${e(f.label)}">${e(f.label)}</a><span>${e(f.title)}</span></li>`).join("")}</ul>`
             : "";
-    // The cover names a single repository; a column repeating it only wraps.
-    const manyRepos = d.repositories.length > 1;
     // With several repositories the findings run per repository, in the cover's order (design § 10).
     const names = [...new Set([...d.repositories.map(r => r.name), ...findings.map(f => f.repository)])];
     const ids = new Map<string, string>();
@@ -338,25 +353,20 @@ ${manyRepos ? `<label>Repository <select name="repo">${option("", "All")}${names
         .map(r => `<li>${e(r.name)} <span class="muted">· ${e(r.branch)} ·</span> <code>${e(r.sha.slice(0, 10))}</code></li>`)
         .join("");
     const limited = (a: ReportData["aspects"][number]) => a.status === "done" && limitedReview(a.coverage);
-    const aspects = d.aspects
-        .map(
-            a => `<div class="aspect"><h3>${e(a.title)} <span class="pill ${e(a.status)}">${e(a.status)}</span>${
-                limited(a) ? ` <span class="pill limited">limited review</span>` : ""
-            }</h3>
+    const aspects = d.aspects.length
+        ? `<h3>Coverage</h3>\n<ul class="coverage">${d.aspects
+              .map(a => {
+                  const examined = a.coverage.filter(c => c.status === "examined").length;
+                  const gaps = a.coverage.filter(c => c.status !== "examined");
+                  return `<li><b>${e(a.title)}</b>${a.coverage.length ? `: ${examined} of ${plural(a.coverage.length, "item", "items")} examined.` : ""} <span class="pill ${e(a.status)}">${e(a.status)}</span>${
+                      limited(a) ? ` <span class="pill limited">limited review</span>` : ""
+                  }
 ${a.note ? `<p>${e(a.note)}</p>` : ""}
-${limited(a) ? `<p>The agent looked at fewer than half of its checklist; the items it did not examine are marked below.</p>` : ""}
-${
-    a.coverage.length
-        ? `<table><thead><tr><th>Item</th><th>Checklist</th><th>Coverage</th></tr></thead><tbody>${a.coverage
-              .map(
-                  c =>
-                      `<tr><td class="nowrap">${e(c.item)}</td><td>${e(c.title)}</td><td class="nowrap"><span class="pill ${e(c.status)}">${e(COVERAGE[c.status] ?? c.status)}</span></td></tr>`
-              )
-              .join("")}</tbody></table>`
-        : ""
-}</div>`
-        )
-        .join("\n");
+${limited(a) ? `<p>The agent looked at fewer than half of its checklist; the items it did not examine are listed below.</p>` : ""}
+${gaps.length ? `<ul class="gaps">${gaps.map(c => `<li><span class="fid">${e(c.item)}</span> ${e(c.title)} <span class="pill ${e(c.status)}">${e(COVERAGE[c.status] ?? c.status)}</span></li>`).join("")}</ul>` : ""}</li>`;
+              })
+              .join("\n")}</ul>`
+        : "";
     const tools = d.toolVersions
         ? `<li>Scanners: ${e(
               Object.values(d.toolVersions.images)
@@ -366,17 +376,11 @@ ${
               d.toolVersions.osvQueriedAt.slice(0, 10)
           )}.</li>`
         : "";
-    const rows = findings
-        .map(
-            f =>
-                `<tr data-id="${e(f.label)}"><td class="nowrap"><a href="#${e(f.label)}">${e(f.label)}</a></td><td>${badge(f)}</td><td>${e(f.title)}</td><td>${e(f.aspect)}</td>${manyRepos ? `<td>${e(f.repository)}</td>` : ""}<td class="nowrap">${e(f.effort ?? "")}</td></tr>`
-        )
-        .join("");
     const aiBuilt = d.aiBuilt ? [...findings, ...d.questions].filter(f => f.tags?.includes("ai-built")) : [];
     const aiSection = aiBuilt.length
         ? `<section id="ai-built"><h2>Signs of AI-generated code</h2>
 <p class="muted">Findings typical of code written largely by AI tools: uneven checks, packages to verify, copies that drifted apart. Each is described in full under Findings.</p>
-${tocItems(aiBuilt)}</section>`
+${titleList(aiBuilt)}</section>`
         : "";
     const questions = d.questions.length
         ? `<section id="questions"><h2>Open questions</h2>
@@ -410,18 +414,18 @@ ${d.auditor ? `<div><dt>Auditor</dt><dd>${e(d.auditor)}</dd></div>` : ""}
 <li><a href="#summary">Summary</a></li>
 ${d.since ? `<li><a href="#since">Since the last audit</a></li>` : ""}
 <li><a href="#scope">Scope and method</a></li>
-<li><a href="#findings">Findings</a>${
+<li><a href="#findings">Findings (${findings.length})</a>${
         manyRepos
-            ? groups.map(g => `<p class="toc-repo"><a href="#${e(ids.get(g.name)!)}">${e(g.name)}</a></p>${tocItems(g.list)}`).join("")
-            : tocItems(findings)
+            ? `<ul>${groups.map(g => `<li><a href="#${e(ids.get(g.name)!)}">${e(g.name)} (${g.list.length})</a></li>`).join("")}</ul>`
+            : ""
     }</li>
-${aiBuilt.length ? `<li><a href="#ai-built">Signs of AI-generated code</a></li>` : ""}
-${d.questions.length ? `<li><a href="#questions">Open questions</a>${tocItems(d.questions)}</li>` : ""}
+${aiBuilt.length ? `<li><a href="#ai-built">Signs of AI-generated code (${aiBuilt.length})</a></li>` : ""}
+${d.questions.length ? `<li><a href="#questions">Open questions (${d.questions.length})</a></li>` : ""}
+<li><a href="#technical">Technical details</a></li>
 <li><a href="#disclaimer">Disclaimer</a></li>
 </ol></nav>
 
 <section id="summary"><h2>Summary</h2>
-<p>${SEVERITIES.map(s => `${count(s)} ${s}`).join(" · ")}.</p>
 <h3>Fix before sign-off</h3>
 ${riskList(fixFirst, "Nothing needs fixing before sign-off.")}
 <h3>Can wait</h3>
@@ -438,11 +442,7 @@ ${aspects}
 <ul class="method">
 <li>The client's code was read, not installed, built or run: no dependency install, no type-check, no project lint.</li>
 ${staticOnly(d)}
-<li>Models that served calls: ${e(d.servedModels.join(", ") || "none")}.</li>
 <li>Model access: ${d.modelAccess.map(a => ACCESS_TEXT[a]).join("; ") || "none"}.</li>
-${tools}
-<li>Budgets are checked between model calls; a call in progress may exceed its share by its own cost.</li>
-${costLine(d.cost)}
 ${d.repositories
     .filter(r => r.notCovered.length)
     .map(
@@ -454,8 +454,7 @@ ${d.repositories
 </section>
 
 <section id="findings"><h2>Findings</h2>
-${findings.length ? filters : ""}
-${findings.length ? `<table><thead><tr><th>ID</th><th>Severity</th><th>Title</th><th>Aspect</th>${manyRepos ? "<th>Repository</th>" : ""}<th>Effort</th></tr></thead><tbody>${rows}</tbody></table>` : `<p class="muted">No findings were accepted for this report.</p>`}
+${findings.length ? filters : `<p class="muted">No findings were accepted for this report.</p>`}
 ${
     manyRepos
         ? groups
@@ -469,6 +468,15 @@ ${
 </section>
 ${aiSection}
 ${questions}
+
+<section id="technical"><h2>Technical details</h2>
+<ul class="tech">
+<li>Models that served calls: ${e(d.servedModels.join(", ") || "none")}.</li>
+${tools}
+<li>Budgets are checked between model calls; a call in progress may exceed its share by its own cost.</li>
+${costLine(d.cost)}
+</ul>
+</section>
 
 <section id="disclaimer"><h2>Disclaimer</h2>
 <p class="disclaimer">An audit finds issues; it does not certify their absence. Findings describe the code at the commits listed above.</p>

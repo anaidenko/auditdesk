@@ -170,12 +170,43 @@ describe("renderReport", () => {
         expect(html).toMatch(/<p class="colophon">\d{4}-\d{2}-\d{2}<\/p>/);
     });
 
-    it("lists every section and every finding ID in its contents", () => {
+    it("lists the sections in its contents, each with its count, and no finding", () => {
         const html = renderReport(data({ questions: [finding({ label: "F-003", severity: null, title: "Who rotates the key?" })] }));
         const toc = between(html, '<nav class="toc"', "</nav>");
-        for (const id of ["summary", "scope", "findings", "questions", "disclaimer", "F-001", "F-002", "F-003"])
+        for (const id of ["summary", "scope", "findings", "questions", "disclaimer"]) {
             expect(toc).toContain(`href="#${id}"`);
-        for (const id of ["summary", "scope", "findings", "questions", "disclaimer"]) expect(html).toContain(`id="${id}"`);
+            expect(html).toContain(`id="${id}"`);
+        }
+        expect(toc).toContain('<a href="#findings">Findings (2)</a>');
+        expect(toc).toContain('<a href="#questions">Open questions (1)</a>');
+        expect(toc).not.toMatch(/F-00\d|Raw SQL|Who rotates/);
+    });
+
+    it("prints each finding's title twice: on its Summary line and on its card", () => {
+        const html = renderReport(
+            data({
+                findings: [
+                    finding({ label: "F-001", severity: "critical", title: "Admin route open" }),
+                    finding({ label: "F-002", severity: "medium", title: "Verbose errors" }),
+                    finding({ label: "F-003", severity: "low", title: "Old lodash" })
+                ]
+            })
+        );
+        for (const title of ["Admin route open", "Verbose errors", "Old lodash"]) expect(html.split(title).length - 1).toBe(2);
+        expect(between(html, '<section id="findings">', "</section>")).not.toContain("<table");
+    });
+
+    it("puts each finding's aspect and effort on its Summary line, and its repository when there are several", () => {
+        const line = (html: string) => between(between(html, '<section id="summary">', "</section>"), 'href="#F-001"', "</li>");
+        const one = renderReport(data({ findings: [finding({ aspect: "Security", effort: "M", effortHours: 6 })] }));
+        expect(line(one)).toContain('<span class="aside">Security · effort M (6 h)</span>');
+        const two = renderReport(
+            data({
+                repositories: [...data().repositories, { name: "api", branch: "main", sha: "fedcba9876543210", notCovered: [] }],
+                findings: [finding({ aspect: "Security", effort: "S" })]
+            })
+        );
+        expect(line(two)).toContain('<span class="aside">app · Security · effort S</span>');
     });
 
     it("numbers evidence lines from their start line", () => {
@@ -193,11 +224,87 @@ describe("renderReport", () => {
         expect(html.match(/<details(?! open)/g)).toBeNull();
     });
 
-    // Chromium ignores break-after:avoid between a <summary> and the rest of its <details>: on the
-    // naidenko.dev report (E.9) a card's title sat alone at the foot of a page.
-    it("starts a finding on a new page rather than leave its title alone at the foot of one", () => {
+    // On the naidenko.dev report (E.9) a card's title sat alone at the foot of a page.
+    it("lets a card run onto the next page, keeping its title with its summary", () => {
         const print = between(renderReport(data()), "@media print{", "</style>");
-        expect(print).toMatch(/\.finding\{[^}]*break-inside:avoid/);
+        expect(print).not.toMatch(/\.finding\{[^}]*break-inside:avoid/);
+        expect(print).toContain(".finding .meta{break-after:avoid}");
+        expect(print).toContain(".finding>summary,.finding .lead,.pair,.callout,figure{break-inside:avoid}");
+    });
+
+    it("sums up an aspect whose agent examined every item in one line", () => {
+        const covered = ["SEC-01", "SEC-03", "SEC-04"].map(item => ({ item, title: item, status: "examined" }));
+        const scope = between(
+            renderReport(data({ aspects: [{ title: "Security", status: "done", note: null, coverage: covered }] })),
+            '<section id="scope"',
+            "</section>"
+        );
+        expect(scope).toContain("<b>Security</b>: 3 of 3 items examined.");
+        expect(scope).not.toContain("<table");
+        expect(scope).not.toContain('class="gaps"');
+    });
+
+    it("names each item not fully examined, with its status", () => {
+        const coverage = [
+            { item: "SEC-01", title: "Authentication", status: "examined" },
+            { item: "SEC-03", title: "Authorization", status: "partly" },
+            { item: "SEC-04", title: "Injection", status: "not_examined" },
+            { item: "SEC-05", title: "XSS", status: "not_reported" }
+        ];
+        const scope = between(
+            renderReport(data({ aspects: [{ title: "Security", status: "done", note: null, coverage }] })),
+            '<section id="scope"',
+            "</section>"
+        );
+        expect(scope).toContain("<b>Security</b>: 1 of 4 items examined.");
+        const gaps = between(scope, '<ul class="gaps">', "</ul>");
+        expect(gaps).toContain('<span class="fid">SEC-03</span> Authorization <span class="pill partly">partly examined</span>');
+        expect(gaps).toContain('<span class="pill not_examined">not examined</span>');
+        expect(gaps).toContain("not reported (the agent stopped first)");
+        expect(gaps).not.toContain("SEC-01");
+    });
+
+    it("keeps scanner digests and ruleset hashes out of the method, in Technical details before the Disclaimer", () => {
+        const html = renderReport(
+            data({
+                toolVersions: {
+                    images: {
+                        gitleaks: { image: "ghcr.io/gitleaks/gitleaks:v8.30.1", digest: "sha256:aaa" },
+                        osv: { image: "ghcr.io/google/osv-scanner:v2.6.0", digest: "sha256:bbb" },
+                        semgrep: { image: "semgrep/semgrep:1.179.0", digest: "sha256:ccc" }
+                    },
+                    rulesets: [{ name: "p-javascript", sha256: "d".repeat(64), rules: 10 }],
+                    osvQueriedAt: "2026-10-07T10:00:00Z"
+                },
+                cost: { apiKeyUsd: 1, planUsd: 0, unpriced: 0 }
+            })
+        );
+        const method = between(html, '<ul class="method">', "</ul>");
+        expect(method).not.toMatch(/sha256|Models that served|Budgets are checked|Cost of the model calls/);
+        expect(method).toContain("Model access:");
+        const tech = between(html, '<section id="technical">', "</section>");
+        for (const s of [
+            "sha256:aaa",
+            "sha256 dddddddddddd",
+            "OSV queried 2026-10-07",
+            "Models that served calls",
+            "Budgets are checked",
+            "Cost of the model calls"
+        ])
+            expect(tech).toContain(s);
+        expect(html.indexOf('<section id="technical">')).toBeLessThan(html.indexOf('<section id="disclaimer">'));
+        expect(between(html, '<nav class="toc"', "</nav>")).toContain('<a href="#technical">Technical details</a>');
+    });
+
+    it("lists ten places on a card and the rest under 'and N more places'", () => {
+        const evidence = Array.from({ length: 13 }, (_, i) => ({ file: `src/f${i}.ts`, startLine: 1, endLine: 1, snippet: `k${i}` }));
+        const html = renderReport(data({ findings: [finding({ evidence })] }));
+        const from = html.indexOf('open id="F-001"');
+        const card = html.slice(from, html.indexOf('<div class="callout">', from));
+        const [shown, more] = card.split('<details class="more">');
+        expect(shown.split("<figure>").length - 1).toBe(10);
+        expect(more.split("<figure>").length - 1).toBe(3);
+        expect(more).toContain('<summary>and 3 more places<span class="print-only"> in the HTML report</span></summary>');
     });
 
     it("names a one-line range as one line", () => {
@@ -232,8 +339,8 @@ describe("renderReport", () => {
         expect(body.indexOf('open id="F-002"')).toBeLessThan(body.indexOf('<h3 class="repo" id="repo-api">api</h3>'));
         expect(body.indexOf('<h3 class="repo" id="repo-api">api</h3>')).toBeLessThan(body.indexOf('open id="F-001"'));
         const toc = between(html, '<nav class="toc">', "</nav>");
-        expect(toc.indexOf("F-002")).toBeLessThan(toc.indexOf("F-001"));
-        expect(toc).toContain('<a href="#repo-api">api</a>');
+        expect(toc.indexOf('<a href="#repo-web">web (1)</a>')).toBeLessThan(toc.indexOf('<a href="#repo-api">api (1)</a>'));
+        expect(toc).not.toContain("F-00");
     });
 
     it("gives the seams between repositories their own run of findings after the repositories'", () => {
@@ -259,7 +366,7 @@ describe("renderReport", () => {
         expect(body.indexOf('open id="F-002"')).toBeLessThan(body.indexOf(heading));
         expect(body.indexOf(heading)).toBeLessThan(body.indexOf('open id="F-001"'));
         expect(between(html, '<nav class="toc">', "</nav>")).toContain(
-            '<a href="#repo-Seams-between-repositories">Seams between repositories</a>'
+            '<a href="#repo-Seams-between-repositories">Seams between repositories (1)</a>'
         );
         expect(html).toContain('<option value="Seams between repositories">');
     });
@@ -369,6 +476,14 @@ describe("renderReport", () => {
             const part = summary(html).split(`<h3>${heading}`)[1] ?? "";
             return [...part.split("<h3>")[0].matchAll(/href="#(F-\d{3})"/g)].map(m => m[1]);
         };
+
+        it("leaves the counts by severity to the cover's tiles", () => {
+            const html = renderReport(data({ findings: [finding({ severity: "high" })] }));
+            expect(summary(html)).not.toContain("· 0 low");
+            expect(between(html, '<header class="cover"', "</header>")).toContain(
+                '<div class="tile low zero"><b>0</b><span>low</span></div>'
+            );
+        });
 
         it("puts critical and high findings before sign-off by default, and the rest under can wait", () => {
             const html = renderReport(
@@ -534,7 +649,7 @@ describe("renderReport", () => {
         expect(section).toContain("Signs of AI-generated code");
         expect(section).toContain('href="#F-002"');
         expect(section).not.toContain('href="#F-001"');
-        expect(between(html, '<nav class="toc">', "</nav>")).toContain('<a href="#ai-built">Signs of AI-generated code</a>');
+        expect(between(html, '<nav class="toc">', "</nav>")).toContain('<a href="#ai-built">Signs of AI-generated code (1)</a>');
     });
 
     it("gathers tagged questions under Signs of AI-generated code too", () => {
@@ -593,16 +708,5 @@ describe("renderReport", () => {
 
     it("has no AI-generated code section when no finding carries the tag", () => {
         expect(renderReport(data())).not.toContain('id="ai-built"');
-    });
-
-    // The cover names a single repository; a column repeating it wrapped in the PDF (R.3).
-    it("shows the repository column only when the audit spans more than one repository", () => {
-        const head = (html: string) => between(html, "<thead>", "</thead>");
-        const one = renderReport(data());
-        expect(head(one.slice(one.indexOf('id="findings"')))).not.toContain("Repository");
-        const two = renderReport(
-            data({ repositories: [...data().repositories, { name: "api", branch: "main", sha: "fedcba9876543210", notCovered: [] }] })
-        );
-        expect(head(two.slice(two.indexOf('id="findings"')))).toContain("Repository");
     });
 });

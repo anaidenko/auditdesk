@@ -65,7 +65,12 @@ export class MemorySink implements AuditSink {
         });
     }
     async knownFingerprints(repositoryId: string) {
-        return new Set(this.findings.filter(f => f.repositoryId === repositoryId).map(f => f.fingerprint));
+        // A grouped scanner finding's places are known one by one: the next run files only new ones.
+        return new Set(
+            this.findings
+                .filter(f => f.repositoryId === repositoryId)
+                .flatMap(f => [f.fingerprint, ...f.evidence.flatMap(e => (e.key ? [e.key] : []))])
+        );
     }
     async stopRequested() {
         return this.stop;

@@ -48,6 +48,7 @@ read-only tools. Setup and commands: README.md.
 - Before stating a checkable fact (a version, a limit, whether something exists or passes),
   verify it in the same turn and show the evidence: the command, the path or the quote.
 - If you cannot verify it, say "unverified" and name what would confirm it.
+- A measurement that credits one change varies that change alone, against the same baseline.
 
 ## Workflow
 
@@ -59,9 +60,10 @@ read-only tools. Setup and commands: README.md.
 - **TDD for behaviour:** Vitest for logic, Playwright for the UI. See
   `.claude/rules/testing.md`.
 - **Before a commit that touches code:**
-  `pnpm format:check && pnpm lint && pnpm typecheck && pnpm test`. `pnpm test:e2e` builds the
-  app first, so it runs at checkpoints: after a batch of changes to `src/app`, `src/proxy.ts` or
-  `e2e/`, before a live run, and before merging a phase.
+  `pnpm format:check && pnpm lint && pnpm typecheck && pnpm vitest related <changed files> --run`
+  (about 15 s). The whole `pnpm test` (about 90 s, half of it the two Agent SDK test files) and
+  `pnpm test:e2e` (it builds the app) run at checkpoints: after a batch of commits, before a code
+  review, before a live run, and before merging a phase.
 - **Commits** follow Conventional Commits. Work on a branch, not `main`.
 - **No bots that open branches or pull requests,** Dependabot included. Update dependencies by
   hand, on a branch.

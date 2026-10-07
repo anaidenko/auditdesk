@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { describe, expect, it } from "vitest";
 
 import { snippetOf } from "./files";
@@ -133,6 +134,118 @@ describe("recheck", () => {
                 ]
             )
         ).toEqual(["changed"]);
+    });
+
+    const place = (key: string, snippet: string, file = "src/gone.ts") => ({ file, startLine: 1, endLine: 1, snippet, key });
+
+    it("calls a Semgrep finding of several places fixed once none is left, and changed with the count left otherwise", async () => {
+        const group = earlier({
+            source: "scanner",
+            checklistItem: "SEC-15",
+            fingerprint: "grp",
+            evidence: [place("p1", "serveIndex(a)"), place("p2", "serveIndex(b)")]
+        });
+        expect(await run([group])).toMatchObject([{ status: "fixed", places: { left: 0, of: 2 } }]);
+        const both = scanned({ fingerprint: "grp", evidence: [place("p1", "serveIndex(a)"), place("p2", "serveIndex(b)")] });
+        expect(await run([group], [both])).toMatchObject([{ status: "unchanged", places: { left: 2, of: 2 } }]);
+        const one = scanned({ fingerprint: "p1", evidence: [place("p1", "serveIndex(a)")] });
+        expect(await run([group], [one])).toMatchObject([{ status: "changed", places: { left: 1, of: 2 } }]);
+    });
+
+    it("never calls a secret of several places fixed, and counts the places still reported", async () => {
+        const group = earlier({
+            source: "scanner",
+            checklistItem: "SEC-10",
+            title: "Secrets in the code: 2 generic API keys in one file",
+            fingerprint: "grp",
+            evidence: [place("g1", "k"), place("g2", "k")]
+        });
+        expect(await run([group])).toMatchObject([{ status: "changed", places: { left: 0, of: 2 } }]);
+        const now = scanned({
+            checklistItem: "SEC-10",
+            title: "Secret in the code: generic API key",
+            fingerprint: "g1",
+            evidence: [place("g1", "k")]
+        });
+        expect(await run([group], [now])).toMatchObject([{ status: "changed", places: { left: 1, of: 2 } }]);
+    });
+
+    const legacy = (snippet: string, file = "src/search.ts") => ({ file, startLine: 1, endLine: 1, snippet });
+
+    it("checks every place of a scanner finding merged by hand, keyed or not", async () => {
+        const merged = earlier({
+            source: "scanner",
+            checklistItem: "SEC-15",
+            fingerprint: "s1",
+            evidence: [
+                legacy("serveIndex(ftp)", "src/gone.ts"),
+                legacy("export function search(q) {"),
+                legacy(files["src/search.ts"].split("\n")[2])
+            ]
+        });
+        expect(await run([merged])).toMatchObject([{ status: "changed", places: { left: 2, of: 3 } }]);
+        const grouped = earlier({
+            source: "scanner",
+            checklistItem: "SEC-15",
+            fingerprint: "grp",
+            evidence: [place("p1", "serveIndex(a)"), place("p2", "serveIndex(b)"), legacy("export function search(q) {")]
+        });
+        expect(await run([grouped])).toMatchObject([{ status: "changed", places: { left: 1, of: 3 } }]);
+    });
+
+    it("calls a fixed Semgrep finding of several places regressed when any place comes back", async () => {
+        const group = earlier({
+            source: "scanner",
+            checklistItem: "SEC-15",
+            fingerprint: "grp",
+            recheck: "fixed",
+            recheckGone: true,
+            evidence: [place("p1", "serveIndex(a)"), place("p2", "serveIndex(b)"), place("p3", "serveIndex(c)")]
+        });
+        const back = scanned({ fingerprint: "p1", evidence: [place("p1", "serveIndex(a)")] });
+        expect(await run([group], [back])).toMatchObject([{ status: "regressed", keep: false, places: { left: 1, of: 3 } }]);
+        expect(await run([group])).toMatchObject([{ status: "fixed", keep: true }]);
+    });
+
+    it("keeps Andrii's call that a scanner finding is open across the change to places", async () => {
+        const before = createHash("sha256").update(["true", "t"].join("\n")).digest("hex").slice(0, 16);
+        const open = earlier({
+            source: "scanner",
+            checklistItem: "SEC-15",
+            fingerprint: "s1",
+            recheck: "open",
+            recheckDigest: before,
+            evidence: [legacy("return db.query(")]
+        });
+        expect(await status([open], [scanned({ fingerprint: "s1", title: "t" })])).toEqual(["open"]);
+    });
+
+    it("never calls a secret fixed, though its title was edited", async () => {
+        const edited = earlier({
+            source: "scanner",
+            checklistItem: "SEC-10",
+            title: "Hard-coded AWS key in the config",
+            references: { cwe: "CWE-798" },
+            fingerprint: "g9",
+            evidence: [legacy("aws_key = [REDACTED]", "src/gone.ts")]
+        });
+        expect(await status([edited])).toEqual(["changed"]);
+    });
+
+    it("finds a place filed alone before inside a group the scanner files now", async () => {
+        const leak = earlier({
+            source: "scanner",
+            checklistItem: "SEC-10",
+            title: "Secret in the code: Detected a Generic API Key, potentially exposing access.",
+            fingerprint: "g1"
+        });
+        const now = scanned({
+            checklistItem: "SEC-10",
+            title: "Secrets in the code: 2 generic API keys in one file",
+            fingerprint: "grp",
+            evidence: [place("g1", "k"), place("g2", "k")]
+        });
+        expect(await status([leak], [now])).toEqual(["unchanged"]);
     });
 
     it("keeps Andrii's fix while the cited code stays, and calls it regressed only when it was gone and came back", async () => {

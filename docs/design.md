@@ -130,16 +130,20 @@ The auditor accepts, edits, merges, rejects (kept with the reason, as data on fa
 or excludes each finding, and may move it between "fix before sign-off" and "can wait". A re-run
 of one aspect replaces its unreviewed findings and tells the agent about the reviewed ones.
 
-Two rules keep the scanners' noise down. A generic secret or a Semgrep result in a test, fixture,
-seed or example file is rated lower and says where it is; a provider's own key format keeps its
-rating, and a route is never treated as sample code. When an agent files a finding on the lines
-of an unreviewed scanner finding of the same run, under the same item and weakness, the scanner's
-is folded into it with its higher severity, and comes back to the review if that aspect is re-run.
+Three rules keep the scanners' noise down. A scanner files one finding per rule, listing every
+place: gitleaks per rule, code or history and file role, Semgrep per rule and message. Each place
+keeps its own fingerprint, so a later run files only the places it has not filed before. A
+generic secret or a Semgrep result in a test, fixture, seed or example file is rated lower and
+says where it is; a provider's own key format keeps its rating, and a route is never treated as
+sample code. When an agent files a finding on the lines of every place of an unreviewed scanner
+finding of the same run, under the same item and weakness, the scanner's is folded into it with
+its higher severity, and comes back to the review if that aspect is re-run.
 
 **Re-audit.** A full run on a later commit re-checks every finding the report carried before,
 right after its scanners, so a run stopped later still has it. A dependency or Semgrep finding the
-scanner no longer reports, its code gone, is fixed; a secret never is, since no scan can tell it
-was rotated. An agent's finding reads "code unchanged" while every block it cited is still in its
+scanner no longer reports, its code gone, is fixed (one of several places, once none is left); a
+secret never is, since no scan can tell it was rotated, and the run says how many of a group's
+places the scan still reports. An agent's finding reads "code unchanged" while every block it cited is still in its
 file (moved, re-indented or re-spaced counts, and its lines follow), never "still open": the fix
 may live elsewhere. When that code is gone, or too short or too long to tell, it reads "code
 changed", and the auditor marks it verified fixed or still open; his "still open" stands until the
@@ -151,11 +155,15 @@ problem in other code is filed again.
 
 ## The report
 
-One self-contained HTML file, opening offline, and a PDF of the same document: a cover, a
-summary (severity counts, what to fix before sign-off, what can wait, the estimated effort),
-scope and method (aspects, coverage, models that served calls, scanner versions, what was not
-run or not covered), the findings table, each finding in full, signs of AI-generated code, open
-questions and a disclaimer. Filters and search work in the browser; a printout is always whole.
+One self-contained HTML file, opening offline, and a PDF of the same document: a cover with the
+severity counts, a summary (what to fix before sign-off and what can wait, one line per finding
+with its aspect and effort, and the estimated effort), scope and method (each aspect's coverage
+in a line, the items not fully examined, what was not run or not covered), each finding in full,
+signs of AI-generated code, open questions, technical details (models that served calls, scanner
+versions, rulesets, budgets) and a disclaimer. Filters and search work in the browser and never
+hide anything from a printout. A printout shows twelve lines of an excerpt and ten places of a
+finding, each with a note of what the HTML adds, and a card runs on across a page break with its
+title kept by its summary.
 
 Each finding links what it is relevant to, never claiming compliance: its OWASP Top 10:2025
 category, ASVS 5.0.0 sections or requirements, its CWE when the agent named one, advisories for
