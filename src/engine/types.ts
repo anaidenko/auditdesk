@@ -6,6 +6,8 @@ export interface Evidence {
     startLine: number;
     endLine: number;
     snippet?: string;
+    /** A scanner place's own fingerprint: a finding of several places is known place by place at the next run and re-check. */
+    key?: string;
 }
 
 export interface References {

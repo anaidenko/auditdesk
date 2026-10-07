@@ -8,7 +8,7 @@ import { SAMPLE_KEY } from "@/test/sample-repo";
 
 import { Masker } from "../masker";
 
-import { normaliseGitleaks, parseGitleaks } from "./gitleaks";
+import { normaliseGitleaks, parseGitleaks, secretKind } from "./gitleaks";
 import { OSV_NO_SOURCES, runScanners } from "./index";
 import { normaliseOsv, parseOsv } from "./osv";
 import { normaliseSemgrep, parseSemgrep } from "./semgrep";
@@ -26,11 +26,84 @@ describe("gitleaks", () => {
         expect(JSON.stringify(f)).not.toContain(SAMPLE_KEY);
     });
 
-    it("files each distinct secret of one rule in one file, so every one gets rotated", () => {
-        const three = ["a1", "b2", "c3"].map(k => ({ ...leaks[0], Secret: `${k}${"0".repeat(30)}`, StartLine: k.charCodeAt(0) }));
-        const prints = normaliseGitleaks(three, { repositoryId: "r", masker, inTree: () => true }).map(f => f.fingerprint);
-        expect(new Set(prints).size).toBe(3);
-        expect(prints.join()).not.toContain("0".repeat(30));
+    const at = (Secret: string, File: string, StartLine: number, RuleID = "generic-api-key") => ({
+        ...leaks[0],
+        Secret,
+        File,
+        StartLine,
+        EndLine: StartLine,
+        RuleID
+    });
+
+    it("lists each distinct secret of one rule as its own place, so every one gets rotated", () => {
+        const three = ["a1", "b2", "c3"].map((k, i) => at(`${k}${"0".repeat(30)}`, "src/config.js", i + 2));
+        const [f, ...rest] = normaliseGitleaks(three, { repositoryId: "r", masker, inTree: () => true });
+        expect(rest).toEqual([]);
+        expect(new Set(f.evidence.map(e => e.key)).size).toBe(3);
+        expect(JSON.stringify(f)).not.toContain("0".repeat(30));
+    });
+
+    it("titles a secret by its kind, short, with gitleaks' description in the details", () => {
+        const [f] = normaliseGitleaks(leaks, { repositoryId: "r", masker, inTree: () => true });
+        expect(f.title).toBe("Secret in the code: generic API key");
+        expect(f.explanation).toMatch(/^gitleaks: Detected a Generic API Key, potentially exposing/);
+    });
+
+    it("names the kind of secret from the rule, spelled as the provider spells it", () => {
+        const kind = (rule: string, description: string) => secretKind(rule, description);
+        expect(kind("github-pat", "Uncovered a GitHub Personal Access Token, potentially leading to unauthorized access.")).toBe(
+            "GitHub PAT"
+        );
+        expect(kind("new-relic-user-api-key", "Discovered a New Relic user API Key, which could lead to compromised insights.")).toBe(
+            "New Relic user API key"
+        );
+        expect(kind("1password-secret-key", "Uncovered a possible 1Password secret key, potentially compromising vaults.")).toBe(
+            "1Password secret key"
+        );
+        expect(kind("aws-access-token", "Identified a pattern that may indicate AWS credentials.")).toBe("AWS access token");
+        expect(kind("private-key", "Identified a Private Key, which may compromise cryptographic security.")).toBe("private key");
+        expect(kind("jwt", "Uncovered a JSON Web Token.")).toBe("JWT");
+    });
+
+    it("files one finding per rule, per code or history and per sample role, listing every place", () => {
+        const mixed = [
+            at("a".repeat(32), "src/b.js", 9),
+            at("b".repeat(32), "src/a.js", 12),
+            at("c".repeat(32), "src/a.js", 3),
+            at("d".repeat(32), "test/x.test.js", 1),
+            at("e".repeat(32), "src/old.js", 5),
+            at("f".repeat(32), "src/k.pem", 1, "private-key")
+        ];
+        const out = normaliseGitleaks(mixed, { repositoryId: "r", masker, inTree: l => l.File !== "src/old.js" });
+        expect(out.map(f => [f.title, f.severity, f.evidence.length])).toEqual([
+            ["Secrets in the code: 3 generic API keys in 2 files", "critical", 3],
+            ["Secret in the code: generic API key (in a test file)", "medium", 1],
+            ["Secret in git history: generic API key", "high", 1],
+            ["Secret in the code: private key", "critical", 1]
+        ]);
+        expect(out[0].evidence.map(e => `${e.file}:${e.startLine}`)).toEqual(["src/a.js:3", "src/a.js:12", "src/b.js:9"]);
+        expect(out[0].summary).toBe('3 credentials matching gitleaks rule "generic-api-key" are committed in 2 files.');
+        expect(out[0].likelihood).toBe("Anyone with read access to the repository can use them.");
+        expect(out[0].recommendation).toMatch(/^Rotate the credentials first, then remove them/);
+    });
+
+    it("names each commit of secrets found only in history", () => {
+        const two = [at("a".repeat(32), "src/a.js", 3), at("b".repeat(32), "src/b.js", 4)];
+        const [f] = normaliseGitleaks(two, { repositoryId: "r", masker, inTree: () => false });
+        expect(f.title).toBe("Secrets in git history: 2 generic API keys in 2 files");
+        expect(f.explanation).toContain("Commits: src/a.js at c2bdcacd (2026-10-06); src/b.js at c2bdcacd (2026-10-06).");
+    });
+
+    it("keeps a single place's fingerprint, and files only the places not filed before", () => {
+        const two = [at("a".repeat(32), "src/a.js", 3), at("b".repeat(32), "src/b.js", 4)];
+        const [group] = normaliseGitleaks(two, { repositoryId: "r", masker, inTree: () => true });
+        const [first, second] = group.evidence.map(e => e.key!);
+        expect(group.fingerprint).not.toBe(first);
+        const [alone] = normaliseGitleaks(two.slice(0, 1), { repositoryId: "r", masker, inTree: () => true });
+        expect(alone.fingerprint).toBe(first);
+        const [left] = normaliseGitleaks(two, { repositoryId: "r", masker, inTree: () => true, known: new Set([first]) });
+        expect(left.evidence.map(e => e.key)).toEqual([second]);
+        expect(normaliseGitleaks(two, { repositoryId: "r", masker, inTree: () => true, known: new Set([first, second]) })).toEqual([]);
     });
 
     it("rates a generic secret in a sample file lower and says why, keeping its fingerprint", () => {
