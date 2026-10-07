@@ -195,7 +195,8 @@ export class PrismaSink implements PipelineSink {
     }
 
     async supersedeUnreviewed(repositoryId: string | null, aspect: string) {
-        const where = { repositoryId, aspect, source: "agent" as const, status: "unreviewed" as const };
+        // The project too: the seams pass's findings have no repository to scope them.
+        const where = { projectId: this.projectId, repositoryId, aspect, source: "agent" as const, status: "unreviewed" as const };
         await prisma.$transaction(async tx => {
             const ids = (await tx.finding.findMany({ where, select: { id: true } })).map(r => r.id);
             // A scanner finding folded into one of them comes back to the review; nothing else would file it again.

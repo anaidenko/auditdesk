@@ -42,7 +42,13 @@ describe("PrismaSink", () => {
         await prisma.finding.updateMany({ where: { id: { in: [seam.id, kept.id] } }, data: { repositoryId: null } });
         await prisma.finding.update({ where: { id: kept.id }, data: { status: "accepted" } });
         const own = await add({ source: "agent", aspect: "seams", title: "a repository's" });
+        const other = await projectWithRepo();
+        const elsewhere = await createFinding(other.project.id, null, {
+            ...sampleFinding(other.repo.id, { aspect: "seams" }),
+            repositoryId: null
+        });
         await sink.supersedeUnreviewed(null, "seams");
+        expect((await prisma.finding.findUniqueOrThrow({ where: { id: elsewhere.id } })).status).toBe("unreviewed");
         const status = async (id: string) => (await prisma.finding.findUniqueOrThrow({ where: { id } })).status;
         expect([await status(seam.id), await status(kept.id), await status(own.id)]).toEqual(["superseded", "accepted", "unreviewed"]);
         expect(repo.id).toBeTruthy();
