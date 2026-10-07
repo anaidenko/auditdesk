@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { compareFindings, findingLabel, fingerprint, indexLine } from "./findings";
+import { compareFindings, findingLabel, fingerprint, indexLine, scannerDuplicates } from "./findings";
 
 describe("findings", () => {
     it("labels numbers with three digits and grows past 999", () => {
@@ -46,5 +46,34 @@ describe("findings", () => {
         expect(keys.sort(compareFindings).map(x => x.aspect)).toEqual(["security", "data", "quality", "tenancy", "legacy"]);
         const titles = [f("Code quality and tests", 1), f("Security", 2), f("Data model and database", 3)];
         expect(titles.sort(compareFindings).map(x => x.aspect)).toEqual(["Security", "Data model and database", "Code quality and tests"]);
+    });
+});
+
+describe("scannerDuplicates", () => {
+    const f = (label: string, source: "agent" | "scanner", item: string, file: string, start: number, end = start) => ({
+        label,
+        source,
+        kind: "finding" as const,
+        checklistItem: item,
+        evidence: [{ file, startLine: start, endLine: end }]
+    });
+
+    it("pairs a scanner finding with an agent finding on overlapping lines of one file under one item", () => {
+        const agent = [f("F-005", "agent", "SEC-04", "src/server.js", 7)];
+        const scanner = [
+            f("F-004", "scanner", "SEC-04", "src/server.js", 7),
+            f("F-003", "scanner", "SEC-05", "src/server.js", 7),
+            f("F-006", "scanner", "SEC-04", "src/server.js", 9),
+            f("F-007", "scanner", "SEC-04", "src/other.js", 7)
+        ];
+        expect(scannerDuplicates(agent, scanner)).toEqual([{ from: "F-004", into: "F-005" }]);
+    });
+
+    it("folds one scanner finding into the first agent finding that covers it, and never a question", () => {
+        const agent = [f("F-005", "agent", "SEC-04", "a.js", 5, 9), f("F-006", "agent", "SEC-04", "a.js", 7)];
+        const question = { ...f("F-008", "agent", "SEC-04", "a.js", 7), kind: "question" as const };
+        expect(scannerDuplicates([...agent, question], [f("F-004", "scanner", "SEC-04", "a.js", 7)])).toEqual([
+            { from: "F-004", into: "F-005" }
+        ]);
     });
 });

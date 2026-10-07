@@ -1,11 +1,12 @@
 import { freshTokens } from "./budget";
-import { findingLabel, indexLine } from "./findings";
+import { findingLabel, indexLine, scannerDuplicates } from "./findings";
 import type { AuditSink, CallRecord, NewFinding, Spend } from "./types";
 
 /** The sink `pnpm eval` and the engine's tests use: everything in memory. */
 export class MemorySink implements AuditSink {
     readonly calls: CallRecord[] = [];
-    readonly findings: (NewFinding & { label: string })[] = [];
+    /** `mergedInto`: a scanner finding folded into an agent's (pipeline, after each agent). */
+    readonly findings: (NewFinding & { label: string; mergedInto?: string })[] = [];
     readonly events: string[] = [];
     stop = false;
 
@@ -37,11 +38,23 @@ export class MemorySink implements AuditSink {
         return this.findings
             .filter(
                 f =>
+                    !f.mergedInto &&
                     f.repositoryId === repositoryId &&
                     (!filter.aspect || f.aspect === filter.aspect) &&
                     (!filter.source || f.source === filter.source)
             )
             .map(indexLine);
+    }
+    async foldScannerDuplicates(repositoryId: string, agentRunId: string) {
+        const agent = this.findings.filter(f => f.agentRunId === agentRunId);
+        const scanner = this.findings.filter(f => f.repositoryId === repositoryId && f.source === "scanner" && !f.mergedInto);
+        const pairs = scannerDuplicates(agent, scanner);
+        for (const { from, into } of pairs) {
+            const source = this.findings.find(f => f.label === from)!;
+            source.mergedInto = into;
+            this.findings.find(f => f.label === into)!.evidence.push(...source.evidence);
+        }
+        return pairs;
     }
     async knownFingerprints(repositoryId: string) {
         return new Set(this.findings.filter(f => f.repositoryId === repositoryId).map(f => f.fingerprint));

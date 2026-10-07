@@ -33,6 +33,17 @@ describe("gitleaks", () => {
         expect(prints.join()).not.toContain("0".repeat(30));
     });
 
+    it("rates a secret in a test, fixture, seed or example file lower, tags it and says why", () => {
+        const inTest = leaks.map(l => ({ ...l, File: "test/api/login.test.ts" }));
+        const [current] = normaliseGitleaks(inTest, { repositoryId: "r", masker, inTree: () => true });
+        expect(current).toMatchObject({ severity: "medium", tags: ["test-path"] });
+        expect(current.title).toMatch(/\(in a test file\)/);
+        expect(current.likelihood).toMatch(/whether the credential is real/);
+        const [history] = normaliseGitleaks(inTest, { repositoryId: "r", masker, inTree: () => false });
+        expect(history.severity).toBe("low");
+        expect(current.fingerprint).toBe(normaliseGitleaks(inTest, { repositoryId: "r", masker, inTree: () => true })[0].fingerprint);
+    });
+
     it("rates a secret found only in history one level lower and says so", () => {
         const [f] = normaliseGitleaks(leaks, { repositoryId: "r", masker, inTree: () => false });
         expect(f.severity).toBe("high");
@@ -58,6 +69,14 @@ describe("Semgrep", () => {
         expect(evalFinding.checklistItem).toBe("SEC-04");
         expect(evalFinding.references.cwe).toMatch(/^CWE-\d+$/);
         expect(evalFinding.evidence[0].file).toBe("src/server.js");
+        expect(evalFinding.tags).toEqual([]);
+    });
+
+    it("rates a result in a test file low and tags it", () => {
+        const results = parseSemgrep(recorded("semgrep")).map(r => ({ ...r, path: "test/server.spec.js" }));
+        const [f] = normaliseSemgrep(results, { repositoryId: "r", masker });
+        expect(f).toMatchObject({ severity: "low", tags: ["test-path"] });
+        expect(f.title).toMatch(/\(in a test file\)$/);
     });
 });
 

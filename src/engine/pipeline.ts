@@ -25,6 +25,8 @@ export interface PipelineSink extends AuditSink {
     startAgent(repositoryId: string, aspect: string, share: { usd: number; tokens: number }): Promise<string>;
     finishAgent(agentRunId: string, outcome: AgentOutcome): Promise<void>;
     supersedeUnreviewed(repositoryId: string, aspect: string): Promise<void>;
+    /** Merges the repository's unreviewed scanner findings that the agent filed again into the agent's own. */
+    foldScannerDuplicates(repositoryId: string, agentRunId: string): Promise<{ from: string; into: string }[]>;
 }
 
 export interface AuditInput {
@@ -212,6 +214,8 @@ export async function runAudit(input: AuditInput, deps: AuditDeps): Promise<{ st
                     throw e;
                 });
             await sink.finishAgent(agentRunId, outcome);
+            for (const f of await sink.foldScannerDuplicates(repo.id, agentRunId))
+                await sink.progress(`Folded ${f.from} into ${f.into}: the scanner's finding repeats the agent's.`);
             await sink.progress(
                 `${checklist.title}: ${outcome.status}${outcome.note ? ` — ${outcome.note}` : ""}`,
                 outcome.status === "done" ? "info" : "warn"

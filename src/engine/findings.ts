@@ -52,3 +52,26 @@ export function compareFindings(
         a.number - b.number
     );
 }
+
+type Placed = {
+    label: string;
+    source: "agent" | "scanner";
+    kind: "finding" | "question";
+    checklistItem: string | null;
+    evidence: Evidence[];
+};
+
+/**
+ * Scanner findings an agent filed again: the same checklist item and overlapping lines of one file.
+ * Each goes into the first agent finding that covers it, which keeps the agent's explanation.
+ */
+export function scannerDuplicates(agent: Placed[], scanner: Placed[]): { from: string; into: string }[] {
+    const overlaps = (a: Evidence[], b: Evidence[]) =>
+        a.some(x => b.some(y => x.file === y.file && x.startLine <= y.endLine && y.startLine <= x.endLine));
+    return scanner.flatMap(s => {
+        const into = agent.find(
+            a => a.source === "agent" && a.kind === "finding" && a.checklistItem === s.checklistItem && overlaps(a.evidence, s.evidence)
+        );
+        return into ? [{ from: s.label, into: into.label }] : [];
+    });
+}

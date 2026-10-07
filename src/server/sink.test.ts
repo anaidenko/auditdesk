@@ -16,7 +16,7 @@ async function setup() {
         data: { projectId: project.id, model: "m", effort: "low", aspects: ["security"], budgetUsd: 1, budgetTokens: 20_000 }
     });
     const add = (over: Parameters<typeof sampleFinding>[1]) => createFinding(project.id, run.id, sampleFinding(repo.id, over));
-    return { sink: new PrismaSink(run.id, project.id), repo, add };
+    return { sink: new PrismaSink(run.id, project.id), repo, add, run };
 }
 
 describe("PrismaSink", () => {
@@ -33,6 +33,27 @@ describe("PrismaSink", () => {
         expect(await status(agentAccepted.id)).toBe("accepted");
         expect(await status(scanner.id)).toBe("unreviewed");
         expect(await status(otherAspect.id)).toBe("unreviewed");
+    });
+
+    it("folds a scanner finding that an agent filed again into the agent's, with its evidence", async () => {
+        const { sink, repo, add, run } = await setup();
+        const agentRun = await prisma.agentRun.create({
+            data: { runId: run.id, repositoryId: repo.id, aspect: "security", status: "done", tokenShare: 1, usdShare: 1 }
+        });
+        const line7 = [{ file: "src/server.js", startLine: 7, endLine: 7, snippet: "eval(req.query.expr)" }];
+        const scanner = await add({ source: "scanner", checklistItem: "SEC-04", evidence: line7 });
+        const xss = await add({ source: "scanner", checklistItem: "SEC-05", evidence: line7 });
+        const agent = await add({
+            source: "agent",
+            agentRunId: agentRun.id,
+            checklistItem: "SEC-04",
+            evidence: [{ file: "src/server.js", startLine: 6, endLine: 8 }]
+        });
+        expect(await sink.foldScannerDuplicates(repo.id, agentRun.id)).toEqual([{ from: scanner.label, into: agent.label }]);
+        const row = (id: string) => prisma.finding.findUniqueOrThrow({ where: { id } });
+        expect(await row(scanner.id)).toMatchObject({ status: "merged", mergedIntoId: agent.id });
+        expect((await row(agent.id)).evidence).toHaveLength(2);
+        expect((await row(xss.id)).status).toBe("unreviewed");
     });
 
     it("lists rejected findings in the agent's index with the reason, and leaves out merged and superseded ones", async () => {

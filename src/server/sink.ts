@@ -2,15 +2,16 @@ import "server-only";
 
 import type { AgentOutcome } from "@/engine/agent/run-aspect";
 import { freshTokens } from "@/engine/budget";
-import { findingLabel, indexLine } from "@/engine/findings";
+import { findingLabel, indexLine, scannerDuplicates } from "@/engine/findings";
 import type { PipelineSink } from "@/engine/pipeline";
 import type { ToolVersions } from "@/engine/scanners/types";
 import type { StackProfile } from "@/engine/stack";
-import type { CallRecord, NewFinding, SeverityName, Spend } from "@/engine/types";
+import type { CallRecord, Evidence, NewFinding, SeverityName, Spend } from "@/engine/types";
 import type { Prisma } from "@/generated/prisma/client";
 import { prisma } from "@/server/db";
 import { createFinding } from "@/server/findings";
 import { RUN_CHANNEL } from "@/server/pg";
+import { merge } from "@/server/review";
 
 // Rejected findings stay in the agent's index, marked, so a re-run does not file them again (design § 9).
 const INDEXED = ["unreviewed", "accepted", "edited", "excluded", "rejected"] as const;
@@ -107,6 +108,26 @@ export class PrismaSink implements PipelineSink {
             });
             return r.status === "rejected" ? `${line} (rejected by the auditor: ${r.statusReason}; do not report it again)` : line;
         });
+    }
+
+    async foldScannerDuplicates(repositoryId: string, agentRunId: string) {
+        const placed = (r: { number: number; source: string; kind: string; checklistItem: string | null; evidence: unknown }) => ({
+            label: findingLabel(r.number),
+            source: r.source as "agent" | "scanner",
+            kind: r.kind as "finding" | "question",
+            checklistItem: r.checklistItem,
+            evidence: r.evidence as Evidence[]
+        });
+        const agent = await prisma.finding.findMany({ where: { agentRunId, status: "unreviewed" }, orderBy: { number: "asc" } });
+        const scanner = await prisma.finding.findMany({
+            where: { repositoryId, source: "scanner", status: "unreviewed" },
+            orderBy: { number: "asc" }
+        });
+        const pairs = scannerDuplicates(agent.map(placed), scanner.map(placed));
+        const id = new Map(scanner.map(r => [findingLabel(r.number), r.id]));
+        for (const { from, into } of pairs) await merge(id.get(from)!, into);
+        if (pairs.length) await this.notify();
+        return pairs;
     }
 
     async knownFingerprints(repositoryId: string) {

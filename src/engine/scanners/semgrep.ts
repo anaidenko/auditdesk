@@ -2,6 +2,7 @@ import { fingerprint } from "../findings";
 import type { Masker } from "../masker";
 import type { NewFinding, SeverityName } from "../types";
 
+import { ROLE_WORDS, sampleRole } from "./paths";
 import type { Ruleset, SemgrepResult } from "./types";
 
 export function semgrepArgs(rulesets: Ruleset[]): string[] {
@@ -55,12 +56,13 @@ export function normaliseSemgrep(results: SemgrepResult[], o: { repositoryId: st
         const item = BY_CWE.find(([re]) => cwe && re.test(cwe))?.[1] ?? "SEC-15";
         const evidence = [{ file: r.path, startLine: r.start.line, endLine: r.end.line, snippet: o.masker.mask(r.extra.lines) }];
         const base = { repositoryId: o.repositoryId, aspect: "security", checklistItem: item, evidence };
+        const role = sampleRole(r.path);
         return {
             ...base,
             agentRunId: null,
             kind: "finding",
-            title: o.masker.mask(r.extra.message.split(/(?<=\.)\s/)[0].slice(0, 160)),
-            severity: SEVERITY[r.extra.severity] ?? "medium",
+            title: `${o.masker.mask(r.extra.message.split(/(?<=\.)\s/)[0].slice(0, 160))}${role ? ` (${ROLE_WORDS[role]})` : ""}`,
+            severity: role ? "low" : (SEVERITY[r.extra.severity] ?? "medium"),
             likelihood: null,
             impact: null,
             summary: o.masker.mask(r.extra.message),
@@ -68,7 +70,7 @@ export function normaliseSemgrep(results: SemgrepResult[], o: { repositoryId: st
             recommendation: "Confirm the input is attacker-controlled; if so, follow the rule's references.",
             effort: "S",
             references: { cwe, cheatSheets: r.extra.metadata.references?.filter(u => u.includes("cheatsheetseries.owasp.org")) },
-            tags: [],
+            tags: role ? ["test-path"] : [],
             source: "scanner",
             fingerprint: fingerprint({ ...base, evidence: [{ ...evidence[0], snippet: `${r.check_id}\n${evidence[0].snippet}` }] })
         } satisfies NewFinding;
