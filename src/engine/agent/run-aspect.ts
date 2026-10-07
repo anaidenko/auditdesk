@@ -18,11 +18,13 @@ export const NUDGE = "You ended without calling finish_aspect. Call it now with 
 export const REOPEN = "Not finished: another call in this turn failed. Fix it, then call finish_aspect again.";
 
 export function outcomeOf(ctx: AgentContext, status: AgentOutcome["status"], note: string | null): AgentOutcome {
+    // A finish that sent the agent back stands in when it never finished again.
+    const reported = ctx.state.finished ?? ctx.state.sentBackFinish;
     return {
         status,
-        note,
-        summary: ctx.state.finished?.summary ?? null,
-        coverage: ctx.state.finished?.coverage ?? ctx.checklist.items.map(i => ({ item: i.id, status: "not_reported" as const }))
+        note: note ?? ctx.state.note ?? null,
+        summary: reported?.summary ?? null,
+        coverage: reported?.coverage ?? ctx.checklist.items.map(i => ({ item: i.id, status: "not_reported" as const }))
     };
 }
 

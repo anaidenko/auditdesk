@@ -72,6 +72,20 @@ test("a run over two aspects files findings under both, and the report covers bo
     await expect(page.getByRole("checkbox", { name: "Architecture and structure" })).not.toBeChecked();
 });
 
+test("an agent that finishes having looked at little is sent back once, then labelled a limited review", async ({ page }) => {
+    await newProject(page, "Limited");
+    await page.getByLabel(/client agreed/).check();
+    await page.getByRole("button", { name: "Save", exact: true }).click();
+    await page.getByRole("checkbox", { name: "Production readiness" }).check();
+    await page.getByRole("button", { name: "Start run" }).click();
+    await expect(page.getByTestId("run-status")).toHaveText("done", { timeout: 60_000 });
+    const production = page.getByRole("listitem").filter({ hasText: "Production readiness" }).first();
+    await expect(production.getByTestId("limited-review")).toBeVisible();
+    await expect(production).toContainText("Sent back once");
+    await expect(page.getByText(/Production readiness: sent back to \d+ unexamined items of \d+\./)).toBeVisible();
+    await expect(page.getByRole("listitem").filter({ hasText: "Security" }).first().getByTestId("limited-review")).toHaveCount(0);
+});
+
 test("a refused start keeps the aspects and caps Andrii chose", async ({ page }) => {
     await newProject(page, "Refused start");
     await page.getByLabel(/client agreed/).check();

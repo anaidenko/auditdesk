@@ -135,7 +135,9 @@ describe("runEval", () => {
             { aspect: "quality" }
         );
         expect(run.result.agents[0]).toMatchObject({ aspect: "quality", summary: "Done.", coverage: { examined: 1 } });
-        expect(run.text).toMatch(/\| quality \| done \| 1 examined, 0 partly, \d+ not examined, 0 not reported \| Done\. \|/);
+        expect(run.text).toMatch(
+            /\| quality \| done \| 1 examined, 0 partly, \d+ not examined, 0 not reported \| Done\. Sent back once; \d+ of \d+ items still not examined\. \|/
+        );
     });
 
     it("gives every chosen aspect a row, with why an aspect did not start", async () => {
@@ -168,6 +170,7 @@ describe("runEval", () => {
                         "report_finding",
                         finding({ checklist_item: "SEC-05", evidence: [{ file: "src/server.js", start_line: 7, end_line: 7 }] })
                     ),
+                    finish(),
                     finish()
                 ],
                 "Code quality and tests": [finish([]), finish([])]
@@ -175,6 +178,7 @@ describe("runEval", () => {
             { judge: true, judgeUsd: 1, aspect: "security" },
             { key: { ...KEY, entries: KEY.entries.slice(0, 1) }, judge: new Anthropic({ apiKey: "test", fetch, maxRetries: 0 }) }
         );
+        expect(run.result.agents[0].status).toBe("done");
         expect(requests.length).toBeGreaterThanOrEqual(1);
         expect(run.text).toMatch(/Judge: \d+ verdicts?: /);
         expect(run.result.judge!.usd).toBeGreaterThan(0);

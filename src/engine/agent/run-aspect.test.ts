@@ -102,10 +102,49 @@ describe("runAspect", () => {
         expect(JSON.stringify(requests[1].body.messages)).toMatch(/Not finished: 2 of 2 items are not examined \(SEC-01, SEC-04\)/);
     });
 
-    it("accepts a thin finish at once when the share is mostly spent", async () => {
-        const { requests, run } = await setup([finish([])], { share: { usd: 0.001, tokens: 1_000_000 } });
-        expect(await run()).toMatchObject({ status: "done" });
-        expect(requests).toHaveLength(1);
+    // A replayed call costs $0.008 (Opus 5.5 prices) and 1,200 fresh tokens.
+    it("accepts a thin finish at once when half the share in dollars or tokens is spent, and says why", async () => {
+        for (const share of [
+            { usd: 0.012, tokens: 1_000_000 },
+            { usd: 10, tokens: 2_000 }
+        ]) {
+            const { requests, run } = await setup([finish([])], { share });
+            expect(await run()).toMatchObject({ status: "done", note: "2 of 2 items not examined; half of its share was already spent." });
+            expect(requests).toHaveLength(1);
+        }
+        const { requests, run } = await setup(
+            [finish([]), tool("read_file", { path: "src/db.js", start_line: 1, end_line: 2 }), finish([])],
+            {
+                share: { usd: 0.02, tokens: 1_000_000 }
+            }
+        );
+        expect(await run()).toMatchObject({ status: "done", note: "Sent back once; 2 of 2 items still not examined." });
+        expect(requests).toHaveLength(3);
+    });
+
+    it("keeps a sent-back agent's summary and coverage when its share runs out before it finishes again", async () => {
+        const read = () => tool("read_file", { path: "src/db.js", start_line: 1, end_line: 2 });
+        const { run } = await setup([finish([]), read(), read(), finish([])], { share: { usd: 0.02, tokens: 1_000_000 } });
+        const out = await run();
+        expect(out).toMatchObject({ status: "partial", summary: "Done." });
+        expect(out.coverage).toEqual([
+            { item: "SEC-01", status: "not_examined" },
+            { item: "SEC-04", status: "not_examined" }
+        ]);
+    });
+
+    it("keeps the first coverage when a sent-back agent upgrades it without reading any code", async () => {
+        const { sink, run } = await setup([
+            finish([]),
+            finish([
+                { item: "SEC-01", status: "partly" },
+                { item: "SEC-04", status: "partly" }
+            ])
+        ]);
+        const out = await run();
+        expect(out.coverage.map(c => c.status)).toEqual(["not_examined", "not_examined"]);
+        expect(out.note).toMatch(/changed its coverage without reading more code/);
+        expect(sink.events).toContainEqual(expect.stringMatching(/sent back to 2 unexamined items of 2/));
     });
 
     it("tags a finding filed under an AI-built item ai-built", async () => {

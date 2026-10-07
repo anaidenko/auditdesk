@@ -29,8 +29,13 @@ export interface AgentContext {
         finished: { summary: string; coverage: Coverage[] } | null;
         reported: string[];
         fatal: Error | null;
-        /** How many times finish_aspect sent the agent back to unexamined items. */
+        /** How many times finish_aspect sent the agent back to unexamined items, and what it reported then. */
         sentBack?: number;
+        sentBackFinish?: { summary: string; coverage: Coverage[]; reads: number };
+        /** Read-only tool calls so far: a send-back's second finish must follow at least one. */
+        reads?: number;
+        /** Why a finish was limited, for the outcome's note. */
+        note?: string;
     };
 }
 
@@ -112,6 +117,16 @@ const spec = <S extends z.ZodObject>(s: {
 
 /** The same seven tools for every aspect, declared from the first request: the cached prefix starts with them (design § 8). */
 export function toolSpecs(ctx: AgentContext): ToolSpec[] {
+    const counted = (s: ToolSpec): ToolSpec =>
+        s.readOnly
+            ? {
+                  ...s,
+                  run: (args: never) => {
+                      ctx.state.reads = (ctx.state.reads ?? 0) + 1;
+                      return s.run(args);
+                  }
+              }
+            : s;
     return [
         spec({
             name: "list_files",
@@ -176,7 +191,7 @@ export function toolSpecs(ctx: AgentContext): ToolSpec[] {
             readOnly: false,
             run: guard(ctx, async input => finishAspect(ctx, input))
         })
-    ];
+    ].map(counted);
 }
 
 /** The API engine's declaration: strict tools on the SDK's tool runner. */
@@ -242,14 +257,27 @@ async function finishAspect(ctx: AgentContext, input: z.infer<typeof finishInput
     const ids = ctx.checklist.items.map(i => i.id);
     const unknown = input.coverage.filter(c => !ids.includes(c.item)).map(c => c.item);
     if (unknown.length) throw new ToolError(`Not on this checklist: ${unknown.join(", ")}.`);
-    const coverage: Coverage[] = ids.map(id => input.coverage.find(c => c.item === id) ?? { item: id, status: "not_examined" });
+    let coverage: Coverage[] = ids.map(id => input.coverage.find(c => c.item === id) ?? { item: id, status: "not_examined" });
+    const first = ctx.state.sentBackFinish;
+    // Coverage is self-reported: statuses raised after a send-back without one more read do not count.
+    const rank = (c: Coverage) => ({ examined: 2, partly: 1 })[c.status as "examined" | "partly"] ?? 0;
+    if (first && (ctx.state.reads ?? 0) === first.reads && coverage.some((c, i) => rank(c) > rank(first.coverage[i]))) {
+        coverage = first.coverage;
+        ctx.state.note = "Sent back once; it changed its coverage without reading more code, so its first coverage stands.";
+    }
+    const left = coverage.filter(c => c.status === "not_examined").map(c => c.item);
     if (limitedReview(coverage) && ctx.share && (ctx.state.sentBack ?? 0) < SEND_BACK) {
         const spend = await ctx.sink.agentSpend(ctx.agentRunId);
         if (!spend.unpriced && spend.usd * 2 < ctx.share.usd && spend.freshTokens * 2 < ctx.share.tokens) {
             ctx.state.sentBack = (ctx.state.sentBack ?? 0) + 1;
-            const left = coverage.filter(c => c.status === "not_examined").map(c => c.item);
-            return `Not finished: ${left.length} of ${ids.length} items are not examined (${left.join(", ")}), and most of this aspect's budget is left. Examine them in the code, file what you find, then call finish_aspect again with the updated coverage.`;
+            // Kept, so an agent that never finishes again still reports what it said here.
+            ctx.state.sentBackFinish = { summary: input.summary, coverage, reads: ctx.state.reads ?? 0 };
+            await ctx.sink.progress(`${ctx.checklist.title}: sent back to ${left.length} unexamined items of ${ids.length}.`, "warn");
+            return `Not finished: ${left.length} of ${ids.length} items are not examined (${left.join(", ")}), and most of this aspect's budget is left. Examine them in the code, file what you find, then call finish_aspect again with the updated coverage. Mark an item examined or partly only for code you read for it.`;
         }
+        ctx.state.note ??= `${left.length} of ${ids.length} items not examined; half of its share was already spent.`;
+    } else if (limitedReview(coverage)) {
+        ctx.state.note ??= `Sent back once; ${left.length} of ${ids.length} items still not examined.`;
     }
     ctx.state.finished = { summary: input.summary, coverage };
     return "Aspect finished.";

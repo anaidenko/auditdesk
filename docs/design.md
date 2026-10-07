@@ -83,7 +83,10 @@ Security is always on; the others are ticked per audit.
 
 Each aspect has a checklist with stable item IDs (`SEC-03`) and a severity guide written in the
 terms of one shared scale, graded by consequence. An agent reports each item as examined, partly
-examined or not examined; the report lists that coverage and never says "passed". An AI-built
+examined or not examined; the report lists that coverage and never says "passed". An agent that
+finishes having looked at fewer than half of its items, with most of its budget share left, is sent
+back once to the items it skipped; if it still stops short, the run page and the report label the
+aspect a limited review and say why. An AI-built
 mode adds checklist items for code written largely by AI tools, and the report gathers their
 findings in their own section.
 
