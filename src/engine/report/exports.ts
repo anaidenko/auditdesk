@@ -1,7 +1,7 @@
 import { SEAMS, aspectTitle } from "../aspects";
 import { compareFindings } from "../findings";
 import type { Ref } from "../references";
-import type { SeverityName } from "../types";
+import type { Evidence, SeverityName } from "../types";
 
 import type { ReportData, ReportFinding } from "./types";
 
@@ -51,6 +51,9 @@ export interface SarifLog {
     }[];
 }
 
+// GitHub reads only a result's first location, so each place of a scanner finding of several gets a result.
+const byPlace = (f: ReportFinding): { f: ReportFinding; place: Evidence | null }[] =>
+    f.evidence.length > 1 && f.evidence.every(e => e.key) ? f.evidence.map(place => ({ f, place })) : [{ f, place: null }];
 const number = (f: ReportFinding) => Number(f.label.replace(/\D/g, ""));
 const bySeverity = (fs: ReportFinding[]) =>
     [...fs].sort((a, b) => compareFindings({ ...a, number: number(a) }, { ...b, number: number(b) }));
@@ -96,17 +99,17 @@ export function sarif(d: ReportData, repository: string): SarifLog {
         runs: [
             {
                 tool: { driver: { name: "Auditdesk", informationUri: "https://github.com/anaidenko/auditdesk", rules } },
-                results: findings.map(f => ({
+                results: findings.flatMap(byPlace).map(({ f, place }) => ({
                     ruleId: f.checklistItem ?? "other",
                     level: LEVEL[f.severity ?? "info"],
                     message: { text: `${f.title.replace(/[.!?]+$/, "")}. ${f.summary}` },
-                    locations: f.evidence.map(e => ({
+                    locations: (place ? [place] : f.evidence).map(e => ({
                         physicalLocation: {
                             artifactLocation: { uri: e.file.split("/").map(encodeURIComponent).join("/"), uriBaseId: "%SRCROOT%" as const },
                             region: { startLine: e.startLine, endLine: e.endLine }
                         }
                     })),
-                    partialFingerprints: { "auditdesk/finding": f.label },
+                    partialFingerprints: { "auditdesk/finding": f.label, ...(place ? { "auditdesk/place": place.key! } : {}) },
                     properties: {
                         label: f.label,
                         severity: f.severity,

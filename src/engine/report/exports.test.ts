@@ -70,6 +70,22 @@ describe("sarif", () => {
         expect(app.properties.commit).toBe("0123456789abcdef");
     });
 
+    // GitHub reads only a result's first location ("All other values are ignored", its SARIF support page).
+    it("gives each place of a scanner finding of several its own result, so each becomes an alert", () => {
+        const places = ["a.js", "b.js", "c.js"].map((file, i) => ({ file, startLine: i + 1, endLine: i + 1, key: `k${i}` }));
+        const log = sarif(one({ label: "F-007", source: "scanner", evidence: places } as never), "app");
+        const results = log.runs[0].results;
+        expect(results.map(r => [r.properties.label, r.locations.map(l => l.physicalLocation.artifactLocation.uri)])).toEqual([
+            ["F-007", ["a.js"]],
+            ["F-007", ["b.js"]],
+            ["F-007", ["c.js"]]
+        ]);
+        expect(results.map(r => r.partialFingerprints["auditdesk/place"])).toEqual(["k0", "k1", "k2"]);
+        const agent = sarif(one({ evidence: [places[0], { file: "d.ts", startLine: 1, endLine: 2 }] }), "app").runs[0].results;
+        expect(agent).toHaveLength(1);
+        expect(agent[0].locations).toHaveLength(2);
+    });
+
     it("marks a security rule for GitHub with the highest severity among its results", () => {
         const d = reportData({
             findings: [
