@@ -22,6 +22,9 @@ paths:
   through `GIT_CONFIG_COUNT`/`GIT_CONFIG_KEY_0`/`GIT_CONFIG_VALUE_0` (README § Tests): an
   `insteadOf` in this repository's config does not reach a clone made inside it.
 - **End-to-end tests (Playwright)** run the built app on port 3100 with both replays.
+- **A worktree for unit tests:** `scripts/worktree.sh <branch> <dir>` links `node_modules` and
+  generates the Prisma client, which a bare `git worktree add` leaves out (type checks then fail
+  with implicit `any` everywhere). e2e still runs only in the main tree.
 - **A socket a test server hands over** in a `connect` or `upgrade` event needs its own error
   listener: Linux resets it where macOS closes it, and the uncaught `ECONNRESET` fails CI only.
 - **A test that passes before the change exists** is a finding about the test. A red run counts
