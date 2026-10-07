@@ -109,13 +109,18 @@ test("the Evals page plots recall against cost for every result of a fixture", a
 test("the judge's verdicts are spot-checked from the Evals page", async ({ page }) => {
     await page.goto("/evals");
     const own = page.locator("section", { hasText: "own" }).filter({ has: page.getByTestId("eval-row") });
-    await own.getByRole("link", { name: "0 of 2 checked" }).click();
+    await own.getByRole("link", { name: "0 of 2 checked, 0 agreed" }).click();
+    // Enter in a note records nothing: a disagreement is when a note gets written.
+    const other = page.locator("section", { hasText: "F-009" });
+    await other.getByPlaceholder("Why (optional)").fill("The judge is wrong here");
+    await other.getByPlaceholder("Why (optional)").press("Enter");
     const verdict = page.locator("section", { hasText: "F-004" });
     await verdict.getByPlaceholder("Why (optional)").fill("The query is built from a constant.");
     await verdict.getByRole("button", { name: "Agree", exact: true }).click();
     await expect(verdict.getByTestId("spot-check")).toContainText("agreed");
+    await expect(other.getByTestId("spot-check")).toHaveCount(0);
     await page.goto("/evals");
-    await expect(page.getByRole("link", { name: "1 of 2 checked" })).toBeVisible();
+    await expect(page.getByRole("link", { name: "1 of 2 checked, 1 agreed" })).toBeVisible();
 });
 
 test("a refused start keeps the aspects and caps Andrii chose", async ({ page }) => {

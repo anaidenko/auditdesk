@@ -107,49 +107,59 @@ describe("parseEvalResult", () => {
 });
 
 describe("parseVerdicts", () => {
-    it("reads each judged finding outside the key, with its verdict, the entry it names and the reason", () => {
-        const md = [
+    const md = (...lines: string[]) =>
+        [
+            "# Eval: own, claude-sonnet-5-5 at low",
+            "",
             "## Findings outside the key",
             "",
-            "**False findings: 1** by the judge's verdicts, of 3 it was given.",
+            "**False findings: 1** by the judge's verdicts, of 4 it was given.",
             "",
-            "- F-004 (SEC-04, src/db.js:5): Raw SQL — judge: false; The query is parameterised.",
-            "- F-007 (SEC-10, data/users.yml:88-90): Secret in the code: key (in a seed file) — judge: matches_key JS-loginAdminChallenge+loginJimChallenge; Same login query.",
-            "- F-009 (no item, no location): Unjudged leftover",
+            ...lines,
+            "Questions outside the key: 0.",
             "",
-            "Beside an entry under another item:",
-            "- F-011 (SEC-15, server.ts:260): Directory listing — judge: unsure; Not judged: the judge's cap was reached.",
+            `Judge: 4 verdicts: 1 false, 1 matches_key, 2 unsure. Cost $0.02.`,
             "",
             "## Cost"
         ].join("\n");
-        expect(parseVerdicts(md)).toEqual([
+
+    it("reads each judged finding outside the key, and keeps apart those the judge did not reach", () => {
+        const out = parseVerdicts(
+            md(
+                "- F-004 (SEC-04, src/app/(auth)/login/page.tsx:5): Raw SQL (twice): see — judge: false; The query is parameterised; see — judge: x.",
+                "- F-007 (SEC-10, data/users.yml:88-90): Secret in a seed file — judge: matches_key JS-login+jim; Same login query.",
+                "- F-009 (no item, no location): Unjudged leftover",
+                "",
+                "Beside an entry under another item:",
+                "- F-011 (SEC-15, server.ts:260): Directory listing — judge: unsure; Not judged: the judge's cap was reached."
+            )
+        );
+        expect(out.verdicts).toEqual([
             {
                 label: "F-004",
                 item: "SEC-04",
-                where: "src/db.js:5",
-                title: "Raw SQL",
+                where: "src/app/(auth)/login/page.tsx:5",
+                title: "Raw SQL (twice): see",
                 verdict: "false",
                 key: null,
-                reason: "The query is parameterised."
+                reason: "The query is parameterised; see — judge: x."
             },
             {
                 label: "F-007",
                 item: "SEC-10",
                 where: "data/users.yml:88-90",
-                title: "Secret in the code: key (in a seed file)",
+                title: "Secret in a seed file",
                 verdict: "matches_key",
-                key: "JS-loginAdminChallenge+loginJimChallenge",
+                key: "JS-login+jim",
                 reason: "Same login query."
-            },
-            {
-                label: "F-011",
-                item: "SEC-15",
-                where: "server.ts:260",
-                title: "Directory listing",
-                verdict: "unsure",
-                key: null,
-                reason: "Not judged: the judge's cap was reached."
             }
         ]);
+        expect(out.notJudged.map(v => v.label)).toEqual(["F-011"]);
+        // The judge's tally names four verdicts; three lines read as one.
+        expect(out.unreadable).toBe(1);
+    });
+
+    it("reads nothing from a result the judge did not read", () => {
+        expect(parseVerdicts("# Eval: own, m at low\n")).toEqual({ verdicts: [], notJudged: [], unreadable: 0 });
     });
 });

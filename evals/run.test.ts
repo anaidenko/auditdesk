@@ -1,6 +1,6 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { readFileSync } from "node:fs";
-import { mkdtemp } from "node:fs/promises";
+import { mkdtemp, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
@@ -60,11 +60,11 @@ const OPTIONS: EvalOptions = {
 async function evalRun(
     recording: Recording,
     over: Partial<EvalOptions> = {},
-    o: { key?: AnswerKey; runAspect?: AspectRunner; judge?: Anthropic } = {}
+    o: { key?: AnswerKey; runAspect?: AspectRunner; judge?: Anthropic; resultsDir?: string } = {}
 ) {
     const source = await makeSampleRepo();
     const sha = (await git(["rev-parse", "HEAD"], source)).trim();
-    const resultsDir = await mkdtemp(join(tmpdir(), "eval-results-"));
+    const resultsDir = o.resultsDir ?? (await mkdtemp(join(tmpdir(), "eval-results-")));
     const { fetch } = replayFetch(recording);
     // Replayed messages are served as Opus 5.5 (src/engine/replay.ts), so the run asks for it.
     const out = await runEval(
@@ -216,6 +216,13 @@ describe("runEval", () => {
 
     it("refuses an aspect the key has no entry for", async () => {
         await expect(evalRun({}, { aspect: "tenancy" })).rejects.toThrow(/no key entry .* tenancy/i);
+    });
+
+    it("takes a new name when a spot-check of an earlier result by its name is still there", async () => {
+        const resultsDir = await mkdtemp(join(tmpdir(), "eval-results-"));
+        await writeFile(join(resultsDir, "2026-10-08-sample-security-claude-opus-5-5-low.review.json"), "{}");
+        const run = await evalRun({ Security: [finish([]), finish([])] }, { aspect: "security" }, { resultsDir });
+        expect(run.file).toBe(join(resultsDir, "2026-10-08-sample-security-claude-opus-5-5-low-2.md"));
     });
 
     it("runs a single aspect when --aspect is given", async () => {

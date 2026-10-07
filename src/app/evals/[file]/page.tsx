@@ -1,8 +1,9 @@
 import { notFound } from "next/navigation";
 
+import { ActionForm } from "@/app/ActionForm";
 import { Badge, Card, PageHeader, button, input } from "@/app/ui";
 import { parseEvalResult, parseVerdicts } from "@/engine/eval-results";
-import { loadChecks, loadResultText } from "@/server/evals";
+import { type SpotCheck, currentCheck, loadChecks, loadResultText } from "@/server/evals";
 
 import { spotCheck } from "../actions";
 
@@ -14,18 +15,34 @@ export default async function SpotCheckPage({ params }: { params: Promise<{ file
     const md = await loadResultText(file).catch(() => null);
     const row = md ? parseEvalResult(md, file) : null;
     if (!md || !row) notFound();
-    const verdicts = parseVerdicts(md);
-    const checks = await loadChecks(file);
-    const checked = verdicts.filter(v => checks[v.label]);
+    const { verdicts, notJudged, unreadable } = parseVerdicts(md);
+    let checks: Record<string, SpotCheck> = {};
+    let broken: string | null = null;
+    try {
+        checks = await loadChecks(file);
+    } catch (e) {
+        broken = (e as Error).message;
+    }
+    const current = verdicts.map(v => currentCheck(checks, v));
+    const checked = current.filter(Boolean);
     return (
         <div className="space-y-8">
             <PageHeader eyebrow="Evals · spot-check" title={`${row.fixture}: ${row.model} at ${row.effort}`}>
                 The judge read the findings the grader could not place. Agree or disagree with each verdict; your calls are kept beside the
-                result. {checked.length} of {verdicts.length} checked, {checked.filter(v => checks[v.label].agree).length} agreed.
+                result. {checked.length} of {verdicts.length} checked, {checked.filter(c => c!.agree).length} agreed.
             </PageHeader>
-            {verdicts.length === 0 && <p className="text-sm text-zinc-500">This run has no judge verdicts: it ran without --judge.</p>}
-            {verdicts.map(v => {
-                const check = checks[v.label];
+            {broken && <p className="text-sm text-red-700">{broken}</p>}
+            {unreadable > 0 && (
+                <p className="text-sm text-amber-800">
+                    {unreadable} of the judge&apos;s verdicts could not be read from the result file, so they are not listed.
+                </p>
+            )}
+            {verdicts.length === 0 && notJudged.length === 0 && (
+                <p className="text-sm text-zinc-500">This run has no judge verdicts: it ran without --judge.</p>
+            )}
+            {verdicts.map((v, i) => {
+                const check = current[i];
+                const stale = !check && checks[v.label];
                 return (
                     <Card
                         key={v.label}
@@ -40,11 +57,14 @@ export default async function SpotCheckPage({ params }: { params: Promise<{ file
                             {v.key && <span className="mr-1 font-mono text-xs">{v.key}</span>}
                             {v.reason}
                         </p>
-                        <form action={spotCheck.bind(null, file, v.label)} className="mt-3 flex flex-wrap items-center gap-2">
+                        <ActionForm action={spotCheck.bind(null, file, v.label)} className="mt-3 flex flex-wrap items-center gap-2">
+                            {/* The form's default button: Enter in the note submits nothing rather than "Agree". */}
+                            <button type="submit" disabled hidden aria-hidden tabIndex={-1} />
                             <input
                                 name="note"
                                 defaultValue={check?.note ?? ""}
                                 placeholder="Why (optional)"
+                                aria-label={`Note on ${v.label}`}
                                 className={`${input} max-w-md`}
                             />
                             <button name="agree" value="yes" className={button.secondary}>
@@ -58,10 +78,26 @@ export default async function SpotCheckPage({ params }: { params: Promise<{ file
                                     {check.agree ? "agreed" : "disagreed"} {check.at.slice(0, 10)}
                                 </span>
                             )}
-                        </form>
+                            {stale && (
+                                <span data-testid="spot-check-stale" className="text-xs text-amber-800">
+                                    checked when this label had another verdict; check it again
+                                </span>
+                            )}
+                        </ActionForm>
                     </Card>
                 );
             })}
+            {notJudged.length > 0 && (
+                <Card as="section" title="Not judged" description="The judge did not reach these, so there is nothing to agree with.">
+                    <ul className="space-y-1 text-sm text-zinc-700">
+                        {notJudged.map(v => (
+                            <li key={v.label}>
+                                <span className="font-mono text-xs">{v.label}</span> {v.title}: {v.reason}
+                            </li>
+                        ))}
+                    </ul>
+                </Card>
+            )}
         </div>
     );
 }
