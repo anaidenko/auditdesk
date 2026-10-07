@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { ReportData } from "@/engine/report/types";
 import { EMPTY_STACK } from "@/engine/stack";
@@ -50,6 +50,18 @@ async function agent(runId: string, repositoryId: string, status: "done" | "part
         }
     });
 }
+
+describe("the report's auditor", () => {
+    afterEach(() => vi.unstubAllEnvs());
+
+    it("is AUDITOR_NAME, and nobody when it is unset", async () => {
+        const { project } = await projectWithRepo();
+        vi.stubEnv("AUDITOR_NAME", "Jane Roe");
+        expect((await loadReportData(project.id)).auditor).toBe("Jane Roe");
+        vi.stubEnv("AUDITOR_NAME", "");
+        expect((await loadReportData(project.id)).auditor).toBeNull();
+    });
+});
 
 describe("the report's scope", () => {
     it("shows each aspect of each repository once, from its latest finished agent", async () => {

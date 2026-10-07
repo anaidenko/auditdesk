@@ -117,7 +117,7 @@ export async function loadReportData(projectId: string, o: { includeCost?: boole
     return {
         projectName: project.name,
         generatedAt: new Date().toISOString().slice(0, 10),
-        auditor: process.env.AUDITOR_NAME || "Andrii Naidenko",
+        auditor: process.env.AUDITOR_NAME?.trim() || null,
         repositories: project.repositories.map(r => ({
             name: names.get(r.id)!,
             branch: r.branch,

@@ -71,6 +71,13 @@ describe("renderReport", () => {
         expect(cover).toContain("0123456789");
     });
 
+    it("names no auditor when none is set, rather than someone else's name", () => {
+        const html = renderReport(data({ auditor: null }));
+        expect(between(html, '<header class="cover"', "</header>")).not.toContain("Auditor");
+        expect(html).not.toContain("Andrii Naidenko");
+        expect(html).toMatch(/<p class="colophon">\d{4}-\d{2}-\d{2}<\/p>/);
+    });
+
     it("lists every section and every finding ID in its contents", () => {
         const html = renderReport(data({ questions: [finding({ label: "F-003", severity: null, title: "Who rotates the key?" })] }));
         const toc = between(html, '<nav class="toc"', "</nav>");

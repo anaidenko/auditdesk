@@ -71,6 +71,12 @@ async function audit(
 }
 
 describe("runAudit", () => {
+    it("counts what the scanners filed and masked in words that fit the count", async () => {
+        const sink = new TestSink();
+        await audit(sink, await makeSampleRepo(), await mkdtemp(join(tmpdir(), "ws-")));
+        expect(sink.events).toContainEqual(expect.stringMatching(/^Scanners filed \d+ new findings \(1 secret masked from here on\)\.$/));
+    });
+
     it("clones, files scanner findings, then runs the security agent", async () => {
         const sink = new TestSink();
         const result = await audit(sink, await makeSampleRepo(), await mkdtemp(join(tmpdir(), "ws-")));

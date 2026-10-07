@@ -28,7 +28,8 @@ export interface ReportFinding {
 export interface ReportData {
     projectName: string;
     generatedAt: string;
-    auditor: string;
+    /** AUDITOR_NAME; null leaves the name off the report. */
+    auditor: string | null;
     /** Names are unique within a report; `notCovered` lists languages the audit could not analyse. */
     repositories: { name: string; branch: string; sha: string; notCovered: string[] }[];
     aspects: { title: string; status: string; note: string | null; coverage: { item: string; title: string; status: string }[] }[];

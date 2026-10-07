@@ -1,0 +1,59 @@
+# Format, lint, types, unit and end-to-end tests. The model and the scanners are replayed from
+# recordings, so CI needs no API key and no scanner images.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    # postinstall's `prisma generate` reads DATABASE_URL, and CI has no .env.local; the values are .env.test's.
+    env:
+      DATABASE_URL: postgresql://auditdesk:auditdesk@127.0.0.1:5433/auditdesk
+      TEST_DATABASE_URL: postgresql://auditdesk:auditdesk@127.0.0.1:5433/auditdesk_test
+    services:
+      postgres:
+        image: postgres:18
+        env:
+          POSTGRES_USER: auditdesk
+          POSTGRES_PASSWORD: auditdesk
+          POSTGRES_DB: auditdesk
+        ports:
+          - 5433:5432
+        options: >-
+          --health-cmd "pg_isready -U auditdesk"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+    steps:
+      - uses: actions/checkout@v7
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      # Before the unit tests: the PDF tests launch Chromium.
+      - run: pnpm exec playwright install --with-deps chromium
+      - run: pnpm format:check
+      - run: pnpm lint
+      - run: pnpm typecheck
+      - run: pnpm test
+      - run: pnpm test:e2e
+      - uses: actions/upload-artifact@v7
+        if: failure()
+        with:
+          name: playwright-traces
+          path: test-results/
+          retention-days: 7
