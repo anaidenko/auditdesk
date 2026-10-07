@@ -13,6 +13,10 @@ export interface FixtureSpec {
     /** What an eval run audits: "all" or a list of aspect keys. */
     aspects?: "all" | string[];
     aiBuilt?: boolean;
+    /** The strip rules a prepared copy is made with (evals/prep), by name; none for an unmarked fixture. */
+    rules?: string;
+    /** The key lists every planted defect and the known issues, so a finding outside it counts as false. */
+    falseFindings?: boolean;
 }
 
 export interface KeyLocation {

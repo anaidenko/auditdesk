@@ -8,3 +8,13 @@ fixtures:
     sha: 2aff7d01594473443eda3d072e40c0099e098d0f
     aspects: all
     aiBuilt: false
+    falseFindings: true
+  # OWASP Juice Shop v20.2.0 (plan, Task 2.1), prepared without its coding challenges' answers
+  # (evals/prep/juice-shop.ts). Its key holds only those challenges, so a finding outside it is
+  # not counted as false.
+  - name: juice-shop
+    url: https://github.com/juice-shop/juice-shop
+    sha: 5658473cf8814459bf89000ce373b20ed0b4eb37
+    rules: juice-shop
+    aspects: [security, llm]
+    aiBuilt: false
