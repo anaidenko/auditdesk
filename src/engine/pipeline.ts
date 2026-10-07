@@ -138,7 +138,10 @@ export async function runAudit(input: AuditInput, deps: AuditDeps): Promise<{ st
             await sink.createFinding(f);
             filed++;
         }
-        await sink.progress(`Scanners filed ${filed} new findings (${scan.leaks.length} secrets masked from here on).`);
+        const count = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
+        await sink.progress(
+            `Scanners filed ${count(filed, "new finding", "new findings")} (${count(scan.leaks.length, "secret", "secrets")} masked from here on).`
+        );
 
         await sink.progress("Building the repository map…");
         const repoMap = await buildRepoMap(clonePath, masker);
