@@ -10,6 +10,8 @@ import type { ReportData, ReportFinding } from "./types";
 const SEAMS_TITLE = aspectTitle(SEAMS);
 
 // The app's palette (zinc, an indigo accent) on paper: light only, system fonts, nothing fetched.
+// In print a card may run onto the next page; Chromium keeps its title with its summary only once
+// the details' content slot is unwrapped (::details-content, measured on Chromium 153, 2026-10-07).
 const CSS = `
 :root{--ink:#18181b;--muted:#71717a;--faint:#a1a1aa;--line:#e4e4e7;--wash:#fafafa;--accent:#4f46e5;
 --critical:#b91c1c;--critical-bg:#fef2f2;--high:#c2410c;--high-bg:#fff7ed;--medium:#a16207;--medium-bg:#fefce8;
@@ -54,8 +56,8 @@ ${["critical", "high", "medium", "low", "info", "question"].map(s => `.${s}{colo
 .method,.tech{padding-left:1.1rem}.method li,.tech li{margin:.3rem 0}
 .finding{border:1px solid var(--line);border-left:4px solid var(--info);border-radius:10px;margin:1.1rem 0;background:#fff}
 ${["critical", "high", "medium", "low", "info", "question"].map(s => `.finding.sev-${s}{border-left-color:var(--${s})}`).join("")}
-.finding summary{display:flex;gap:.7rem;align-items:baseline;padding:.85rem 1.1rem;cursor:pointer;list-style:none;font-weight:600}
-.finding summary::-webkit-details-marker{display:none}
+.finding>summary{display:flex;gap:.7rem;align-items:baseline;padding:.85rem 1.1rem;cursor:pointer;list-style:none;font-weight:600}
+.finding>summary::-webkit-details-marker{display:none}
 .finding .body{padding:0 1.1rem 1rem;border-top:1px solid var(--line)}
 .meta{font-size:.82rem;color:var(--muted);margin-top:.8rem}
 .lead{font-size:1.02rem}
@@ -67,7 +69,9 @@ pre{margin:0;padding:.6rem 0;background:#fcfcfd;overflow-x:auto;white-space:pre-
 pre code{display:block}.ln{display:inline-block;width:3.4em;padding-right:.9em;text-align:right;color:var(--faint);user-select:none}
 .callout{background:#eef2ff;border:1px solid #e0e7ff;border-radius:8px;padding:.15rem .95rem .6rem;margin:1rem 0 .4rem}.callout h4{color:var(--accent)}
 .refs{font-size:.82rem;color:var(--muted)}
+.cut{margin:0;padding:.3rem .7rem;font-size:.75rem;color:var(--muted);border-top:1px solid var(--line)}
 @media screen{.off{display:none!important}}
+@media screen{.print-only{display:none}}
 .filters{display:flex;flex-wrap:wrap;gap:.6rem 1rem;align-items:end;margin:1rem 0;padding:.8rem 1rem;border:1px solid var(--line);border-radius:10px;font-size:.82rem;color:var(--muted)}
 .filters label{display:flex;flex-direction:column;gap:.25rem}
 .filters select,.filters input{font:inherit;color:var(--ink);padding:.3rem .5rem;border:1px solid var(--line);border-radius:6px;background:#fff}
@@ -83,7 +87,8 @@ body{background:#fff;font-size:10.5pt}
 section{margin-top:2.2rem}
 section#findings,section#questions{margin-top:0;break-before:page}
 h2,h3,h4,summary,figcaption{break-after:avoid}
-.finding{break-inside:avoid;-webkit-box-decoration-break:clone;box-decoration-break:clone}.finding summary,.pair,.callout,figure{break-inside:avoid}
+.finding{-webkit-box-decoration-break:clone;box-decoration-break:clone}.finding::details-content{display:contents}
+.finding>summary,.finding .lead,.pair,.callout,figure{break-inside:avoid}.finding .meta{break-after:avoid}.rest{display:none}
 .risks li,.gaps li{break-inside:avoid}
 a{color:inherit}
 }
@@ -131,11 +136,19 @@ const badge = (f: ReportFinding) => `<span class="badge ${e(severityOf(f))}">${e
 const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
 const effortText = (f: ReportFinding) => (f.effort ? `effort ${f.effort}${f.effortHours != null ? ` (${f.effortHours} h)` : ""}` : null);
 
+/** The lines of an excerpt a printout shows; the HTML keeps them all. */
+const PRINT_LINES = 12;
+
 function evidence(ev: ReportFinding["evidence"][number]): string {
-    const lines = (ev.snippet ?? "").split("\n");
-    const code = lines.map((line, i) => `<span class="ln">${ev.startLine + i}</span>${e(line)}`).join("\n");
+    const lines = (ev.snippet ?? "").split("\n").map((line, i) => `<span class="ln">${ev.startLine + i}</span>${e(line)}`);
+    const rest = lines.length - PRINT_LINES;
+    const code =
+        rest > 0
+            ? `${lines.slice(0, PRINT_LINES).join("\n")}<span class="rest">\n${lines.slice(PRINT_LINES).join("\n")}</span>`
+            : lines.join("\n");
     const where = ev.startLine === ev.endLine ? `line ${ev.startLine}` : `lines ${ev.startLine}–${ev.endLine}`;
-    return `<figure><figcaption>${e(ev.file)} · ${where}</figcaption>${ev.snippet ? `<pre><code>${code}</code></pre>` : ""}</figure>`;
+    const cut = rest > 0 ? `<p class="cut print-only">${plural(rest, "more line", "more lines")} in the HTML report</p>` : "";
+    return `<figure><figcaption>${e(ev.file)} · ${where}</figcaption>${ev.snippet ? `<pre><code>${code}</code></pre>${cut}` : ""}</figure>`;
 }
 
 // The report's one script: it filters and searches the findings and questions in the browser,

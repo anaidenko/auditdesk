@@ -224,11 +224,14 @@ describe("renderReport", () => {
         expect(html.match(/<details(?! open)/g)).toBeNull();
     });
 
-    // Chromium ignores break-after:avoid between a <summary> and the rest of its <details>: on the
-    // naidenko.dev report (E.9) a card's title sat alone at the foot of a page.
-    it("starts a finding on a new page rather than leave its title alone at the foot of one", () => {
+    // On the naidenko.dev report (E.9) a card's title sat alone at the foot of a page: Chromium honours
+    // break-after:avoid after a <summary> only once ::details-content is display:contents (Chromium 153).
+    it("lets a card run onto the next page, keeping its title with its summary", () => {
         const print = between(renderReport(data()), "@media print{", "</style>");
-        expect(print).toMatch(/\.finding\{[^}]*break-inside:avoid/);
+        expect(print).not.toMatch(/\.finding\{[^}]*break-inside:avoid/);
+        expect(print).toContain(".finding::details-content{display:contents}");
+        expect(print).toContain(".finding .meta{break-after:avoid}");
+        expect(print).toContain(".finding>summary,.finding .lead,.pair,.callout,figure{break-inside:avoid}");
     });
 
     it("sums up an aspect whose agent examined every item in one line", () => {
