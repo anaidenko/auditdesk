@@ -9,12 +9,28 @@ export function evalResultsDir(): string {
     return process.env.AUDITDESK_EVAL_RESULTS || join(process.cwd(), "evals/results");
 }
 
-/** Every eval result in the folder, newest first. */
-export async function loadEvalRows(): Promise<EvalRow[]> {
+/**
+ * Every eval result in the folder, newest first, and the Markdown files that could not be read as
+ * one, so a result in an older format or a stray entry is named instead of dropped. A missing
+ * folder is no results; one that cannot be read is an error.
+ */
+export async function loadEvalRows(): Promise<{ rows: EvalRow[]; skipped: string[] }> {
     const dir = evalResultsDir();
-    const files = await readdir(dir).catch(() => [] as string[]);
-    const rows = await Promise.all(
-        files.filter(f => f.endsWith(".md")).map(async f => parseEvalResult(await readFile(join(dir, f), "utf8"), f))
+    let files: string[];
+    try {
+        files = await readdir(dir);
+    } catch (e) {
+        if ((e as NodeJS.ErrnoException).code === "ENOENT") return { rows: [], skipped: [] };
+        throw e;
+    }
+    const read = await Promise.all(
+        files
+            .filter(f => f.endsWith(".md"))
+            .sort()
+            .map(async f => ({ f, row: parseEvalResult(await readFile(join(dir, f), "utf8").catch(() => ""), f) }))
     );
-    return rows.filter((r): r is EvalRow => r !== null).sort((a, b) => b.date.localeCompare(a.date));
+    return {
+        rows: read.flatMap(r => (r.row ? [r.row] : [])).sort((a, b) => b.date.localeCompare(a.date)),
+        skipped: read.filter(r => !r.row).map(r => r.f)
+    };
 }

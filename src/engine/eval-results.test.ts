@@ -20,15 +20,30 @@ const own = `# Eval: own, claude-opus-5-5 at medium
 
 **12 of 25** key entries found (48%); agents alone: 10 of 25.
 
+Not started, so their entries count as missed: quality (see Agents).
+
 ## Findings outside the key
 
 **False findings: 3**, and 1 filed beside a key entry under another item, unresolved, unless the judge or a review says otherwise.
 
-Judge: 4 verdicts: 1 matches_key, 3 false. Cost $0.05.
+- F-009 (SEC-04, a.ts:1): Not real.
+Agents: $0.00 per the reviewer
+Judge: 1 verdict: 1 false. Cost $9.99.
 
 ## Cost
 
+| Model | Calls | Cost |
+| --- | --- | --- |
+| claude-opus-5-5 | 40 | $1.23 + 1 unpriced |
+
 Agents: $1.23, at least (1 call unpriced).
+
+## Agents
+
+| Aspect | Status | Coverage | Summary or note |
+| --- | --- | --- | --- |
+| security | partial | 3 examined, 0 partly, 12 not examined, 0 not reported | Ran out. |
+| quality | not started |  | The budget was spent. |
 `;
 
 describe("parseEvalResult", () => {
@@ -45,16 +60,22 @@ describe("parseEvalResult", () => {
             total: 18,
             agentsFound: 0,
             falseFindings: null,
+            falseByJudge: false,
+            beside: null,
             usd: 0.06,
+            unpriced: false,
             judgeUsd: null,
+            judgeUnpriced: false,
             durationSec: 35,
             commit: "3982f563ec530df9b88e224f5a7fb4e4a0b16abe",
             dirty: false,
-            aborted: false
+            keyDigest: "9ff0c96c2306",
+            aborted: null,
+            incomplete: []
         });
     });
 
-    it("reads false findings, the judge's cost, an aborted run, a dirty tree and minutes", () => {
+    it("reads false findings and those beside an entry, an aborted run, its unfinished agents, a dirty tree and minutes", () => {
         expect(parseEvalResult(own, "x.md")).toMatchObject({
             fixture: "own",
             model: "claude-opus-5-5",
@@ -64,12 +85,20 @@ describe("parseEvalResult", () => {
             total: 25,
             agentsFound: 10,
             falseFindings: 3,
+            falseByJudge: false,
+            beside: 1,
             usd: 1.23,
-            judgeUsd: 0.05,
+            unpriced: true,
             durationSec: 365,
             dirty: true,
-            aborted: true
+            keyDigest: "abababababab",
+            aborted: "Error: the engine broke",
+            incomplete: ["security: partial", "quality: not started"]
         });
+    });
+
+    it("reads the costs from their own lines, whatever a finding's text puts at the start of a line", () => {
+        expect(parseEvalResult(own, "x.md")).toMatchObject({ usd: 1.23, judgeUsd: null });
     });
 
     it("returns null for a file that is not a result", () => {

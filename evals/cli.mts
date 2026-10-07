@@ -12,7 +12,7 @@ import { dockerRunner } from "../src/engine/scanners/docker";
 import { RULESETS, fetchRulesets } from "../src/engine/scanners/rulesets";
 import { sdkAspectRunner } from "../src/engine/sdk/run-aspect-sdk";
 
-import { parseEvalArgs, runEval } from "./run";
+import { matrixCap, parseEvalArgs, runEval, unfinished } from "./run";
 
 nextEnv.loadEnvConfig(process.cwd());
 
@@ -32,8 +32,22 @@ const judgeKey = o.judge ? await resolveCredential("api_key") : null;
 if (o.judge && !judgeKey) throw new Error("--judge calls the Messages API and needs an API key in .env.local or Settings.");
 
 const ws = workspaceDir();
-// --matrix runs each model and effort pair in turn; a pair whose audit fails stops the rest.
-for (const pair of o.matrix ?? [{ model: o.model, effort: o.effort }]) {
+const cap = matrixCap(o);
+if (cap) console.log(cap);
+// --matrix runs each model and effort pair in turn. The plan's reserve is checked before each,
+// since a pair it cuts short ends partial without aborting; an aborted or failed audit stops the
+// rest, which would fail the same way.
+const pairs = o.matrix ?? [{ model: o.model, effort: o.effort }];
+const stop = (i: number, why: string) => {
+    const rest = pairs.slice(i).map(p => `${p.model}:${p.effort}`);
+    console.error(`${why}${rest.length ? `\nNot run: ${rest.join(", ")}.` : ""}`);
+    process.exit(1);
+};
+for (const [i, pair] of pairs.entries()) {
+    if (o.access === "claude_plan" && i > 0) {
+        const refusal = reserveRefusal(await readPlanUsage(), false);
+        if (refusal) stop(i, refusal);
+    }
     const { file, result } = await runEval(
         { ...o, ...pair },
         {
@@ -53,8 +67,7 @@ for (const pair of o.matrix ?? [{ model: o.model, effort: o.effort }]) {
     console.log(
         `${file}\nRecall ${result.grade.found}/${result.grade.total}; ${result.grade.leftovers.length} findings outside the key; agents $${usd.toFixed(2)}${judge}.`
     );
-    if (result.aborted) {
-        console.error(`The audit was aborted: ${result.aborted}`);
-        process.exit(1);
-    }
+    const cut = unfinished(result);
+    if (cut) console.error(`Not every agent finished (${cut}); the Evals page marks this result.`);
+    if (result.aborted || result.agents.some(a => a.status === "failed")) stop(i + 1, "The audit failed.");
 }

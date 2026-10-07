@@ -60,7 +60,7 @@ const NO_RULES: StripRules = { deletePaths: [], statementPatterns: [] };
 const DEFAULT_TOKENS = 400_000;
 
 const USAGE =
-    "pnpm eval --fixture <name> --access api_key|claude_plan --budget-usd <dollars> [--budget-tokens <n>] [--aspect <key>] [--model <id>] [--effort <level> | --matrix model:effort,…] [--judge --judge-usd <dollars>]";
+    "pnpm eval --fixture <name> --access api_key|claude_plan --budget-usd <dollars> [--budget-tokens <n>] [--aspect <key>] [[--model <id>] [--effort <level>] | --matrix model:effort,…] [--judge --judge-usd <dollars>]; each --matrix pair gets the whole budget and judge cap.";
 const FLAGS = [
     "--fixture",
     "--access",
@@ -73,6 +73,27 @@ const FLAGS = [
     "--judge-usd",
     "--matrix"
 ];
+
+const money = (x: number) => `$${x.toFixed(2)}`;
+
+/** A matrix's whole cap, named before its first pair since each pair gets the full budget; null for one pair. */
+export function matrixCap(o: EvalOptions): string | null {
+    if (!o.matrix) return null;
+    const n = o.matrix.length;
+    const judge = o.judge && o.judgeUsd ? `, and up to ${money(n * o.judgeUsd)} for the judge` : "";
+    return `${n} ${n === 1 ? "pair" : "pairs"}, each capped at ${money(o.budgetUsd)}: up to ${money(n * o.budgetUsd)} for the agents${judge}.`;
+}
+
+/**
+ * What kept a result from covering its whole scope: the audit was aborted, or an agent ended other
+ * than done or declined (its share ran out, a plan limit, the reserve). Null when every agent
+ * finished.
+ */
+export function unfinished(r: Pick<EvalResult, "aborted" | "agents">): string | null {
+    if (r.aborted) return `aborted: ${r.aborted}`;
+    const cut = r.agents.filter(a => a.status !== "done" && a.status !== "declined").map(a => `${a.aspect} ${a.status}`);
+    return cut.length ? cut.join(", ") : null;
+}
 
 export function parseEvalArgs(argv: string[]): { ok: true; value: EvalOptions } | { ok: false; error: string } {
     const flags = new Map<string, string | true>();
@@ -109,8 +130,9 @@ export function parseEvalArgs(argv: string[]): { ok: true; value: EvalOptions } 
             return { ok: false, error: "--matrix replaces --model and --effort: give it model:effort pairs." };
         matrix = [];
         for (const pair of str("--matrix")!.split(",")) {
-            const [m, e] = pair.split(":");
-            if (!MODEL_CHOICES.some(c => c.id === m) || !EFFORTS.includes(e as Effort))
+            const parts = pair.split(":");
+            const [m, e] = parts;
+            if (parts.length !== 2 || !MODEL_CHOICES.some(c => c.id === m) || !EFFORTS.includes(e as Effort))
                 return { ok: false, error: `--matrix takes model:effort pairs such as claude-sonnet-5-5:low, not "${pair}".` };
             matrix.push({ model: m, effort: e as Effort });
         }

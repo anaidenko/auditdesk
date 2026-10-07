@@ -13,7 +13,7 @@ import { finding, finish, text, tool } from "@/test/agent-messages";
 import { makeSampleRepo } from "@/test/sample-repo";
 
 import type { AnswerKey } from "./fixtures";
-import { type EvalOptions, parseEvalArgs, runEval } from "./run";
+import { type EvalOptions, type EvalResult, matrixCap, parseEvalArgs, runEval, unfinished } from "./run";
 
 const KEY: AnswerKey = {
     fixture: "sample",
@@ -227,6 +227,40 @@ describe("runEval", () => {
     });
 });
 
+describe("a matrix", () => {
+    const o = (over: Partial<EvalOptions>): EvalOptions => ({
+        fixture: "own",
+        model: "claude-sonnet-5-5",
+        effort: "low",
+        budgetUsd: 3,
+        budgetTokens: 400_000,
+        access: "api_key",
+        judge: false,
+        ...over
+    });
+    const pairs = [
+        { model: "claude-sonnet-5-5", effort: "low" as const },
+        { model: "claude-opus-5-5", effort: "medium" as const }
+    ];
+
+    it("names its whole cap before it starts, the judge's apart", () => {
+        expect(matrixCap(o({ matrix: pairs }))).toBe("2 pairs, each capped at $3.00: up to $6.00 for the agents.");
+        expect(matrixCap(o({ matrix: pairs, judge: true, judgeUsd: 0.5 }))).toBe(
+            "2 pairs, each capped at $3.00: up to $6.00 for the agents, and up to $1.00 for the judge."
+        );
+        expect(matrixCap(o({}))).toBeNull();
+    });
+
+    it("names what kept a result from its whole scope: an abort, or an agent that ended other than done or declined", () => {
+        const agents = (...statuses: string[]) => statuses.map((status, i) => ({ aspect: `a${i}`, status }));
+        expect(unfinished({ aborted: null, agents: agents("done", "declined") } as unknown as EvalResult)).toBeNull();
+        expect(unfinished({ aborted: "Error: boom", agents: agents("done") } as unknown as EvalResult)).toBe("aborted: Error: boom");
+        expect(unfinished({ aborted: null, agents: agents("done", "partial", "not started") } as unknown as EvalResult)).toBe(
+            "a1 partial, a2 not started"
+        );
+    });
+});
+
 describe("parseEvalArgs", () => {
     const base = ["--fixture", "own", "--access", "api_key"];
 
@@ -256,11 +290,21 @@ describe("parseEvalArgs", () => {
                 ]
             }
         });
-        expect(parseEvalArgs([...base, "--budget-usd", "3", "--matrix", "claude-sonnet-5-5:fast"])).toMatchObject({ ok: false });
+        for (const pair of ["claude-sonnet-5-5:fast", "claude-sonnet-5-5:low:high", "claude-sonnet-5-5"])
+            expect(parseEvalArgs([...base, "--budget-usd", "3", "--matrix", pair]), pair).toEqual({
+                ok: false,
+                error: `--matrix takes model:effort pairs such as claude-sonnet-5-5:low, not "${pair}".`
+            });
         expect(parseEvalArgs([...base, "--budget-usd", "3", "--matrix", "claude-sonnet-5-5:low", "--model", "claude-opus-5-5"])).toEqual({
             ok: false,
             error: expect.stringMatching(/--matrix replaces --model and --effort/)
         });
+    });
+
+    it("says the usage gives each matrix pair the whole budget, and that --model goes with --effort", () => {
+        const { error } = parseEvalArgs([...base, "--x"]) as { error: string };
+        expect(error).toContain("[--model <id>] [--effort <level>] | --matrix model:effort,…");
+        expect(error).toContain("each --matrix pair gets the whole budget");
     });
 
     it("refuses --judge without a cap of its own", () => {
