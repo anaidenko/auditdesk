@@ -148,7 +148,9 @@ API prices.
 | Sonnet 5.5, `high` | 6 (6), $0.27 | 9 (7), $1.80 |
 | Opus 5.5, `medium` | 7 (7), $0.75 | 6 (4), $2.59 |
 
-The own fixture was then at `2aff7d0`; its key has grown since, with the aspects added after.
+All eight runs are of one Auditdesk commit (`0f36ca8`); the earlier Sonnet `low` result in the same
+folder ($0.06) predates sending back an agent that looked at little. The own fixture was then at
+`2aff7d0`; its key has grown since, with the aspects added after.
 
 ## Live checks
 

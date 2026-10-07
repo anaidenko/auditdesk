@@ -230,6 +230,30 @@ test("the stack is detected and confirmed, and the brief is saved", async ({ pag
     await expect(page.getByLabel("Stack profile")).toHaveValue("Express 4 on Node.js; PostgreSQL through pg.");
 });
 
+test("a suggestion that a later detection drops unticks its box, as a reload would", async ({ page }) => {
+    const repo = mkdtempSync(join(tmpdir(), "auditdesk-e2e-api-"));
+    const commit = (pkg: object, message: string) => {
+        writeFileSync(join(repo, "package.json"), JSON.stringify(pkg));
+        execFileSync("git", ["add", "package.json"], { cwd: repo });
+        execFileSync("git", ["-c", "user.name=t", "-c", "user.email=t@t", "-c", "commit.gpgsign=false", "commit", "-qm", message], {
+            cwd: repo
+        });
+    };
+    execFileSync("git", ["init", "-q", "-b", "main"], { cwd: repo });
+    writeFileSync(join(repo, "server.js"), "\n");
+    execFileSync("git", ["add", "server.js"], { cwd: repo });
+    commit({ name: "api", dependencies: { express: "4.21.2" } }, "an API");
+    await newProject(page, "Suggestion gone", repo);
+    const notes = page.locator("details", { hasText: "Stack and instructions" });
+    await notes.locator("summary").click();
+    await notes.getByRole("button", { name: "Detect stack" }).click();
+    await expect(page.getByRole("checkbox", { name: "API design" })).toBeChecked();
+    commit({ name: "api", dependencies: {} }, "no server any more");
+    await notes.getByRole("button", { name: "Detect stack" }).click();
+    await expect(page.getByRole("checkbox", { name: "API design" })).not.toBeChecked();
+    rmSync(repo, { recursive: true, force: true });
+});
+
 test("an API key saved in Settings runs an audit, and no page shows the key", async ({ page }) => {
     const key = "sk-ant-e2e-0000000000000000wxyz";
     await page.goto("/settings");

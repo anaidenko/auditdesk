@@ -117,14 +117,22 @@ describe("detectStack", () => {
         expect(suggestAspects(await detectStack(app))).toEqual(["accessibility"]);
     });
 
-    it("needs react-dom to take React for a user interface: email templates render no page", async () => {
-        const root = await makeRepo({
-            "package.json": pkg({ "express": "^5.1.0", "react": "19.3.0", "@react-email/components": "0.5.0" }),
+    it("does not take React used only for email templates as a user interface", async () => {
+        // React Email's own setup installs react and react-dom beside it.
+        const mail = await makeRepo({
+            "package.json": pkg({ "express": "^5.1.0", "react": "19.3.0", "react-dom": "19.3.0", "@react-email/components": "0.5.0" }),
             "src/server.ts": "\n"
         });
-        const s = await detectStack(root);
+        const s = await detectStack(mail);
         expect(s.userInterface).toEqual([]);
         expect(suggestAspects(s)).toEqual(["api"]);
+        const bare = await makeRepo({ "package.json": pkg({ express: "^5.1.0", react: "19.3.0" }), "src/server.ts": "\n" });
+        expect((await detectStack(bare)).userInterface).toEqual([]);
+        const app = await makeRepo({
+            "package.json": pkg({ "react": "19.3.0", "react-dom": "19.3.0", "react-email": "4.0.0" }, { vite: "^7.0.0" }),
+            "src/main.tsx": "\n"
+        });
+        expect((await detectStack(app)).userInterface).toEqual(["React 19"]);
     });
 
     it("does not take an auth catch-all or a metadata route for an API, and detects GraphQL servers", async () => {
@@ -132,10 +140,17 @@ describe("detectStack", () => {
             "package.json": pkg({ "next": "16.3.8", "react": "19.3.0", "react-dom": "19.3.0", "next-auth": "5.0.0" }),
             "src/app/page.tsx": "\n",
             "src/app/api/auth/[...nextauth]/route.ts": "\n",
+            "src/app/api/auth/[[...all]]/route.ts": "\n",
             "src/app/sitemap.xml/route.ts": "\n",
             "src/app/opengraph-image/route.tsx": "\n"
         });
         expect((await detectStack(site)).httpApi).toEqual([]);
+        const pages = await makeRepo({
+            "package.json": pkg({ "next": "14.2.0", "react": "18.3.0", "react-dom": "18.3.0", "next-auth": "4.24.0" }),
+            "pages/index.tsx": "\n",
+            "pages/api/auth/[...nextauth].ts": "\n"
+        });
+        expect((await detectStack(pages)).httpApi).toEqual([]);
         const gql = await makeRepo({ "package.json": pkg({ "@apollo/server": "^5.0.0", "graphql": "^16.0.0" }), "index.ts": "\n" });
         expect((await detectStack(gql)).httpApi).toEqual(["Apollo Server 5"]);
     });

@@ -72,8 +72,9 @@ export function grade(findings: GradedFinding[], key: AnswerKey, o: { slack?: nu
 
     const located = key.entries.filter(e => e.kind === "finding");
     // Per cited range, the entries at the least distance within the slack: a finding on line 5 is not
-    // also credited to a defect planted on line 7.
-    const nearest = (entries: KeyEntry[], ev: GradedFinding["evidence"][number]) => {
+    // also credited to a defect planted on line 7. Of entries tied there, one filed under the
+    // finding's own item takes the credit alone, so another defect's alternative item cannot.
+    const nearest = (entries: KeyEntry[], ev: GradedFinding["evidence"][number], item: string | null = null) => {
         const at = entries
             .map(e => ({
                 e,
@@ -85,7 +86,9 @@ export function grade(findings: GradedFinding[], key: AnswerKey, o: { slack?: nu
             }))
             .filter(x => x.d <= slack);
         const least = Math.min(...at.map(x => x.d));
-        return at.filter(x => x.d === least).map(x => x.e.id);
+        const tied = at.filter(x => x.d === least).map(x => x.e);
+        const own = tied.filter(e => e.checklistItem === item);
+        return (own.length ? own : tied).map(e => e.id);
     };
 
     for (const f of findings) {
@@ -101,7 +104,7 @@ export function grade(findings: GradedFinding[], key: AnswerKey, o: { slack?: nu
         if (f.kind === "finding")
             for (const ev of f.evidence) {
                 if (ev.endLine - ev.startLine + 1 > WIDE) continue;
-                const near = nearest(located.filter(allows), ev);
+                const near = nearest(located.filter(allows), ev, f.checklistItem);
                 for (const id of near) hits.add(id);
                 if (!near.length) for (const id of nearest(located, ev)) onPlace.add(id);
             }

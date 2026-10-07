@@ -76,13 +76,15 @@ export async function enqueueRerun(
 }
 
 /** One job per caller, never the same one twice: FOR UPDATE SKIP LOCKED (design § 5). */
-export async function claimJob() {
+export async function claimJob(o: { runId?: string } = {}) {
+    // `runId`: a script that runs its own run's job outside the server (scripts/sample-report.mts).
+    const only = o.runId ? Prisma.sql`AND "runId" = ${o.runId}` : Prisma.empty;
     const rows = await prisma.$queryRaw<
         { id: string; runId: string; aspect: string | null; repositoryId: string | null; allowPastReserve: boolean }[]
     >`
         UPDATE "Job" SET status = 'running', "startedAt" = now()
         WHERE id = (
-            SELECT id FROM "Job" WHERE status = 'queued'
+            SELECT id FROM "Job" WHERE status = 'queued' ${only}
             ORDER BY "createdAt" FOR UPDATE SKIP LOCKED LIMIT 1
         )
         RETURNING id, "runId", aspect, "repositoryId", "allowPastReserve"`;
