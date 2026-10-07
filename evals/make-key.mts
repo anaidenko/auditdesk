@@ -25,13 +25,14 @@ if (!name || !spec || !(name in RULES) || !spec.url)
     throw new Error("--fixture names a marked fixture with a URL in evals/fixtures.yaml: juice-shop.");
 
 const prepared = await prepareFixture({ name, url: arg("--source") ?? spec.url, sha: spec.sha, rules: RULES[name] }, workspaceDir());
-// The prepared repository's first commit is the pinned upstream tree, markers and all.
-const marked = (await git(["grep", "-l", "vuln-code-snippet vuln-line", "HEAD~1"], prepared.path))
+// The markers are read at the pinned commit in the upstream clone; the prepared tree has none.
+const at = prepared.upstreamSha;
+const marked = (await git(["grep", "-l", "vuln-code-snippet vuln-line", at], prepared.upstreamDir))
     .split("\n")
     .filter(Boolean)
-    .map(l => l.replace(/^HEAD~1:/, ""));
+    .map(l => l.slice(at.length + 1));
 const upstream = Object.fromEntries(
-    await Promise.all(marked.map(async f => [f, await git(["show", `HEAD~1:${f}`], prepared.path)] as const))
+    await Promise.all(marked.map(async f => [f, await git(["show", `${at}:${f}`], prepared.upstreamDir)] as const))
 );
 const challenges = (parse(readFileSync(MAPS[name], "utf8")) as { challenges: ChallengeMap }).challenges;
 const entries = buildKey(upstream, prepared.lineMap, challenges, prepared.path);
