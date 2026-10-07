@@ -8,7 +8,7 @@ import { readPlanUsage, reserveRefusal } from "@/engine/plan-usage";
 import type { SeverityName } from "@/engine/types";
 import { prisma } from "@/server/db";
 import { AccessChangedError, ActiveRunError, enqueueRerun } from "@/server/jobs";
-import { accept, edit, exclude, merge, reject } from "@/server/review";
+import { accept, confirmRecheck, edit, exclude, merge, reject } from "@/server/review";
 
 async function listPath(id: string) {
     const f = await prisma.finding.findUniqueOrThrow({ where: { id }, select: { projectId: true } });
@@ -30,6 +30,12 @@ async function refusal(work: () => Promise<void>): Promise<FormState> {
 
 export async function acceptAction(id: string, _prev: FormState, _fd: FormData): Promise<FormState> {
     const r = await refusal(() => accept(id));
+    revalidatePath(await listPath(id));
+    return r;
+}
+
+export async function confirmRecheckAction(id: string, status: "fixed" | "open", _prev: FormState, _fd: FormData): Promise<FormState> {
+    const r = await refusal(() => confirmRecheck(id, status));
     revalidatePath(await listPath(id));
     return r;
 }

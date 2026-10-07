@@ -13,6 +13,7 @@ import { MemorySink } from "@/engine/memory-sink";
 import { EFFORTS, MODEL_CHOICES } from "@/engine/models";
 import { type PipelineSink, runAudit } from "@/engine/pipeline";
 import { PRICES_AS_OF } from "@/engine/prices";
+import type { EarlierFinding } from "@/engine/recheck";
 import type { Ruleset, ScannerRunner, ToolVersions } from "@/engine/scanners/types";
 import type { ModelAccess } from "@/engine/types";
 
@@ -178,6 +179,11 @@ class EvalSink extends MemorySink implements PipelineSink {
         this.agents.find(a => a.id === id)!.outcome = outcome;
     }
     async supersedeUnreviewed() {}
+    /** An eval audits a fresh fixture: there is no earlier report to re-check. */
+    async earlierFindings(): Promise<EarlierFinding[]> {
+        return [];
+    }
+    async recheckFindings() {}
 }
 
 /**

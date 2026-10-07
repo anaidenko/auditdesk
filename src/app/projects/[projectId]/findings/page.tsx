@@ -3,8 +3,8 @@ import { notFound } from "next/navigation";
 
 import { ActionForm } from "@/app/ActionForm";
 import { ReportExport } from "@/app/ReportExport";
-import { acceptAction, excludeAction, rejectAction } from "@/app/review-actions";
-import { Badge, FindingStatus, Icon, PageHeader, SeverityBadge, button, field, input } from "@/app/ui";
+import { acceptAction, confirmRecheckAction, excludeAction, rejectAction } from "@/app/review-actions";
+import { Badge, FindingStatus, Icon, PageHeader, RecheckBadge, SeverityBadge, button, field, input } from "@/app/ui";
 import { ASPECTS, aspectTitle } from "@/engine/aspects";
 import { prisma } from "@/server/db";
 import { listFindings } from "@/server/review";
@@ -27,13 +27,19 @@ export default async function FindingsPage({
     searchParams
 }: {
     params: Promise<{ projectId: string }>;
-    searchParams: Promise<{ q?: string; status?: string; aspect?: string }>;
+    searchParams: Promise<{ q?: string; status?: string; aspect?: string; recheck?: string }>;
 }) {
     const { projectId } = await params;
-    const { q, status, aspect } = await searchParams;
+    const { q, status, aspect, recheck } = await searchParams;
     const project = await prisma.project.findUnique({ where: { id: projectId } });
     if (!project) notFound();
-    const findings = await listFindings(projectId, { q: q || undefined, status: status || undefined, aspect: aspect || undefined });
+    const findings = await listFindings(projectId, {
+        q: q || undefined,
+        status: status || undefined,
+        aspect: aspect || undefined,
+        recheck: recheck || undefined
+    });
+    const toVerify = await prisma.finding.count({ where: { projectId, recheck: "changed", status: { in: ["accepted", "edited"] } } });
     const counts = await prisma.finding.groupBy({ by: ["status"], where: { projectId }, _count: { _all: true } });
 
     return (
@@ -48,6 +54,14 @@ export default async function FindingsPage({
                 actions={<ReportExport projectId={projectId} />}
             >
                 <span className="flex flex-wrap gap-1.5">
+                    {toVerify > 0 && (
+                        <Link
+                            href={`/projects/${projectId}/findings?recheck=changed`}
+                            className="text-xs font-medium text-sky-700 hover:underline"
+                        >
+                            {toVerify} to verify after the re-audit
+                        </Link>
+                    )}
                     {counts.map(c => (
                         <span key={c.status} className="inline-flex items-center gap-1">
                             <FindingStatus status={c.status} />
@@ -97,6 +111,7 @@ export default async function FindingsPage({
                                     <Badge tone="slate">{aspectTitle(f.aspect)}</Badge>
                                     <Badge tone="slate">{f.source}</Badge>
                                 </span>
+                                <RecheckBadge recheck={f.recheck} sha={f.recheckedSha} />
                                 <FindingStatus status={f.status} />
                                 <svg
                                     aria-hidden
@@ -171,6 +186,16 @@ export default async function FindingsPage({
                                     />
                                     <button className={`${button.danger} ${button.small}`}>Reject</button>
                                 </ActionForm>
+                                {f.recheck && (
+                                    <>
+                                        <ActionForm action={confirmRecheckAction.bind(null, f.id, "fixed")}>
+                                            <button className={`${button.secondary} ${button.small}`}>Verified fixed</button>
+                                        </ActionForm>
+                                        <ActionForm action={confirmRecheckAction.bind(null, f.id, "open")}>
+                                            <button className={`${button.secondary} ${button.small}`}>Still open</button>
+                                        </ActionForm>
+                                    </>
+                                )}
                                 <Link
                                     href={`/projects/${projectId}/findings/${f.number}`}
                                     className="ml-auto self-center text-sm font-medium text-indigo-700 hover:underline"

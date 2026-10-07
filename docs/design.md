@@ -131,6 +131,19 @@ rating, and a route is never treated as sample code. When an agent files a findi
 of an unreviewed scanner finding of the same run, under the same item and weakness, the scanner's
 is folded into it with its higher severity, and comes back to the review if that aspect is re-run.
 
+**Re-audit.** A full run on a later commit re-checks every finding the report carried before,
+right after its scanners, so a run stopped later still has it. A dependency or Semgrep finding the
+scanner no longer reports, its code gone, is fixed; a secret never is, since no scan can tell it
+was rotated. An agent's finding reads "code unchanged" while every block it cited is still in its
+file (moved, re-indented or re-spaced counts, and its lines follow), never "still open": the fix
+may live elsewhere. When that code is gone, or too short or too long to tell, it reads "code
+changed", and the auditor marks it verified fixed or still open; his "still open" stands until the
+cited files change again. A fixed finding is regressed only if its code was gone after the fix and
+came back. The report then opens with "Since the last audit": the commits re-checked, what that
+re-audit found fixed (left out of the findings and the exports), unchanged, confirmed open,
+regressed or new, and what is still to verify; the agents' index marks fixed findings, so the same
+problem in other code is filed again.
+
 ## The report
 
 One self-contained HTML file, opening offline, and a PDF of the same document: a cover, a

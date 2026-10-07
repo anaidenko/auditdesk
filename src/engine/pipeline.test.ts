@@ -11,6 +11,7 @@ import { SAMPLE_KEY, makeSampleRepo } from "@/test/sample-repo";
 import { type AspectInput, type AspectRunner, apiAspectRunner } from "./agent/run-aspect";
 import { MemorySink } from "./memory-sink";
 import { type AuditDeps, type AuditInput, type PipelineSink, pathNames, runAudit } from "./pipeline";
+import type { EarlierFinding, RecheckResult } from "./recheck";
 import { REPLAY_RULESETS, replayRunner } from "./scanners/replay";
 import type { ScannerRunner } from "./scanners/types";
 import type { StackProfile } from "./stack";
@@ -32,6 +33,10 @@ class TestSink extends MemorySink implements PipelineSink {
         this.agents.find(a => a.id === id)!.status = outcome.status;
     }
     async supersedeUnreviewed(_repositoryId: string | null, _aspect: string) {}
+    async earlierFindings(_repositoryId: string, _sha: string): Promise<EarlierFinding[]> {
+        return [];
+    }
+    async recheckFindings(_results: RecheckResult[], _sha: string) {}
 }
 
 const finish = () =>
@@ -73,6 +78,97 @@ async function audit(
 }
 
 describe("runAudit", () => {
+    it("re-checks the earlier reported findings against the new commit before the agents, and says what it found", async () => {
+        const repo = await makeSampleRepo();
+        const ws = await mkdtemp(join(tmpdir(), "ws-"));
+        const first = new TestSink();
+        await audit(first, repo, ws);
+        const leak = first.findings.find(f => f.source === "scanner" && f.checklistItem === "SEC-10")!;
+        class Rechecking extends TestSink {
+            rechecks: { results: RecheckResult[]; sha: string }[] = [];
+            override async earlierFindings(_r: string, sha: string): Promise<EarlierFinding[]> {
+                expect(sha).toMatch(/^[0-9a-f]{40}$/);
+                const base = {
+                    references: {},
+                    recheck: null,
+                    recheckDigest: null,
+                    recheckGone: false,
+                    checklistItem: "SEC-04",
+                    title: "t"
+                };
+                const agent = (id: string, snippet: string) => ({
+                    ...base,
+                    id,
+                    label: id,
+                    source: "agent" as const,
+                    fingerprint: `fp-${id}`,
+                    evidence: [{ file: "src/server.js", startLine: 7, endLine: 7, snippet }]
+                });
+                return [
+                    {
+                        ...base,
+                        id: "leak",
+                        label: "F-001",
+                        source: "scanner",
+                        fingerprint: leak.fingerprint,
+                        title: leak.title,
+                        checklistItem: "SEC-10",
+                        evidence: []
+                    },
+                    {
+                        ...base,
+                        id: "gone",
+                        label: "F-002",
+                        source: "scanner",
+                        fingerprint: "upgraded-away",
+                        title: "left-pad 1.0.0: 1 known vulnerability",
+                        checklistItem: "DEP-01",
+                        references: { advisories: ["GHSA-none"] },
+                        evidence: []
+                    },
+                    agent("eval", 'app.get("/calc", (req, res) => res.send(String(eval(req.query.expr))));'),
+                    agent("rewritten", 'app.get("/calc", (req, res) => res.send(calc(req.query.expr)));')
+                ];
+            }
+            override async recheckFindings(results: RecheckResult[], sha: string) {
+                this.rechecks.push({ results, sha });
+            }
+        }
+        const sink = new Rechecking();
+        // The earlier scanner findings are known, so this run skips filing them again: the re-check must still see them.
+        for (const f of first.findings.filter(f => f.source === "scanner")) await sink.createFinding(f);
+        const filed = sink.findings.length;
+        await audit(sink, repo, ws);
+        expect(sink.findings.filter(f => f.source === "scanner")).toHaveLength(filed);
+        expect(sink.rechecks).toHaveLength(1);
+        expect(sink.rechecks[0].results.map(r => [r.id, r.status])).toEqual([
+            ["leak", "unchanged"],
+            ["gone", "fixed"],
+            ["eval", "unchanged"],
+            ["rewritten", "changed"]
+        ]);
+        const said = sink.events.findIndex(e => e.startsWith("Re-checked"));
+        expect(sink.events[said]).toMatch(
+            /^Re-checked 4 earlier findings against [0-9a-f]{7}: 1 fixed \(F-002\), 2 with code unchanged, 1 changed, to verify \(rewritten\)\.$/
+        );
+        expect(said).toBeLessThan(sink.events.findIndex(e => e.startsWith("Agent:")));
+    });
+
+    it("re-checks nothing on a re-run of one aspect", async () => {
+        class Counting extends TestSink {
+            asked = 0;
+            override async earlierFindings() {
+                this.asked++;
+                return [];
+            }
+        }
+        const sink = new Counting();
+        await audit(sink, await makeSampleRepo(), await mkdtemp(join(tmpdir(), "ws-")), {
+            only: { repositoryId: "r", aspect: "security" }
+        });
+        expect(sink.asked).toBe(0);
+    });
+
     it("folds a scanner finding the agent filed again into the agent's, and says so", async () => {
         const sink = new TestSink();
         const evalAtLine7 = finding({

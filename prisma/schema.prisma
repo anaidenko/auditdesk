@@ -206,6 +206,14 @@ model RunEvent {
   @@index([runId, id])
 }
 
+enum RecheckStatus {
+  unchanged
+  open
+  fixed
+  changed
+  regressed
+}
+
 model Finding {
   id               String                   @id @default(uuid())
   projectId        String
@@ -239,6 +247,15 @@ model Finding {
   statusReason     String?
   note             String?
   mergedIntoId     String?
+  /// What the last re-audit found of it at a later commit, or Andrii's call on that (design § 9).
+  recheck          RecheckStatus?
+  recheckedSha     String?
+  recheckedAt      DateTime?
+  recheckRunId     String?
+  /// The cited code at the last re-check: Andrii's "still open" stands while it is the same.
+  recheckDigest    String?
+  /// The cited code was absent at a re-check after the fix: its return is a regression.
+  recheckGone      Boolean                  @default(false)
   search           Unsupported("tsvector")?
   createdAt        DateTime                 @default(now())
   updatedAt        DateTime                 @updatedAt
