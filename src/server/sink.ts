@@ -2,15 +2,16 @@ import "server-only";
 
 import type { AgentOutcome } from "@/engine/agent/run-aspect";
 import { freshTokens } from "@/engine/budget";
-import { findingLabel, indexLine } from "@/engine/findings";
+import { findingLabel, indexLine, scannerDuplicates } from "@/engine/findings";
 import type { PipelineSink } from "@/engine/pipeline";
 import type { ToolVersions } from "@/engine/scanners/types";
 import type { StackProfile } from "@/engine/stack";
-import type { CallRecord, NewFinding, SeverityName, Spend } from "@/engine/types";
+import { type CallRecord, type Evidence, type NewFinding, SEVERITIES, type SeverityName, type Spend } from "@/engine/types";
 import type { Prisma } from "@/generated/prisma/client";
 import { prisma } from "@/server/db";
 import { createFinding } from "@/server/findings";
 import { RUN_CHANNEL } from "@/server/pg";
+import { merge } from "@/server/review";
 
 // Rejected findings stay in the agent's index, marked, so a re-run does not file them again (design § 9).
 const INDEXED = ["unreviewed", "accepted", "edited", "excluded", "rejected"] as const;
@@ -109,6 +110,44 @@ export class PrismaSink implements PipelineSink {
         });
     }
 
+    async foldScannerDuplicates(repositoryId: string, agentRunId: string) {
+        const placed = (r: {
+            number: number;
+            source: string;
+            kind: string;
+            checklistItem: string | null;
+            evidence: unknown;
+            references: unknown;
+        }) => ({
+            label: findingLabel(r.number),
+            source: r.source as "agent" | "scanner",
+            kind: r.kind as "finding" | "question",
+            checklistItem: r.checklistItem,
+            evidence: r.evidence as Evidence[],
+            cwe: (r.references as { cwe?: string } | null)?.cwe ?? null
+        });
+        const agent = await prisma.finding.findMany({ where: { agentRunId, status: "unreviewed" }, orderBy: { number: "asc" } });
+        // This run's scanner findings only: an earlier run's lines may belong to another commit.
+        const scanner = await prisma.finding.findMany({
+            where: { repositoryId, runId: this.runId, source: "scanner", status: "unreviewed" },
+            orderBy: { number: "asc" }
+        });
+        const byLabel = new Map([...agent, ...scanner].map(r => [findingLabel(r.number), r]));
+        const folded: { from: string; into: string; raised?: SeverityName }[] = [];
+        for (const { from, into } of scannerDuplicates(agent.map(placed), scanner.map(placed))) {
+            const s = byLabel.get(from)!;
+            const target = await prisma.finding.findUniqueOrThrow({ where: { id: byLabel.get(into)!.id } });
+            await merge(s.id, into, { onlyUnreviewed: true });
+            // A folded critical secret must not leave the report with no critical.
+            const rank = (v: string | null) => (v ? SEVERITIES.indexOf(v as SeverityName) : SEVERITIES.length);
+            const raised = rank(s.severity) < rank(target.severity) ? (s.severity as SeverityName) : undefined;
+            if (raised) await prisma.finding.update({ where: { id: target.id }, data: { severity: raised } });
+            folded.push({ from, into, ...(raised ? { raised } : {}) });
+        }
+        if (folded.length) await this.notify();
+        return folded;
+    }
+
     async knownFingerprints(repositoryId: string) {
         const rows = await prisma.finding.findMany({ where: { repositoryId }, select: { fingerprint: true } });
         return new Set(rows.map(r => r.fingerprint));
@@ -156,9 +195,15 @@ export class PrismaSink implements PipelineSink {
     }
 
     async supersedeUnreviewed(repositoryId: string, aspect: string) {
-        await prisma.finding.updateMany({
-            where: { repositoryId, aspect, source: "agent", status: "unreviewed" },
-            data: { status: "superseded" }
+        const where = { repositoryId, aspect, source: "agent" as const, status: "unreviewed" as const };
+        await prisma.$transaction(async tx => {
+            const ids = (await tx.finding.findMany({ where, select: { id: true } })).map(r => r.id);
+            // A scanner finding folded into one of them comes back to the review; nothing else would file it again.
+            await tx.finding.updateMany({
+                where: { mergedIntoId: { in: ids }, source: "scanner", status: "merged" },
+                data: { status: "unreviewed", mergedIntoId: null }
+            });
+            await tx.finding.updateMany({ where: { id: { in: ids } }, data: { status: "superseded" } });
         });
     }
 }

@@ -15,7 +15,7 @@ import { normaliseOsv, osvEvidence } from "./scanners/osv";
 import { normaliseSemgrep } from "./scanners/semgrep";
 import type { Ruleset, ScannerRunner, ToolVersions } from "./scanners/types";
 import { type StackProfile, detectStack, stackProfileText } from "./stack";
-import type { AuditSink } from "./types";
+import type { AuditSink, SeverityName } from "./types";
 import { cloneRepository } from "./workspace";
 
 export interface PipelineSink extends AuditSink {
@@ -25,6 +25,11 @@ export interface PipelineSink extends AuditSink {
     startAgent(repositoryId: string, aspect: string, share: { usd: number; tokens: number }): Promise<string>;
     finishAgent(agentRunId: string, outcome: AgentOutcome): Promise<void>;
     supersedeUnreviewed(repositoryId: string, aspect: string): Promise<void>;
+    /**
+     * Merges the run's unreviewed scanner findings that the agent filed again into the agent's own;
+     * `raised` is the scanner's higher severity, which the agent's finding takes.
+     */
+    foldScannerDuplicates(repositoryId: string, agentRunId: string): Promise<{ from: string; into: string; raised?: SeverityName }[]>;
 }
 
 export interface AuditInput {
@@ -212,6 +217,15 @@ export async function runAudit(input: AuditInput, deps: AuditDeps): Promise<{ st
                     throw e;
                 });
             await sink.finishAgent(agentRunId, outcome);
+            try {
+                for (const f of await sink.foldScannerDuplicates(repo.id, agentRunId))
+                    await sink.progress(
+                        `Folded ${f.from} into ${f.into}: the scanner's finding repeats the agent's.${f.raised ? ` ${f.into} takes its ${f.raised} severity.` : ""}`
+                    );
+            } catch (e) {
+                // A finding reviewed while the fold ran: the duplicates stay apart, and the audit goes on.
+                await sink.progress(`Did not fold the scanner's duplicates: ${(e as Error).message}`, "warn");
+            }
             await sink.progress(
                 `${checklist.title}: ${outcome.status}${outcome.note ? ` — ${outcome.note}` : ""}`,
                 outcome.status === "done" ? "info" : "warn"

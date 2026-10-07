@@ -188,7 +188,9 @@ export async function runEval(o: EvalOptions, deps: EvalDeps): Promise<{ file: s
     }
     const durationMs = performance.now() - started;
 
+    // Each finding is graded by its own evidence; a folded scanner finding still counts as the scanner's find.
     const findings: GradedFinding[] = sink.findings.map(f => ({
+        ...(f.mergedInto ? { folded: true } : {}),
         label: f.label,
         kind: f.kind,
         source: f.source,

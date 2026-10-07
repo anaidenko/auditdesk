@@ -2,6 +2,7 @@ import { fingerprint } from "../findings";
 import type { Masker } from "../masker";
 import type { NewFinding, SeverityName } from "../types";
 
+import { ROLE_WORDS, sampleRole } from "./paths";
 import type { Ruleset, SemgrepResult } from "./types";
 
 export function semgrepArgs(rulesets: Ruleset[]): string[] {
@@ -55,12 +56,14 @@ export function normaliseSemgrep(results: SemgrepResult[], o: { repositoryId: st
         const item = BY_CWE.find(([re]) => cwe && re.test(cwe))?.[1] ?? "SEC-15";
         const evidence = [{ file: r.path, startLine: r.start.line, endLine: r.end.line, snippet: o.masker.mask(r.extra.lines) }];
         const base = { repositoryId: o.repositoryId, aspect: "security", checklistItem: item, evidence };
+        const role = sampleRole(r.path);
         return {
             ...base,
             agentRunId: null,
             kind: "finding",
-            title: o.masker.mask(r.extra.message.split(/(?<=\.)\s/)[0].slice(0, 160)),
-            severity: SEVERITY[r.extra.severity] ?? "medium",
+            title: `${o.masker.mask(r.extra.message.split(/(?<=\.)\s/)[0].slice(0, 160)).replace(role ? /\.\s*$/ : /$^/, "")}${role ? ` (${ROLE_WORDS[role]})` : ""}`,
+            // In a sample file a hard-coded secret is rated as gitleaks rates it; anything else is low.
+            severity: role ? (item === "SEC-10" ? "medium" : "low") : (SEVERITY[r.extra.severity] ?? "medium"),
             likelihood: null,
             impact: null,
             summary: o.masker.mask(r.extra.message),

@@ -4,6 +4,7 @@ import { fingerprint } from "../findings";
 import type { Masker } from "../masker";
 import type { NewFinding } from "../types";
 
+import { ROLE_WORDS, sampleRole } from "./paths";
 import type { GitleaksLeak } from "./types";
 
 /**
@@ -44,29 +45,44 @@ export function parseGitleaks(stdout: string): GitleaksLeak[] {
     return start === -1 ? [] : JSON.parse(stdout.slice(start));
 }
 
+/** gitleaks rules that fire on any long random string: in a sample file, mostly fake keys. */
+const NOISY_RULES = new Set(["generic-api-key", "jwt"]);
+
 export function normaliseGitleaks(
     leaks: GitleaksLeak[],
     o: { repositoryId: string; masker: Masker; inTree: (leak: GitleaksLeak) => boolean }
 ): NewFinding[] {
     return leaks.map(leak => {
         const current = o.inTree(leak);
+        // A generic key in a test or seed file is often a fake one; it is still filed, rated lower. A
+        // provider's own key format keeps its rating wherever it is.
+        const role = sampleRole(leak.File);
+        const lowered = role !== null && NOISY_RULES.has(leak.RuleID);
         const evidence = [{ file: leak.File, startLine: leak.StartLine, endLine: leak.EndLine, snippet: o.masker.mask(leak.Match) }];
         const base = { repositoryId: o.repositoryId, aspect: "security", checklistItem: "SEC-10", evidence };
         return {
             ...base,
             agentRunId: null,
             kind: "finding",
-            title: current ? `Secret in the code: ${leak.Description}` : `Secret in git history: ${leak.Description}`,
-            severity: current ? "critical" : "high",
-            likelihood: current
-                ? "Anyone with read access to the repository can use it."
-                : "Anyone who clones the repository can recover it from history.",
+            title: `${current ? "Secret in the code" : "Secret in git history"}: ${role ? `${leak.Description.replace(/\.\s*$/, "")} (${ROLE_WORDS[role]})` : leak.Description}`,
+            severity: lowered ? (current ? "medium" : "low") : current ? "critical" : "high",
+            likelihood: role
+                ? `It is ${ROLE_WORDS[role]}; whether the credential is real decides the risk.${
+                      role === "seed" ? " Still, a seed that runs in production makes it a default credential on every deployment." : ""
+                  }`
+                : current
+                  ? "Anyone with read access to the repository can use it."
+                  : "Anyone who clones the repository can recover it from history.",
             impact: "Depends on what the credential grants; assume full access to that service.",
             summary: current
                 ? `A credential matching gitleaks rule "${leak.RuleID}" is committed in ${leak.File}.`
                 : `A credential matching gitleaks rule "${leak.RuleID}" was committed in ${leak.File} (commit ${leak.Commit.slice(0, 8)}, ${leak.Date.slice(0, 10)}) and is still in the history.`,
             explanation: "Removing a secret from the code does not remove it from git history; every clone keeps it.",
-            recommendation: "Rotate the credential first, then remove it from the code and load it from the environment or a secret store.",
+            recommendation: role
+                ? current
+                    ? "Check whether the credential is real. If it is, rotate it and replace it with a fake one."
+                    : "Rotate it if it is real."
+                : "Rotate the credential first, then remove it from the code and load it from the environment or a secret store.",
             effort: "S",
             references: { cwe: "CWE-798" },
             tags: [],

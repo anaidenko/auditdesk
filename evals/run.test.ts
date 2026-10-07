@@ -111,6 +111,27 @@ describe("runEval", () => {
         expect(run.text).toMatch(/key digest `[0-9a-f]{12}`; prices as of \d{4}-\d\d-\d\d/);
     });
 
+    it("grades a finding the agent repeated from a scanner by the agent's own lines, and the scanner's apart", async () => {
+        const run = await evalRun({
+            "Security": [
+                tool(
+                    "report_finding",
+                    finding({
+                        cwe: "CWE-95",
+                        title: "eval of the query",
+                        evidence: [{ file: "src/server.js", start_line: 7, end_line: 7 }]
+                    })
+                ),
+                finish(),
+                finish()
+            ],
+            "Code quality and tests": [finish([]), finish([])]
+        });
+        expect(run.text).toMatch(/\| S-02 \| SEC-04 \| eval of the query string \| F-\d{3} \(scanner\), F-\d{3} \|/);
+        expect(run.text).toContain("agents alone: 1 of 3");
+        expect(run.result.grade.leftovers.every(l => !run.result.findings.find(f => f.label === l)?.folded)).toBe(true);
+    });
+
     it("tells the agents' finds from the scanners'", async () => {
         const run = await evalRun({
             "Security": [

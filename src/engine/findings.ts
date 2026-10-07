@@ -52,3 +52,44 @@ export function compareFindings(
         a.number - b.number
     );
 }
+
+/** A cited range longer than this locates nothing by itself: a whole file would match every entry in it. */
+export const WIDE = 30;
+
+type Placed = {
+    label: string;
+    source: "agent" | "scanner";
+    kind: "finding" | "question";
+    checklistItem: string | null;
+    evidence: Evidence[];
+    cwe?: string | null;
+};
+
+/**
+ * Scanner findings an agent filed again: the same checklist item, overlapping lines of one file in a
+ * range the agent narrowed to at most WIDE lines, and the same CWE when both name one. Each goes
+ * into the narrowest agent finding that covers it, which keeps the agent's explanation.
+ */
+export function scannerDuplicates(agent: Placed[], scanner: Placed[]): { from: string; into: string }[] {
+    const span = (e: Evidence) => e.endLine - e.startLine + 1;
+    const covers = (a: Placed, s: Placed) =>
+        a.evidence
+            .filter(x => span(x) <= WIDE)
+            .flatMap(x =>
+                s.evidence.filter(y => x.file === y.file && x.startLine <= y.endLine && y.startLine <= x.endLine).map(() => span(x))
+            );
+    return scanner.flatMap(s => {
+        const best = agent
+            .filter(
+                a =>
+                    a.source === "agent" &&
+                    a.kind === "finding" &&
+                    a.checklistItem === s.checklistItem &&
+                    (!a.cwe || !s.cwe || a.cwe === s.cwe)
+            )
+            .map(a => ({ a, width: Math.min(...covers(a, s)) }))
+            .filter(x => Number.isFinite(x.width))
+            .sort((x, y) => x.width - y.width)[0];
+        return best ? [{ from: s.label, into: best.a.label }] : [];
+    });
+}

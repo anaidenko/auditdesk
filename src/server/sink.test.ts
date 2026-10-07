@@ -16,7 +16,7 @@ async function setup() {
         data: { projectId: project.id, model: "m", effort: "low", aspects: ["security"], budgetUsd: 1, budgetTokens: 20_000 }
     });
     const add = (over: Parameters<typeof sampleFinding>[1]) => createFinding(project.id, run.id, sampleFinding(repo.id, over));
-    return { sink: new PrismaSink(run.id, project.id), repo, add };
+    return { sink: new PrismaSink(run.id, project.id), repo, add, run };
 }
 
 describe("PrismaSink", () => {
@@ -33,6 +33,85 @@ describe("PrismaSink", () => {
         expect(await status(agentAccepted.id)).toBe("accepted");
         expect(await status(scanner.id)).toBe("unreviewed");
         expect(await status(otherAspect.id)).toBe("unreviewed");
+    });
+
+    async function foldSetup() {
+        const { sink, repo, add, run } = await setup();
+        const agentRun = await prisma.agentRun.create({
+            data: { runId: run.id, repositoryId: repo.id, aspect: "security", status: "done", tokenShare: 1, usdShare: 1 }
+        });
+        const line7 = [{ file: "src/server.js", startLine: 7, endLine: 7, snippet: "eval(req.query.expr)" }];
+        const agentAt = (over: Parameters<typeof add>[0] = {}) =>
+            add({
+                source: "agent",
+                agentRunId: agentRun.id,
+                checklistItem: "SEC-04",
+                evidence: [{ file: "src/server.js", startLine: 6, endLine: 8 }],
+                ...over
+            });
+        return { sink, repo, add, run, agentRun, line7, agentAt };
+    }
+    const row = (id: string) => prisma.finding.findUniqueOrThrow({ where: { id } });
+
+    it("folds a scanner finding that an agent filed again into the agent's, adding no evidence it already shows", async () => {
+        const { sink, repo, add, agentRun, line7, agentAt } = await foldSetup();
+        const scanner = await add({ source: "scanner", checklistItem: "SEC-04", evidence: line7 });
+        const xss = await add({ source: "scanner", checklistItem: "SEC-05", evidence: line7 });
+        const agent = await agentAt();
+        expect(await sink.foldScannerDuplicates(repo.id, agentRun.id)).toEqual([{ from: scanner.label, into: agent.label }]);
+        expect(await row(scanner.id)).toMatchObject({ status: "merged", mergedIntoId: agent.id });
+        expect((await row(agent.id)).evidence).toHaveLength(1);
+        expect((await row(xss.id)).status).toBe("unreviewed");
+    });
+
+    it("keeps the higher severity when it folds, and says so", async () => {
+        const { sink, repo, add, agentRun, line7, agentAt } = await foldSetup();
+        await add({ source: "scanner", checklistItem: "SEC-04", severity: "critical", evidence: line7 });
+        const agent = await agentAt({ severity: "high" });
+        expect(await sink.foldScannerDuplicates(repo.id, agentRun.id)).toEqual([
+            expect.objectContaining({ into: agent.label, raised: "critical" })
+        ]);
+        expect((await row(agent.id)).severity).toBe("critical");
+    });
+
+    it("folds only unreviewed findings of this run: not a reviewed one, another agent's, or an earlier run's", async () => {
+        const { sink, repo, add, agentRun, line7, agentAt, run } = await foldSetup();
+        const reviewedScanner = await add({ source: "scanner", checklistItem: "SEC-04", evidence: line7 });
+        await prisma.finding.update({ where: { id: reviewedScanner.id }, data: { status: "accepted" } });
+        const earlierRun = await prisma.run.create({
+            data: {
+                projectId: run.projectId,
+                status: "done",
+                model: "m",
+                effort: "low",
+                aspects: ["security"],
+                budgetUsd: 1,
+                budgetTokens: 20_000
+            }
+        });
+        const earlier = await createFinding(
+            run.projectId,
+            earlierRun.id,
+            sampleFinding(repo.id, { source: "scanner", checklistItem: "SEC-04", evidence: line7 })
+        );
+        const reviewedAgent = await agentAt();
+        await prisma.finding.update({ where: { id: reviewedAgent.id }, data: { status: "accepted" } });
+        const other = await prisma.agentRun.create({
+            data: { runId: run.id, repositoryId: repo.id, aspect: "quality", status: "done", tokenShare: 1, usdShare: 1 }
+        });
+        await add({ source: "agent", agentRunId: other.id, checklistItem: "SEC-04", evidence: line7 });
+        expect(await sink.foldScannerDuplicates(repo.id, agentRun.id)).toEqual([]);
+        expect((await row(earlier.id)).status).toBe("unreviewed");
+    });
+
+    it("brings a folded scanner finding back to the review when its agent's aspect is re-run", async () => {
+        const { sink, repo, add, agentRun, line7, agentAt } = await foldSetup();
+        const scanner = await add({ source: "scanner", checklistItem: "SEC-04", evidence: line7, title: "Secret in the code" });
+        await agentAt();
+        await sink.foldScannerDuplicates(repo.id, agentRun.id);
+        await sink.supersedeUnreviewed(repo.id, "security");
+        expect(await row(scanner.id)).toMatchObject({ status: "unreviewed", mergedIntoId: null });
+        expect(await sink.findingIndex(repo.id)).toContainEqual(expect.stringContaining("Secret in the code"));
     });
 
     it("lists rejected findings in the agent's index with the reason, and leaves out merged and superseded ones", async () => {

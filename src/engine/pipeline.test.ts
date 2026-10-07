@@ -5,6 +5,7 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 
 import { message, replayFetch } from "@/engine/replay";
+import { finding, tool } from "@/test/agent-messages";
 import { SAMPLE_KEY, makeSampleRepo } from "@/test/sample-repo";
 
 import { type AspectInput, type AspectRunner, apiAspectRunner } from "./agent/run-aspect";
@@ -72,6 +73,42 @@ async function audit(
 }
 
 describe("runAudit", () => {
+    it("folds a scanner finding the agent filed again into the agent's, and says so", async () => {
+        const sink = new TestSink();
+        const evalAtLine7 = finding({
+            checklist_item: "SEC-04",
+            cwe: "CWE-95",
+            title: "User input reaches eval",
+            evidence: [{ file: "src/server.js", start_line: 7, end_line: 7 }]
+        });
+        const runAspect = apiAspectRunner(
+            new Anthropic({
+                apiKey: "t",
+                fetch: replayFetch([tool("report_finding", evalAtLine7), finish(), finish()]).fetch,
+                maxRetries: 0
+            })
+        );
+        await audit(sink, await makeSampleRepo(), await mkdtemp(join(tmpdir(), "ws-")), {}, runAspect);
+        const agent = sink.findings.find(f => f.source === "agent")!;
+        const semgrepEval = sink.findings.find(f => f.source === "scanner" && f.checklistItem === "SEC-04")!;
+        expect(semgrepEval.mergedInto).toBe(agent.label);
+        expect(sink.events).toContainEqual(`Folded ${semgrepEval.label} into ${agent.label}: the scanner's finding repeats the agent's.`);
+        expect(await sink.findingIndex("r")).not.toContainEqual(expect.stringContaining(semgrepEval.label));
+    });
+
+    it("goes on with the audit when a fold fails, and says why", async () => {
+        class Refusing extends TestSink {
+            override async foldScannerDuplicates(): Promise<never> {
+                throw new Error("F-004 was already merged or superseded.");
+            }
+        }
+        const sink = new Refusing();
+        const result = await audit(sink, await makeSampleRepo(), await mkdtemp(join(tmpdir(), "ws-")));
+        expect(result.stopped).toBe(false);
+        expect(sink.agents.map(a => a.status)).toEqual(["done"]);
+        expect(sink.events).toContainEqual("Did not fold the scanner's duplicates: F-004 was already merged or superseded.");
+    });
+
     it("counts what the scanners filed and masked in words that fit the count", async () => {
         const sink = new TestSink();
         await audit(sink, await makeSampleRepo(), await mkdtemp(join(tmpdir(), "ws-")));

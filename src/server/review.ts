@@ -54,7 +54,8 @@ export async function edit(id: string, fields: EditableFields) {
     await prisma.finding.update({ where: { id }, data: { ...fields, status } });
 }
 
-export async function merge(sourceId: string, targetLabel: string) {
+/** `onlyUnreviewed`: the engine's automatic fold, which must not touch a finding Andrii has reviewed meanwhile. */
+export async function merge(sourceId: string, targetLabel: string, o: { onlyUnreviewed?: boolean } = {}) {
     const source = await prisma.finding.findUniqueOrThrow({ where: { id: sourceId } });
     const number = Number(targetLabel.replace(/^F-/i, ""));
     const target = await prisma.finding.findUnique({ where: { projectId_number: { projectId: source.projectId, number } } });
@@ -66,15 +67,17 @@ export async function merge(sourceId: string, targetLabel: string) {
     await prisma.$transaction(async tx => {
         // Conditional, so a second press (or a stale page) cannot add the evidence twice.
         const { count } = await tx.finding.updateMany({
-            where: { id: source.id, status: { notIn: ["merged", "superseded"] } },
+            where: { id: source.id, status: o.onlyUnreviewed ? "unreviewed" : { notIn: ["merged", "superseded"] } },
             data: { status: "merged", mergedIntoId: target.id }
         });
         if (!count) throw new Error(`${findingLabel(source.number)} was already merged or superseded.`);
         const fresh = await tx.finding.findUniqueOrThrow({ where: { id: target.id } });
-        await tx.finding.update({
-            where: { id: target.id },
-            data: { evidence: [...(fresh.evidence as unknown as Evidence[]), ...(source.evidence as unknown as Evidence[])] as object[] }
-        });
+        const kept = fresh.evidence as unknown as Evidence[];
+        // A range the target already shows would print the same code twice in the report.
+        const added = (source.evidence as unknown as Evidence[]).filter(
+            e => !kept.some(k => k.file === e.file && k.startLine <= e.startLine && e.endLine <= k.endLine)
+        );
+        await tx.finding.update({ where: { id: target.id }, data: { evidence: [...kept, ...added] as object[] } });
     });
 }
 
