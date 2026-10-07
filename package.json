@@ -49,6 +49,7 @@
         "prettier": "3.9.9",
         "prettier-plugin-tailwindcss": "^0.8.1",
         "prisma": "7.10.0",
+        "server-only": "0.0.1",
         "tailwindcss": "^4",
         "tsx": "4.23.15",
         "typescript": "^5",

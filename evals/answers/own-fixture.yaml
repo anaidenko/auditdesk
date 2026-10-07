@@ -138,16 +138,23 @@ entries:
     startLine: 5
     endLine: 11
     anchor: if (!key) return;
+    also:
+      - file: src/app/api/checkout/route.ts
+        startLine: 44
+        endLine: 44
+        anchor: sendOrderConfirmation(session.email, order.id);
   - id: OWN-11
     aspect: architecture
     checklistItem: ARC-03
     kind: finding
     severity: high
     title: The payments webhook swallows errors and acknowledges lost refunds
+    alsoItems:
+      - API-02
     file: src/app/api/webhooks/payments/route.ts
-    startLine: 14
+    startLine: 19
     endLine: 22
-    anchor: "    try {"
+    anchor: "} catch {"
   - id: OWN-12
     aspect: data
     checklistItem: DAT-02
@@ -355,7 +362,6 @@ entries:
     title: A retried checkout request creates a second order and charges the card again
     alsoItems:
       - ARC-06
-      - DAT-04
     file: src/app/api/checkout/route.ts
     startLine: 41
     endLine: 41

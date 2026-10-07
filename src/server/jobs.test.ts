@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it } from "vitest";
 
 import { prisma } from "@/server/db";
-import { AccessChangedError, enqueueRerun, enqueueRun } from "@/server/jobs";
+import { AccessChangedError, claimJob, enqueueRerun, enqueueRun } from "@/server/jobs";
 import { resetDb } from "@/test/db";
 import { projectWithRepo } from "@/test/factories";
 
@@ -36,5 +36,17 @@ describe("model access on runs", () => {
         await enqueueRerun(runId, repo.id, "security", { allowPastReserve: true });
         const jobs = await prisma.job.findMany({ where: { runId }, orderBy: { createdAt: "asc" } });
         expect(jobs.map(j => j.allowPastReserve)).toEqual([true, false, true]);
+    });
+});
+
+describe("claimJob", () => {
+    it("claims only the named run's job when asked, leaving an older one queued", async () => {
+        const older = await projectWithRepo();
+        const olderRun = await enqueueRun(older.project.id, { ...RUN, modelAccess: "claude_plan" });
+        const mine = await projectWithRepo();
+        const myRun = await enqueueRun(mine.project.id, { ...RUN, modelAccess: "claude_plan" });
+        expect((await claimJob({ runId: myRun }))?.runId).toBe(myRun);
+        expect((await prisma.job.findFirstOrThrow({ where: { runId: olderRun } })).status).toBe("queued");
+        expect(await claimJob({ runId: myRun })).toBeNull();
     });
 });

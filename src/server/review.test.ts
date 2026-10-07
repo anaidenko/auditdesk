@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it } from "vitest";
 
 import { prisma } from "@/server/db";
 import { createFinding } from "@/server/findings";
-import { accept, confirmRecheck, edit, exclude, listFindings, merge, reject } from "@/server/review";
+import { accept, confirmRecheck, edit, exclude, listFindings, merge, reject, writeIfUnchanged } from "@/server/review";
 import { resetDb } from "@/test/db";
 import { projectWithRepo, sampleFinding } from "@/test/factories";
 
@@ -141,6 +141,14 @@ describe("review", () => {
         expect((await prisma.finding.findUniqueOrThrow({ where: { id: a.id } })).status).toBe("merged");
         await prisma.finding.update({ where: { id: b.id }, data: { status: "superseded" } });
         await expect(accept(b.id)).rejects.toThrow(/superseded/);
+    });
+
+    it("writes a review only if the status read before it still holds, so a merge in between wins", async () => {
+        const { a, b } = await twoFindings();
+        await merge(a.id, b.label);
+        await expect(writeIfUnchanged(a.id, "unreviewed", { status: "rejected", statusReason: "late" })).rejects.toThrow(/merged/);
+        expect((await prisma.finding.findUniqueOrThrow({ where: { id: a.id } })).status).toBe("merged");
+        await expect(writeIfUnchanged(b.id, "accepted", { status: "rejected" })).rejects.toThrow(/changed meanwhile/);
     });
 
     it("refuses an edit that empties a required field", async () => {

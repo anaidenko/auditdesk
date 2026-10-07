@@ -13,6 +13,7 @@ fixtures:
   # not counted as false.
   - name: juice-shop
     url: https://github.com/juice-shop/juice-shop
+    release: v20.2.0
     sha: 5658473cf8814459bf89000ce373b20ed0b4eb37
     rules: juice-shop
     aspects: [security, llm]

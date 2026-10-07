@@ -4,6 +4,7 @@ import { ASPECTS } from "@/engine/aspects";
 import { compareFindings, findingLabel } from "@/engine/findings";
 import { pathNames } from "@/engine/pipeline";
 import type { Evidence, SeverityName } from "@/engine/types";
+import type { Prisma } from "@/generated/prisma/client";
 import { FindingStatus, RecheckStatus } from "@/generated/prisma/enums";
 import { prisma } from "@/server/db";
 
@@ -31,15 +32,26 @@ async function reviewable(id: string) {
     return f;
 }
 
-export async function accept(id: string) {
+/**
+ * Writes only if the finding still has the status read before: the engine's automatic merge of a
+ * scanner duplicate can land between the read and the write.
+ */
+export async function writeIfUnchanged(id: string, read: FindingStatus, data: Prisma.FindingUpdateManyMutationInput) {
+    const { count } = await prisma.finding.updateMany({ where: { id, status: read }, data });
+    if (count) return;
     await reviewable(id);
-    await prisma.finding.update({ where: { id }, data: { status: "accepted" } });
+    throw new Error("The finding changed meanwhile; reload the page and review it again.");
+}
+
+export async function accept(id: string) {
+    const f = await reviewable(id);
+    await writeIfUnchanged(id, f.status, { status: "accepted" });
 }
 
 async function withReason(id: string, status: "rejected" | "excluded", reason: string) {
     if (!reason.trim()) throw new Error("Give a reason; it is kept as eval data and for the record.");
-    await reviewable(id);
-    await prisma.finding.update({ where: { id }, data: { status, statusReason: reason.trim() } });
+    const f = await reviewable(id);
+    await writeIfUnchanged(id, f.status, { status, statusReason: reason.trim() });
 }
 
 /** Andrii's call on what a re-audit found: a fix he verified, or a finding still open (design § 9). */
@@ -62,7 +74,7 @@ export async function edit(id: string, fields: EditableFields) {
     if (f.kind === "question" && fields.severity) throw new Error("A question carries no severity.");
     // A rejected or excluded finding stays out of the report when its text or note changes.
     const status = f.status === "rejected" || f.status === "excluded" ? f.status : "edited";
-    await prisma.finding.update({ where: { id }, data: { ...fields, status } });
+    await writeIfUnchanged(id, f.status, { ...fields, status });
 }
 
 /** `onlyUnreviewed`: the engine's automatic fold, which must not touch a finding Andrii has reviewed meanwhile. */

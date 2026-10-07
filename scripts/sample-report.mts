@@ -1,9 +1,11 @@
 // The public sample report (docs/sample-report.html and .pdf): OWASP Juice Shop, prepared as the
 // eval prepares it (evals/prep), audited through the app's own runner and reviewed in the app.
-//   pnpm tsx --conditions=react-server scripts/sample-report.mts run <model> <effort> <budget-usd>
+//   pnpm tsx --conditions=react-server scripts/sample-report.mts run <model> <effort> <budget-usd> [<thousand-tokens>=1200]
 //   pnpm tsx --conditions=react-server scripts/sample-report.mts export <projectId>
 // `run` makes a project of the prepared tree and runs it on the Claude plan, a live run that
 // spends the plan's window; `export` writes the report of the findings reviewed since.
+// Stop the app before `run` and start it only after: the script runs the job itself, and the
+// app's runner would claim it or, starting, mark it interrupted.
 // .mts for top-level await, as scripts/smoke.mts.
 import nextEnv from "@next/env";
 import { execFileSync } from "node:child_process";
@@ -21,11 +23,25 @@ const { prisma } = await import("../src/server/db");
 
 const [command, ...args] = process.argv.slice(2);
 const spec = loadFixtures().find(f => f.name === "juice-shop")!;
-const RELEASE = "v20.2.0";
+const RELEASE = spec.release!;
 
 if (command === "run") {
-    const [model, effort, usd] = args;
-    if (!model || !effort || !(Number(usd) > 0)) throw new Error("run <model> <effort> <budget-usd>");
+    const [model, effort, usd, kTokens = "1200"] = args;
+    const { parseRunForm } = await import("../src/server/forms");
+    const fd = new FormData();
+    for (const a of spec.aspects as string[]) fd.append("aspects", a);
+    for (const [k, v] of Object.entries({ model: model ?? "", effort: effort ?? "", budgetUsd: usd ?? "", budgetKTokens: kTokens }))
+        fd.set(k, v);
+    const form = parseRunForm(fd, 1);
+    if (!form.ok) throw new Error(`${form.error} Usage: run <model> <effort> <budget-usd> [<thousand-tokens>]`);
+    const active = await prisma.job.count({ where: { status: { in: ["queued", "running"] } } });
+    if (active) throw new Error(`${active} job(s) are queued or running: let the app finish them, then stop it.`);
+    const port = process.env.PORT ?? "3000";
+    const up = await fetch(`http://127.0.0.1:${port}/`, { signal: AbortSignal.timeout(1000) }).then(
+        () => true,
+        () => false
+    );
+    if (up) throw new Error(`The app answers on 127.0.0.1:${port}: stop it first.`);
     const { enqueueRun, claimJob } = await import("../src/server/jobs");
     const { processJob } = await import("../src/server/runner");
     const prepared = await prepareFixture({ name: spec.name, url: spec.url!, sha: spec.sha, rules: JUICE_SHOP_RULES }, workspaceDir());
@@ -44,15 +60,15 @@ if (command === "run") {
     });
     await prisma.repository.create({ data: { projectId: project.id, source: tree, branch: "main" } });
     const runId = await enqueueRun(project.id, {
-        model,
-        effort,
+        model: form.value.model,
+        effort: form.value.effort,
         modelAccess: "claude_plan",
-        aspects: spec.aspects as string[],
-        budgetUsd: Number(usd),
-        budgetTokens: 1_200_000
+        aspects: form.value.aspects,
+        budgetUsd: form.value.budgetUsd,
+        budgetTokens: form.value.budgetTokens
     });
-    const job = await claimJob();
-    if (!job || job.runId !== runId) throw new Error("Another job was queued first; run it from the app.");
+    const job = await claimJob({ runId });
+    if (!job) throw new Error(`Run ${runId}'s job was taken by another runner: follow it in the app.`);
     console.log(`Project ${project.id}, run ${runId}: auditing ${tree} (prepared ${prepared.preparedSha})…`);
     await processJob(job as never);
     const run = await prisma.run.findUniqueOrThrow({ where: { id: runId } });

@@ -110,9 +110,12 @@ const API_ROUTES: { dep: string; label: string; file: RegExp }[] = [
 
 /** Routes a library or the framework adds, which say nothing about an API the product serves. */
 const NOT_AN_API =
-    /(^|\/)api\/auth\/\[\.\.\.[^/]+\]\/route\.|(^|\/)(sitemap\.xml|robots\.txt|manifest\.(json|webmanifest)|opengraph-image|twitter-image|icon|apple-icon|favicon\.ico)\/route\./;
+    /(^|\/)api\/auth\/\[\[?\.\.\.[^/\]]+\]\]?(\/route)?\.(ts|js|tsx|jsx|mjs)$|(^|\/)(sitemap\.xml|robots\.txt|manifest\.(json|webmanifest)|opengraph-image|twitter-image|icon|apple-icon|favicon\.ico)\/route\./;
 
-/** Packages that render a user interface; `react` counts only beside `react-dom`, since email templates use it too. */
+/**
+ * Packages that render a user interface. `react` counts only beside `react-dom`, and not when React
+ * Email is there without a bundler: its setup installs both to render emails, never a page.
+ */
 const UI_PACKAGES = new Set([
     "next",
     "react",
@@ -131,6 +134,7 @@ const UI_PACKAGES = new Set([
 ]);
 // Bundled into what ships although their templates list them as devDependencies.
 const BUNDLED = new Set(["svelte", "@sveltejs/kit", "electron"]);
+const BUNDLERS = ["vite", "webpack", "react-scripts", "parcel", "@rsbuild/core"];
 
 /** For a profile saved before `userInterface` existed: the frameworks that render one, as their labels start. */
 const UI_FRAMEWORK = /^(Next\.js|React|Angular|Ionic|Capacitor|Cordova|Vue|Nuxt|Svelte|SvelteKit|Expo|Electron|Remix|Astro)\b/;
@@ -271,6 +275,11 @@ function labels(table: Table, deps: Deps): string[] {
 
 const shipped = (label: string) => !label.endsWith(" (dev only)");
 
+function reactRendersPages(deps: Deps): boolean {
+    const email = [...deps.keys()].some(n => n === "react-email" || n.startsWith("@react-email/"));
+    return deps.has("react-dom") && (!email || BUNDLERS.some(b => deps.has(b)));
+}
+
 const plural = (n: number) => `${n} ${n === 1 ? "file" : "files"}`;
 
 /**
@@ -370,7 +379,7 @@ export async function detectStack(root: string, o: { read?: Reader } = {}): Prom
     const ui: Deps = new Map(
         [...deps]
             .filter(([name]) => UI_PACKAGES.has(name) || name.startsWith("@ionic/"))
-            .filter(([name, d]) => (d.prod || BUNDLED.has(name)) && (name !== "react" || deps.has("react-dom")))
+            .filter(([name, d]) => (d.prod || BUNDLED.has(name)) && (name !== "react" || reactRendersPages(deps)))
             .map(([name, d]) => [name, { ...d, prod: true }])
     );
 

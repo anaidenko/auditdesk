@@ -169,6 +169,33 @@ describe("grade", () => {
         expect(g.leftovers).toEqual(["F-003"]);
     });
 
+    it("credits only the entry filed under the finding's own item when two tie at the least distance", () => {
+        const k = key([
+            entry({ id: "TX", aspect: "data", checklistItem: "DAT-04", file: "src/checkout.ts", startLine: 27, endLine: 42 }),
+            entry({
+                id: "RETRY",
+                aspect: "api",
+                checklistItem: "API-05",
+                alsoItems: ["DAT-04"],
+                file: "src/checkout.ts",
+                startLine: 41,
+                endLine: 41
+            })
+        ]);
+        const g = grade(
+            [
+                finding({
+                    label: "F-001",
+                    aspect: "data",
+                    checklistItem: "DAT-04",
+                    evidence: [{ file: "src/checkout.ts", startLine: 35, endLine: 42 }]
+                })
+            ],
+            k
+        );
+        expect(g.matched).toEqual([{ key: "TX", finding: "F-001" }]);
+    });
+
     it("takes a known issue beside a planted entry of another item as known, not as a misplaced find", () => {
         const k = key(
             [entry({ id: "K1", aspect: "performance", checklistItem: "PRF-04", file: "src/search.tsx", startLine: 17, endLine: 21 })],
