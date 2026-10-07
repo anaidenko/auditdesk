@@ -2,7 +2,7 @@ import { fingerprint } from "../findings";
 import type { Masker } from "../masker";
 import type { NewFinding, SeverityName } from "../types";
 
-import { type Place, comparePlaces, filesPhrase, groupFingerprint, groupPlaces } from "./group";
+import { type Place, comparePlaces, effortFor, filesPhrase, groupFingerprint, groupPlaces } from "./group";
 import { ROLE_WORDS, type SampleRole, sampleRole } from "./paths";
 import type { Ruleset, SemgrepResult } from "./types";
 
@@ -92,7 +92,7 @@ function semgrepFinding(group: Result[], repositoryId: string): NewFinding {
         summary: message,
         explanation: `Semgrep rule ${r.check_id}.`,
         recommendation: "Confirm the input is attacker-controlled; if so, follow the rule's references.",
-        effort: "S",
+        effort: effortFor(places),
         references: { cwe, cheatSheets: r.extra.metadata.references?.filter(u => u.includes("cheatsheetseries.owasp.org")) },
         tags: [],
         source: "scanner",

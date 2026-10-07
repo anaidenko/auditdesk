@@ -65,6 +65,47 @@ describe("gitleaks", () => {
         expect(kind("jwt", "Uncovered a JSON Web Token.")).toBe("JWT");
     });
 
+    it("spells the kinds a gitleaks rule ID names badly as a reader would", () => {
+        const cases: [string, string, string][] = [
+            ["gitlab-ptt", "Found a GitLab Pipeline Trigger Token.", "GitLab pipeline trigger token"],
+            ["gitlab-rrt", "Discovered a GitLab Runner Registration Token.", "GitLab runner registration token"],
+            ["airtable-personnal-access-token", "Uncovered a possible Airtable Personal AccessToken.", "Airtable personal access token"],
+            [
+                "aws-amazon-bedrock-api-key-long-lived",
+                "Identified long-lived Amazon Bedrock API keys.",
+                "Amazon Bedrock long-lived API key"
+            ],
+            ["octopus-deploy-api-key", "Discovered a potential Octopus Deploy API key.", "Octopus Deploy API key"],
+            [
+                "gitlab-runner-authentication-token-routable",
+                "Discovered a GitLab Runner Authentication Token (Routable).",
+                "GitLab runner authentication token"
+            ],
+            ["github-oauth", "Discovered a GitHub OAuth Access Token.", "GitHub OAuth access token"],
+            [
+                "clickhouse-cloud-api-secret-key",
+                "may indicate clickhouse cloud API secret key, on ClickHouse Cloud platforms.",
+                "ClickHouse Cloud API secret key"
+            ]
+        ];
+        for (const [rule, description, kind] of cases) expect(secretKind(rule, description)).toBe(kind);
+    });
+
+    it("counts a kind with no plural of its own as secrets", () => {
+        const two = [at("a".repeat(32), "src/a.sh", 3, "curl-auth-user"), at("b".repeat(32), "src/b.sh", 4, "curl-auth-user")];
+        const [f] = normaliseGitleaks(two, { repositoryId: "r", masker, inTree: () => true });
+        expect(f.title).toBe("Secrets in the code: 2 curl auth user secrets in 2 files");
+    });
+
+    it("sizes a group's effort by its places", () => {
+        const of = (n: number) =>
+            normaliseGitleaks(
+                Array.from({ length: n }, (_, i) => at(`${i}`.padStart(32, "x"), `src/f${i}.js`, 1)),
+                { repositoryId: "r", masker, inTree: () => true }
+            )[0].effort;
+        expect([of(1), of(3), of(4), of(10), of(11)]).toEqual(["S", "S", "M", "M", "L"]);
+    });
+
     it("files one finding per rule, per code or history and per sample role, listing every place", () => {
         const mixed = [
             at("a".repeat(32), "src/b.js", 9),
@@ -165,6 +206,24 @@ describe("Semgrep", () => {
         expect(out[0].title).toMatch(/[^.] \(3 places in 2 files\)$/);
         expect(out[0].evidence.map(e => `${e.file}:${e.startLine}`)).toEqual(["src/b.js:9", "src/server.js:7", "src/server.js:20"]);
         expect(new Set(out[0].evidence.map(e => e.key)).size).toBe(3);
+    });
+
+    it("keeps each place's fingerprint as filed before grouping", () => {
+        expect(normaliseSemgrep(parseSemgrep(recorded("semgrep")), { repositoryId: "r", masker }).map(f => f.fingerprint)).toEqual([
+            "cbf1947ba3019f06853a6060971085c4",
+            "63472209832406b1e9c071348306dd7d"
+        ]);
+    });
+
+    it("files a rule's results in app code and in test files apart", () => {
+        const out = normaliseSemgrep([concat, moved(concat, "test/a.spec.js", 3, "eval(t)")], { repositoryId: "r", masker });
+        expect(out.map(f => f.severity)).toEqual(["high", "low"]);
+        expect(out[1].title).toMatch(/\(in a test file\)$/);
+    });
+
+    it("sizes a group's effort by its places", () => {
+        const many = Array.from({ length: 11 }, (_, i) => moved(concat, `src/f${i}.js`, 1, `eval(${i})`));
+        expect(normaliseSemgrep(many, { repositoryId: "r", masker })[0].effort).toBe("L");
     });
 
     it("keeps the results of one rule apart when their messages differ", () => {

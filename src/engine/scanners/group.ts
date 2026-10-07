@@ -34,6 +34,11 @@ export function groupFingerprint(places: Place[]): string {
         .slice(0, 32);
 }
 
+/** A rule found in more places takes longer to clear: rotating seven keys is not one key's work. */
+export function effortFor(places: Evidence[]): "S" | "M" | "L" {
+    return places.length <= 3 ? "S" : places.length <= 10 ? "M" : "L";
+}
+
 /** "one file", "5 files", "3 test files". */
 export function filesPhrase(places: Evidence[], role: SampleRole | null): string {
     const n = new Set(places.map(p => p.file)).size;

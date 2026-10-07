@@ -4,7 +4,7 @@ import { fingerprint } from "../findings";
 import type { Masker } from "../masker";
 import type { NewFinding } from "../types";
 
-import { type Place, comparePlaces, filesPhrase, groupFingerprint, groupPlaces } from "./group";
+import { type Place, comparePlaces, effortFor, filesPhrase, groupFingerprint, groupPlaces } from "./group";
 import { ROLE_WORDS, type SampleRole, sampleRole } from "./paths";
 import type { GitleaksLeak } from "./types";
 
@@ -70,6 +70,21 @@ const ACRONYMS: Record<string, string> = {
     nuget: "NuGet",
     kubernetes: "Kubernetes"
 };
+// Rule IDs whose words read badly: a typo, an opaque abbreviation, a format detail.
+const KINDS: Record<string, string> = {
+    "airtable-personnal-access-token": "Airtable personal access token",
+    "aws-amazon-bedrock-api-key-long-lived": "Amazon Bedrock long-lived API key",
+    "aws-amazon-bedrock-api-key-short-lived": "Amazon Bedrock short-lived API key",
+    "github-oauth": "GitHub OAuth access token",
+    "gitlab-pat-routable": "GitLab PAT",
+    "gitlab-ptt": "GitLab pipeline trigger token",
+    "gitlab-rrt": "GitLab runner registration token",
+    "gitlab-runner-authentication-token-routable": "GitLab runner authentication token",
+    "heroku-api-key-v2": "Heroku API key",
+    "jwt-base64": "base64-encoded JWT",
+    "kubernetes-secret-yaml": "Kubernetes secret",
+    "octopus-deploy-api-key": "Octopus Deploy API key"
+};
 // Rule IDs that open with a kind of secret, not a provider.
 const GENERIC = new Set(["generic", "private", "jwt", "curl", "age", "kubernetes", "pkcs12", "nuget", "npm"]);
 // Words after a provider's name in a rule ID: the words before the first of them name the provider.
@@ -84,6 +99,7 @@ const COMMON = new Set(
  * Relic user API key". A provider's name is spelled as the rule's description spells it.
  */
 export function secretKind(rule: string, description: string): string {
+    if (KINDS[rule]) return KINDS[rule];
     const words = description.split(/[^A-Za-z0-9#/]+/);
     const parts = rule.split("-");
     const common = parts.findIndex(w => COMMON.has(w));
@@ -92,15 +108,15 @@ export function secretKind(rule: string, description: string): string {
         .map((w, i) => {
             if (ACRONYMS[w]) return ACRONYMS[w];
             if (i >= provider) return w;
-            const spelled = words.find(x => x.toLowerCase() === w);
-            return spelled && /[A-Z]/.test(spelled) ? spelled : w[0].toUpperCase() + w.slice(1);
+            const spelled = words.filter(x => x.toLowerCase() === w).find(x => /[A-Z]/.test(x));
+            return spelled ?? w[0].toUpperCase() + w.slice(1);
         })
         .join(" ");
 }
 
 const PLURAL = /(key|token|secret|ID|password|webhook|cookie|header|file|PAT|URL|JWT)$/;
-/** "7 generic API keys"; a kind with no plural here reads "2 secrets (GitHub OAuth)". */
-const counted = (n: number, kind: string) => (PLURAL.test(kind) ? `${n} ${kind}s` : `${n} secrets (${kind})`);
+/** "7 generic API keys"; a kind with no plural here reads "2 curl auth user secrets". */
+const counted = (n: number, kind: string) => (PLURAL.test(kind) ? `${n} ${kind}s` : `${n} ${kind} secrets`);
 
 type Leak = { leak: GitleaksLeak; current: boolean; role: SampleRole | null; place: Place };
 
@@ -186,7 +202,7 @@ function leakFinding(group: Leak[], repositoryId: string): NewFinding {
             : one
               ? "Rotate the credential first, then remove it from the code and load it from the environment or a secret store."
               : "Rotate the credentials first, then remove them from the code and load them from the environment or a secret store.",
-        effort: "S",
+        effort: effortFor(places),
         references: { cwe: "CWE-798" },
         tags: [],
         source: "scanner",
