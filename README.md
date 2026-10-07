@@ -137,8 +137,18 @@ after another, each with the whole budget; it names the total cap first, checks 
 before each pair, and stops when an audit fails. The **Evals** page plots every result's recall
 against its cost, one chart per fixture and aspect set, and marks a run that did not finish.
 
-A first result, a baseline on Juice Shop at the cheapest model and effort, is in `evals/results/`;
-scores by model and effort follow and will be quoted here.
+The security aspect alone, by model and effort, on 2026-10-07 (`evals/results/`): key entries
+found, with the scanners' finds included and the agents' own in brackets, and the run's cost at
+API prices.
+
+| Model and effort | Own fixture, 8 entries | Juice Shop, 18 entries |
+| --- | --- | --- |
+| Sonnet 5.5, `low` | 5 (5), $0.17 | 2 (0), $0.12 |
+| Sonnet 5.5, `medium` | 6 (6), $0.21 | 2 (0), $0.07 |
+| Sonnet 5.5, `high` | 6 (6), $0.27 | 9 (7), $1.80 |
+| Opus 5.5, `medium` | 7 (7), $0.75 | 6 (4), $2.59 |
+
+The own fixture was then at `2aff7d0`; its key has grown since, with the aspects added after.
 
 ## Live checks
 
