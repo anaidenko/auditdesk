@@ -28,7 +28,8 @@ export default defineConfig({
             CLAUDE_CODE_OAUTH_TOKEN: "e2e-plan-token",
             ANTHROPIC_API_KEY: "",
             AUDITDESK_HOME: "/tmp/auditdesk-e2e-home",
-            AUDITDESK_EVAL_RESULTS: "e2e/fixtures/eval-results"
+            // A copy, made by prepare-db.mjs: the spot-check page writes beside the results.
+            AUDITDESK_EVAL_RESULTS: "/tmp/auditdesk-e2e-evals"
         }
     }
 });

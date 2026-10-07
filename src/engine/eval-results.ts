@@ -54,3 +54,23 @@ export function parseEvalResult(md: string, file: string): EvalRow | null {
         aborted: /^- \*\*Aborted:\*\*/m.test(md)
     };
 }
+
+/** A judge's verdict on one finding outside the key, as the result file lists it. */
+export interface JudgedFinding {
+    label: string;
+    item: string;
+    where: string;
+    title: string;
+    verdict: string;
+    key: string | null;
+    reason: string;
+}
+
+/** The judged findings of a result file, for Andrii's spot-check; a leftover the judge did not read is left out. */
+export function parseVerdicts(md: string): JudgedFinding[] {
+    const line = /^- (F-\d+) \(([^,]+), ([^)]+)\): (.*?) — judge: (\w+)(?: ([^;\s]+))?; (.*)$/;
+    return md.split("\n").flatMap(l => {
+        const m = l.match(line);
+        return m ? [{ label: m[1], item: m[2], where: m[3], title: m[4], verdict: m[5], key: m[6] ?? null, reason: m[7] }] : [];
+    });
+}

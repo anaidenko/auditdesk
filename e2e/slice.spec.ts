@@ -96,6 +96,18 @@ test("the Evals page plots recall against cost for every result of a fixture", a
     await expect(juice.getByTestId("eval-point")).toHaveCount(2);
 });
 
+test("the judge's verdicts are spot-checked from the Evals page", async ({ page }) => {
+    await page.goto("/evals");
+    const own = page.locator("section", { hasText: "own" }).filter({ has: page.getByTestId("eval-row") });
+    await own.getByRole("link", { name: "0 of 2 checked" }).click();
+    const verdict = page.locator("section", { hasText: "F-004" });
+    await verdict.getByPlaceholder("Why (optional)").fill("The query is built from a constant.");
+    await verdict.getByRole("button", { name: "Agree", exact: true }).click();
+    await expect(verdict.getByTestId("spot-check")).toContainText("agreed");
+    await page.goto("/evals");
+    await expect(page.getByRole("link", { name: "1 of 2 checked" })).toBeVisible();
+});
+
 test("a refused start keeps the aspects and caps Andrii chose", async ({ page }) => {
     await newProject(page, "Refused start");
     await page.getByLabel(/client agreed/).check();

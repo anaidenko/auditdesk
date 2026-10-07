@@ -1,3 +1,5 @@
+import Link from "next/link";
+
 import { Card, PageHeader } from "@/app/ui";
 import type { EvalRow } from "@/engine/eval-results";
 import { loadEvalRows } from "@/server/evals";
@@ -77,6 +79,7 @@ export default async function EvalsPage() {
                                     <th className="font-medium">Cost</th>
                                     <th className="font-medium">Time</th>
                                     <th className="font-medium">Auditdesk</th>
+                                    <th className="font-medium">Judge</th>
                                 </tr>
                             </thead>
                             <tbody className="divide-y divide-zinc-100 tabular-nums">
@@ -101,6 +104,18 @@ export default async function EvalsPage() {
                                         <td className="font-mono text-xs">
                                             {r.commit?.slice(0, 7) ?? "–"}
                                             {r.dirty && <span title="with uncommitted changes">*</span>}
+                                        </td>
+                                        <td>
+                                            {r.judged ? (
+                                                <Link
+                                                    href={`/evals/${encodeURIComponent(r.file)}`}
+                                                    className="text-indigo-700 hover:underline"
+                                                >
+                                                    {r.checked} of {r.judged} checked
+                                                </Link>
+                                            ) : (
+                                                "–"
+                                            )}
                                         </td>
                                     </tr>
                                 ))}

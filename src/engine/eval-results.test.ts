@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
-import { parseEvalResult } from "./eval-results";
+import { parseEvalResult, parseVerdicts } from "./eval-results";
 
 const baseline = readFileSync("evals/results/2026-10-07-juice-shop-security-claude-sonnet-5-5-low.md", "utf8");
 
@@ -74,5 +74,53 @@ describe("parseEvalResult", () => {
 
     it("returns null for a file that is not a result", () => {
         expect(parseEvalResult("# Notes\n", "notes.md")).toBeNull();
+    });
+});
+
+describe("parseVerdicts", () => {
+    it("reads each judged finding outside the key, with its verdict, the entry it names and the reason", () => {
+        const md = [
+            "## Findings outside the key",
+            "",
+            "**False findings: 1** by the judge's verdicts, of 3 it was given.",
+            "",
+            "- F-004 (SEC-04, src/db.js:5): Raw SQL — judge: false; The query is parameterised.",
+            "- F-007 (SEC-10, data/users.yml:88-90): Secret in the code: key (in a seed file) — judge: matches_key JS-loginAdminChallenge+loginJimChallenge; Same login query.",
+            "- F-009 (no item, no location): Unjudged leftover",
+            "",
+            "Beside an entry under another item:",
+            "- F-011 (SEC-15, server.ts:260): Directory listing — judge: unsure; Not judged: the judge's cap was reached.",
+            "",
+            "## Cost"
+        ].join("\n");
+        expect(parseVerdicts(md)).toEqual([
+            {
+                label: "F-004",
+                item: "SEC-04",
+                where: "src/db.js:5",
+                title: "Raw SQL",
+                verdict: "false",
+                key: null,
+                reason: "The query is parameterised."
+            },
+            {
+                label: "F-007",
+                item: "SEC-10",
+                where: "data/users.yml:88-90",
+                title: "Secret in the code: key (in a seed file)",
+                verdict: "matches_key",
+                key: "JS-loginAdminChallenge+loginJimChallenge",
+                reason: "Same login query."
+            },
+            {
+                label: "F-011",
+                item: "SEC-15",
+                where: "server.ts:260",
+                title: "Directory listing",
+                verdict: "unsure",
+                key: null,
+                reason: "Not judged: the judge's cap was reached."
+            }
+        ]);
     });
 });
