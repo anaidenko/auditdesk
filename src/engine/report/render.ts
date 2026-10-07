@@ -19,7 +19,7 @@ h3{font-size:1.02rem;margin:1.6rem 0 .6rem}
 h4{font-size:.72rem;font-weight:600;letter-spacing:.07em;text-transform:uppercase;color:var(--muted);margin:1.2rem 0 .35rem}
 p{margin:.45rem 0}a{color:var(--accent);text-decoration:none}a:hover{text-decoration:underline}
 code{font:12.5px/1.55 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}
-section{margin-top:3rem}
+section,.toc{margin-top:3rem}
 .eyebrow{font-size:.75rem;font-weight:600;letter-spacing:.12em;text-transform:uppercase;color:var(--accent)}
 .muted{color:var(--muted)}
 .cover h1{font-size:2.3rem;margin:.4rem 0 .3rem}
