@@ -99,7 +99,57 @@ describe("runAspect", () => {
         ]);
         expect(await run()).toMatchObject({ status: "done" });
         expect(requests).toHaveLength(3);
-        expect(JSON.stringify(requests[1].body.messages)).toMatch(/Not finished: 2 of 2 items are not examined \(SEC-01, SEC-04\)/);
+        expect(JSON.stringify(requests[1].body.messages)).toMatch(
+            /Not finished: 2 of 2 items are not examined\. Examine these next: SEC-01 Authentication, SEC-04 Injection\./
+        );
+    });
+
+    const read = () => tool("read_file", { path: "src/db.js", start_line: 1, end_line: 2 });
+    const five = parseChecklist(
+        "security",
+        "# Security\n\n## SEC-01 Authentication\n\n## SEC-02 Sessions\n\n## SEC-03 Authorization\n\n## SEC-04 Injection\n\n## SEC-05 XSS\n\n## SEC-06 CSRF\n\n## SEC-07 SSRF\n"
+    );
+    const examined = (...ids: string[]) => ids.map(item => ({ item, status: "examined" }));
+
+    it("keeps sending the agent back while each round examines more, until nothing is left", async () => {
+        const { requests, run } = await setup([
+            finish([]),
+            read(),
+            finish(examined("SEC-01")),
+            read(),
+            finish(examined("SEC-01", "SEC-04"))
+        ]);
+        const out = await run();
+        expect(out).toMatchObject({ status: "done", note: null });
+        expect(out.coverage.map(c => c.status)).toEqual(["examined", "examined"]);
+        expect(requests).toHaveLength(5);
+    });
+
+    it("stops sending it back when a round examines nothing more", async () => {
+        const thin = await setup([finish([]), read(), finish([]), read(), finish([])]);
+        expect(await thin.run()).toMatchObject({ status: "done", note: "Sent back once; 2 of 2 items still not examined." });
+        expect(thin.requests).toHaveLength(3);
+    });
+
+    it("sends it back three times at most, naming at most five items a round", async () => {
+        const { requests, run } = await setup(
+            [
+                finish([]),
+                read(),
+                finish(examined("SEC-01")),
+                read(),
+                finish(examined("SEC-01", "SEC-02")),
+                read(),
+                finish(examined("SEC-01", "SEC-02", "SEC-03"))
+            ],
+            { checklist: five }
+        );
+        expect(await run()).toMatchObject({ status: "done", note: "Sent back 3 times; 4 of 7 items still not examined." });
+        expect(requests).toHaveLength(7);
+        const first = JSON.stringify(requests[1].body.messages);
+        expect(first).toMatch(
+            /Not finished: 7 of 7 items are not examined\. Examine these next: SEC-01 Authentication, SEC-02 Sessions, SEC-03 Authorization, SEC-04 Injection, SEC-05 XSS \(2 more after them\)\./
+        );
     });
 
     // A replayed call costs $0.008 (Opus 5.5 prices) and 1,200 fresh tokens.

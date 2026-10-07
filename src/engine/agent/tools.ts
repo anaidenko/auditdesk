@@ -39,8 +39,13 @@ export interface AgentContext {
     };
 }
 
-/** How many times an agent that finishes with a limited review is sent back while its share has room. */
-export const SEND_BACK = 1;
+/**
+ * Coverage decides when an agent is done, not the model: one that finishes with a limited review is
+ * sent back to the items it skipped, and again while each round examines more and items are left,
+ * up to ROUNDS times and only while its share has room; each round names at most BATCH items.
+ */
+export const ROUNDS = 3;
+export const BATCH = 5;
 
 /** A ToolError goes back to the model as its tool result; any other error is a bug and ends the run. */
 function guard<A>(ctx: AgentContext, fn: (args: A) => Promise<string>): (args: A) => Promise<string> {
@@ -258,27 +263,33 @@ async function finishAspect(ctx: AgentContext, input: z.infer<typeof finishInput
     const unknown = input.coverage.filter(c => !ids.includes(c.item)).map(c => c.item);
     if (unknown.length) throw new ToolError(`Not on this checklist: ${unknown.join(", ")}.`);
     let coverage: Coverage[] = ids.map(id => input.coverage.find(c => c.item === id) ?? { item: id, status: "not_examined" });
-    const first = ctx.state.sentBackFinish;
+    const last = ctx.state.sentBackFinish;
+    const rounds = ctx.state.sentBack ?? 0;
     // Coverage is self-reported: statuses raised after a send-back without one more read do not count.
     const rank = (c: Coverage) => ({ examined: 2, partly: 1 })[c.status as "examined" | "partly"] ?? 0;
-    if (first && (ctx.state.reads ?? 0) === first.reads && coverage.some((c, i) => rank(c) > rank(first.coverage[i]))) {
-        coverage = first.coverage;
-        ctx.state.note = "Sent back once; it changed its coverage without reading more code, so its first coverage stands.";
+    const raised = (a: Coverage[], b: Coverage[]) => a.some((c, i) => rank(c) > rank(b[i]));
+    if (last && (ctx.state.reads ?? 0) === last.reads && raised(coverage, last.coverage)) {
+        coverage = last.coverage;
+        ctx.state.note = "Sent back; it changed its coverage without reading more code, so its earlier coverage stands.";
     }
     const left = coverage.filter(c => c.status === "not_examined").map(c => c.item);
-    if (limitedReview(coverage) && ctx.share && (ctx.state.sentBack ?? 0) < SEND_BACK) {
+    // The first round is for a limited review; later ones go on while a round examined more and items are left.
+    const due = rounds === 0 ? limitedReview(coverage) : left.length > 0 && !!last && raised(coverage, last.coverage);
+    if (due && ctx.share && rounds < ROUNDS) {
         const spend = await ctx.sink.agentSpend(ctx.agentRunId);
         if (!spend.unpriced && spend.usd * 2 < ctx.share.usd && spend.freshTokens * 2 < ctx.share.tokens) {
-            ctx.state.sentBack = (ctx.state.sentBack ?? 0) + 1;
+            ctx.state.sentBack = rounds + 1;
             // Kept, so an agent that never finishes again still reports what it said here.
             ctx.state.sentBackFinish = { summary: input.summary, coverage, reads: ctx.state.reads ?? 0 };
             await ctx.sink.progress(`${ctx.checklist.title}: sent back to ${left.length} unexamined items of ${ids.length}.`, "warn");
-            return `Not finished: ${left.length} of ${ids.length} items are not examined (${left.join(", ")}), and most of this aspect's budget is left. Examine them in the code, file what you find, then call finish_aspect again with the updated coverage. Mark an item examined or partly only for code you read for it.`;
+            const next = left.slice(0, BATCH).map(id => `${id} ${ctx.checklist.items.find(i => i.id === id)!.title}`);
+            const more = left.length > BATCH ? ` (${left.length - BATCH} more after them)` : "";
+            return `Not finished: ${left.length} of ${ids.length} items are not examined. Examine these next: ${next.join(", ")}${more}. Read the code they concern, file what you find, then call finish_aspect again with the updated coverage. Mark an item examined or partly only for code you read for it.`;
         }
-        ctx.state.note ??= `${left.length} of ${ids.length} items not examined; half of its share was already spent.`;
-    } else if (limitedReview(coverage)) {
-        ctx.state.note ??= `Sent back once; ${left.length} of ${ids.length} items still not examined.`;
+        if (rounds === 0) ctx.state.note ??= `${left.length} of ${ids.length} items not examined; half of its share was already spent.`;
     }
+    if (rounds > 0 && left.length && (limitedReview(coverage) || rounds >= ROUNDS))
+        ctx.state.note ??= `Sent back ${rounds === 1 ? "once" : `${rounds} times`}; ${left.length} of ${ids.length} items still not examined.`;
     ctx.state.finished = { summary: input.summary, coverage };
     return "Aspect finished.";
 }
