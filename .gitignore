@@ -17,5 +17,9 @@ next-env.d.ts
 .claude/local/
 .claude/settings.local.json
 
+# The background server's state (scripts/dev-server.sh)
+logs/
+.dev-port
+
 # End-to-end scratch
 e2e/.sample-path

@@ -73,6 +73,11 @@ pnpm db:deploy
 pnpm dev
 ```
 
+`pnpm app start --wait` runs the app in the background instead (`stop`, `restart`, `status`,
+`logs`; `--prod` builds and runs `next start`): `scripts/dev-server.sh` keeps its process group,
+log and pid under `logs/`, takes the port from `.dev-port` (default 3000), and refuses to stop
+while a job runs, since that would mark the job interrupted.
+
 Set `AUDITOR_NAME` in `.env.local`: it is the name on the report's cover, and without it the
 report names no auditor. The PDF export prints through the Chromium that Playwright installs.
 Docker runs PostgreSQL and the scanners. The app opens at http://127.0.0.1:3000.
