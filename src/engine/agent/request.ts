@@ -6,8 +6,9 @@ export type Effort = "low" | "medium" | "high" | "xhigh" | "max";
 
 // Sonnet 5.5, not Sonnet 5: Sonnet 5 takes no task budget.
 export const DEFAULT_MODEL = "claude-sonnet-5-5";
-// The cheapest level; a costlier model or effort runs only with the auditor's explicit OK.
-export const DEFAULT_EFFORT: Effort = "low";
+// The 2026-10-07 sweep (README § Evals): on Juice Shop's security entries, high found 9 of 18
+// where low and medium found 2, for about fifteen times the cost; recall decides an audit.
+export const DEFAULT_EFFORT: Effort = "high";
 
 /**
  * The only models a declined call may be served by, per requested model: the targets of the API's

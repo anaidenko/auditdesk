@@ -37,7 +37,7 @@ describe("forms", () => {
     it("reads the token cap in thousands, and runs security alone when nothing else is ticked", () => {
         expect(parseRunForm(fd({ budgetUsd: "10", budgetKTokens: "400" }), 1)).toEqual({
             ok: true,
-            value: { budgetUsd: 10, budgetTokens: 400_000, aspects: ["security"], model: "claude-sonnet-5-5", effort: "low" }
+            value: { budgetUsd: 10, budgetTokens: 400_000, aspects: ["security"], model: "claude-sonnet-5-5", effort: "high" }
         });
     });
 
@@ -90,7 +90,7 @@ describe("the run's model and effort", () => {
     it("runs the defaults when the form names none", () => {
         expect(parseRunForm(fd({ budgetUsd: "10", budgetKTokens: "400" }), 1)).toMatchObject({
             ok: true,
-            value: { model: "claude-sonnet-5-5", effort: "low" }
+            value: { model: "claude-sonnet-5-5", effort: "high" }
         });
     });
 

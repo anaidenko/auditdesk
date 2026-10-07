@@ -351,7 +351,7 @@ describe("parseEvalArgs", () => {
         const ok = parseEvalArgs([...base, "--budget-usd", "3", "--aspect", "security", "--judge", "--judge-usd", "0.5"]);
         expect(ok).toEqual({
             ok: true,
-            value: { ...OPTIONS, fixture: "own", budgetUsd: 3, aspect: "security", judge: true, judgeUsd: 0.5 }
+            value: { ...OPTIONS, fixture: "own", effort: "high", budgetUsd: 3, aspect: "security", judge: true, judgeUsd: 0.5 }
         });
         expect(parseEvalArgs([...base, "--budget-usd", "3", "--effort", "extreme"])).toMatchObject({ ok: false });
         expect(parseEvalArgs([...base, "--budget-usd", "3", "--aspect", "styling"])).toMatchObject({ ok: false });

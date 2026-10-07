@@ -9,9 +9,9 @@ describe("the model and effort choices", () => {
         for (const m of MODEL_CHOICES) expect(PRICES[m.id], m.id).toBeDefined();
     });
 
-    it("offers the defaults first", () => {
+    it("offers the default model first, and every effort in order with the default among them", () => {
         expect(MODEL_CHOICES[0].id).toBe(DEFAULT_MODEL);
-        expect(EFFORTS[0]).toBe(DEFAULT_EFFORT);
         expect(EFFORTS).toEqual(["low", "medium", "high", "xhigh", "max"]);
+        expect(EFFORTS).toContain(DEFAULT_EFFORT);
     });
 });
