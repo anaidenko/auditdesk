@@ -120,6 +120,11 @@ item; with `--judge`, an LLM judge reads what the grader could not place, within
   (fixes, tutorials, translated hints, specs, the code that scores a solve) and renames every
   challenge, and `pnpm eval:key` reads its key from the markers.
 
+`--matrix claude-sonnet-5-5:low,claude-opus-5-5:medium` runs several model and effort pairs one
+after another, each with the whole budget; it names the total cap first, checks the plan's reserve
+before each pair, and stops when an audit fails. The **Evals** page plots every result's recall
+against its cost, one chart per fixture and aspect set, and marks a run that did not finish.
+
 A first result, a baseline on Juice Shop at the cheapest model and effort, is in `evals/results/`;
 scores by model and effort follow and will be quoted here.
 
