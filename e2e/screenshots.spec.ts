@@ -55,6 +55,15 @@ test("screenshots for the README", async ({ page }) => {
     const file = join(tmpdir(), "auditdesk-sample-report.html");
     writeFileSync(file, html);
     await page.goto(`file://${file}`);
-    await page.locator('article[id^="F-"]').first().scrollIntoViewIfNeeded();
-    await shot("report-finding");
+    // The first card open and the next one collapsed, so one image shows both states.
+    const cards = page.locator('article[id^="F-"]');
+    await cards.first().locator(".body > summary").click();
+    const top = (await page.locator("section#findings").boundingBox())!;
+    const next = (await cards.nth(1).boundingBox())!;
+    await page.screenshot({
+        path: join(out, "report-finding.png"),
+        animations: "disabled",
+        fullPage: true,
+        clip: { x: 0, y: top.y - 24, width: page.viewportSize()!.width, height: next.y + next.height - top.y + 48 }
+    });
 });
