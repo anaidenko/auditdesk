@@ -10,9 +10,12 @@ paths:
 
 # Testing
 
-- **Unit tests (Vitest)** sit next to the code as `*.test.ts` and run in Node against the
-  `auditdesk_test` database (`.env.test`; `pnpm db:up` first). Files run one after another,
-  since they share that database.
+- **Unit tests (Vitest)** sit next to the code as `*.test.ts` and run in Node, in two projects
+  (`vitest.config.mts`). `db` holds `src/server/**` and the route tests: they share the
+  `auditdesk_test` database (`.env.test`; `pnpm db:up` first), so its files run one after
+  another, after the rest. `unit` holds everything else and runs in parallel; a `unit` file
+  that touches `prisma` fails (`src/test/no-db.ts`), so move it under a `db` glob. A run of
+  `unit` files alone needs no database.
 - **The model is replayed, never called.** `src/engine/replay.ts` serves recorded messages as a
   server-sent-event stream through the client's injected `fetch`, so the SDK's tool runner and
   stream parser are under test and no test calls the API.
