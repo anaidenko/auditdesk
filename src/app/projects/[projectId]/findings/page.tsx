@@ -130,8 +130,8 @@ export default async function FindingsPage({
                                     <path d="M6 9l6 6 6-6" />
                                 </svg>
                             </summary>
-                            <div className="grid grid-cols-1 gap-6 border-t border-zinc-100 px-5 py-5 text-sm md:grid-cols-5">
-                                <div className="space-y-4 md:col-span-3">
+                            <div className="grid grid-cols-1 gap-6 border-t border-zinc-100 px-5 py-5 text-sm md:grid-cols-5 2xl:grid-cols-[minmax(0,50rem)_minmax(0,1fr)]">
+                                <div className="space-y-4 md:col-span-3 2xl:col-span-1">
                                     <Section title="Summary">{f.summary}</Section>
                                     {(f.likelihood || f.impact) && (
                                         <div className="grid gap-3 sm:grid-cols-2">
@@ -154,7 +154,7 @@ export default async function FindingsPage({
                                         </p>
                                     )}
                                 </div>
-                                <div className="space-y-3 md:col-span-2">
+                                <div className="space-y-3 md:col-span-2 2xl:col-span-1">
                                     <div className="text-xs font-medium tracking-wide text-zinc-500 uppercase">Evidence</div>
                                     {(f.evidence as { file: string; startLine: number; endLine: number; snippet?: string }[]).map(
                                         (e, i) => (

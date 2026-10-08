@@ -17,7 +17,7 @@ export default async function Home() {
                 <NewProjectForm />
             </Card>
             {projects.length ? (
-                <ul className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                <ul className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4">
                     {projects.map(p => (
                         <li key={p.id}>
                             <Link
