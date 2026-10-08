@@ -23,8 +23,8 @@ Local only: it binds 127.0.0.1 and has no login. The design is in [docs/design.m
   the conditional aspects; an AI-built mode adds checks for code written largely by AI tools.
 - **Review:** accept, edit, merge, reject or exclude every finding; only accepted or edited ones
   reach the report and the exports. The Export panel says how many still await review, and its
-  Draft option adds them for a first look before the review: the report, the PDF and the SARIF
-  mark each "not reviewed", and the issues stay reviewed only.
+  Draft option adds them for a first look before the review: the report, the PDF, the SARIF and
+  the issues mark each "not reviewed".
   A scanner finding that an agent filed again is folded into the agent's, and
   results in test, fixture, seed or example files are rated lower and say so. IDs (`F-012`) are never reused, and a reviewed finding keeps its ID through
   re-runs.

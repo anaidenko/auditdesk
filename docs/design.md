@@ -180,8 +180,9 @@ break with its title, meta line and recommendation kept together.
 
 A draft says so in its title, its file name and a banner on its cover that counts what is not yet
 reviewed; each such finding or question carries "not reviewed" on its card and in the summary, and
-in SARIF its message starts "Not reviewed yet:". The issue exports stay reviewed only: a tracker
-would turn a draft into work.
+in SARIF its message starts "Not reviewed yet:". An issue's title reads "F-012 (not reviewed): …",
+its body opens with the same warning and it carries a `not-reviewed` label, so a tracker shows a
+draft's issue as unconfirmed rather than as work.
 
 Each finding links what it is relevant to, never claiming compliance: its OWASP Top 10:2025
 category, ASVS 5.0.0 sections or requirements, its CWE when the agent named one, advisories for

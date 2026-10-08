@@ -204,6 +204,24 @@ describe("issue drafts", () => {
         expect(issueDrafts(data())).toHaveLength(2);
     });
 
+    it("marks a draft's issue the auditor has not reviewed yet, in its title, its first line and its labels", () => {
+        const [reviewed, waiting] = issueDrafts(
+            reportData({
+                draft: true,
+                findings: [
+                    reportFinding({ label: "F-001", severity: "critical", title: "Raw SQL" }),
+                    reportFinding({ label: "F-002", severity: "low", title: "Verbose errors", unreviewed: true })
+                ]
+            })
+        );
+        expect(reviewed.title).toBe("F-001: Raw SQL");
+        expect(reviewed.body.startsWith("**Severity:**")).toBe(true);
+        expect(reviewed.labels).not.toContain("not-reviewed");
+        expect(waiting.title).toBe("F-002 (not reviewed): Verbose errors");
+        expect(waiting.body.startsWith("**Not reviewed yet:** the auditor has not reviewed this finding")).toBe(true);
+        expect(waiting.labels).toEqual(["audit", "low", "security", "not-reviewed"]);
+    });
+
     it("glosses the effort's size in an issue, and gives the hours instead when the export includes them", () => {
         expect(issueDrafts(one({ effort: "M" }))[0].body).toContain(" · **Effort:** M (up to 2 days)");
         expect(issueDrafts(one({ effort: "M", effortHours: { low: 4, high: 6 } }))[0].body).toContain(" · **Effort:** M (4–6 h)");
