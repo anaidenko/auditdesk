@@ -38,6 +38,16 @@ describe("review", () => {
         expect(await status(a.id)).toBe("accepted");
     });
 
+    it("drops the reason of a rejection or exclusion when the finding is accepted after it", async () => {
+        const { a, b } = await twoFindings();
+        await reject(a.id, "The input is a constant.");
+        await exclude(b.id, "Out of scope.");
+        await accept(a.id);
+        await accept(b.id);
+        for (const id of [a.id, b.id])
+            expect(await prisma.finding.findUniqueOrThrow({ where: { id } })).toMatchObject({ status: "accepted", statusReason: null });
+    });
+
     it("needs a reason to reject, and keeps the rejected finding", async () => {
         const { a } = await twoFindings();
         await expect(reject(a.id, " ")).rejects.toThrow(/reason/);

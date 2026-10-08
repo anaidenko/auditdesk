@@ -28,8 +28,9 @@ import {
 /**
  * `askReserve`: the start was refused above the plan's reserve, so the form shows its checkbox whatever it rendered with.
  * `values`: what a refused form held, so it comes back as Andrii left it (React resets a form after its action).
+ * `notice`: what an action did, said beside its button.
  */
-export type FormState<V = never> = { error: string | null; askReserve?: boolean; values?: V };
+export type FormState<V = never> = { error: string | null; askReserve?: boolean; values?: V; notice?: string };
 export type RunValues = { aspects: string[]; budgetUsd: string; budgetKTokens: string; model: string; effort: string };
 export type BriefValues = { product: string; concerns: string; outOfScope: string; aiBuilt: boolean };
 export type NotesValues = { stackText: string; instructions: string };

@@ -32,8 +32,10 @@ function Option({ id, name, title, note }: { id: string; name: string; title: st
  * The downloads behind one Export button, its options beside them: the findings' hours and the run's
  * cost stated only when Andrii ticks them (cost: design § 8; hours: § 10); a draft with what awaits
  * review, marked, for a first look before the review.
- * SARIF is one file per repository, since an upload goes to one; the button's name and value carry
- * it. The panel is a native popover: it closes on Escape or a click outside, with no script.
+ * Every download is a submit button of one form, so each carries the options ticked. SARIF is one
+ * file per repository, since an upload goes to one; the button's name and value carry it, as they
+ * carry the issues' format. The panel is a native popover: it closes on Escape or a click outside,
+ * with no script.
  */
 export async function ReportExport({ projectId }: { projectId: string }) {
     const repositories = await reportRepositoryNames(projectId);
@@ -91,7 +93,7 @@ export async function ReportExport({ projectId }: { projectId: string }) {
                             id={`${panel}-hours`}
                             name="hours"
                             title="Include the hours"
-                            note="Each finding's hours and the totals, in the HTML, the PDF and the Issues CSV."
+                            note="Each finding's hours and the totals, in the HTML and the PDF; each finding's hours in the issues."
                         />
                         <Option
                             id={`${panel}-cost`}
@@ -104,7 +106,7 @@ export async function ReportExport({ projectId }: { projectId: string }) {
                                 id={`${panel}-draft`}
                                 name="draft"
                                 title="Draft: add what awaits review"
-                                note="Marked “not reviewed” in the report, the PDF and the SARIF; the issues stay reviewed only."
+                                note="Marked “not reviewed” in every download: the report, the PDF, the SARIF and the issues."
                             />
                         )}
                     </fieldset>
@@ -145,13 +147,15 @@ export async function ReportExport({ projectId }: { projectId: string }) {
                                 <Icon name="download" />
                                 Issues CSV
                             </button>
-                            <a
-                                href={download("/issues?format=json")}
+                            <button
+                                formAction={download("/issues")}
+                                name="format"
+                                value="json"
                                 className="text-xs text-indigo-700 hover:underline"
                                 title="For pnpm issues:gh"
                             >
                                 Issues JSON
-                            </a>
+                            </button>
                         </div>
                     </div>
                 </div>

@@ -35,20 +35,46 @@ test("a run from project to downloaded report", async ({ page }) => {
     const waiting = exports.getByRole("link", { name: /^\d+ findings? (and \d+ questions? )?awaits? review$/ });
     await expect(waiting).toHaveAttribute("href", /\/findings\?status=unreviewed$/);
     const before = Number((await waiting.innerText()).match(/^\d+/)![0]);
-    // A draft carries them for a first look, each marked; the issues stay reviewed only.
+    // A draft carries them for a first look, each marked, in every download.
     await exports.getByLabel(/^Draft/).check();
     const [draft] = await Promise.all([page.waitForEvent("download"), exports.getByRole("button", { name: "HTML report" }).click()]);
     expect(draft.suggestedFilename()).toMatch(/^auditdesk-sample-draft-\d{4}-\d{2}-\d{2}\.html$/);
     const draftHtml = readFileSync(await draft.path(), "utf8");
     expect(draftHtml).toContain("User input reaches eval");
     expect(draftHtml).toContain('<span class="pill unreviewed">not reviewed</span>');
+    for (const [name, ext] of [
+        ["Issues CSV", "csv"],
+        ["Issues JSON", "json"]
+    ]) {
+        const [file] = await Promise.all([page.waitForEvent("download"), exports.getByRole("button", { name }).click()]);
+        expect(file.suggestedFilename()).toMatch(new RegExp(`^auditdesk-sample-issues-draft-\\d{4}-\\d{2}-\\d{2}\\.${ext}$`));
+        expect(readFileSync(await file.path(), "utf8")).toMatch(/F-\d{3} \(not reviewed\): User input reaches eval/);
+    }
     await exports.getByLabel(/^Draft/).uncheck();
     await page.keyboard.press("Escape");
     await expect(exports).toBeHidden();
+    await page.getByRole("button", { name: "Expand all" }).click();
+    await expect(page.locator("details:not([open])")).toHaveCount(0);
+    await page.getByRole("button", { name: "Collapse all" }).click();
+    await expect(page.locator("details[open]")).toHaveCount(0);
     const evalFinding = page.locator("details", { hasText: "User input reaches eval" });
     await evalFinding.locator("summary").click();
+    await expect(evalFinding.getByTestId("recommendation")).toHaveCSS("white-space", "pre-wrap");
+    await expect(evalFinding.getByRole("button", { name: "Reject" })).toHaveCSS("cursor", "pointer");
+    // A rejection's reason goes when the finding is accepted after it.
+    await evalFinding.getByPlaceholder("Why it is wrong").fill("A test reason");
+    await evalFinding.getByRole("button", { name: "Reject" }).click();
+    await expect(evalFinding).toContainText("Reason: A test reason");
     await evalFinding.getByRole("button", { name: "Accept" }).click();
+    // Said in a toast, so the card's row keeps its place; the button stays disabled while the finding is accepted.
+    await expect(page.locator("#toasts")).toContainText(/F-\d{3} accepted: it goes in the report\./);
+    const accepted = evalFinding.getByRole("button", { name: "Accepted" });
+    await expect(accepted).toBeDisabled();
+    await expect(accepted).toHaveCSS("cursor", "not-allowed");
     await expect(evalFinding).toContainText("accepted");
+    await expect(evalFinding).not.toContainText("Reason:");
+    const row = async (l: typeof accepted) => Math.round((await l.boundingBox())!.y + (await l.boundingBox())!.height / 2);
+    expect(Math.abs((await row(accepted)) - (await row(evalFinding.getByRole("link", { name: "Edit or merge" }))))).toBeLessThan(4);
     await page.getByRole("button", { name: "Export", exact: true }).click();
     await expect(waiting).toHaveText(new RegExp(`^${before - 1} finding`));
 
@@ -430,7 +456,7 @@ test("the review shows the agent's hours, an edit of them resizes the finding, a
     expect(without).not.toContain("3–5 h");
     const withHours = await text(true);
     expect(withHours).toContain("effort M (3–5 h)");
-    expect(withHours).toMatch(/Estimated effort: 3–5 h (to fix before sign-off|for what can wait)\./);
+    expect(withHours).toMatch(/<b>3–5 h<\/b><span>(Fix before sign-off|Can wait)<\/span>/);
 });
 
 test("starting twice queues one run", async ({ page }) => {

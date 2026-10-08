@@ -181,6 +181,9 @@ function body(f: ReportFinding): string {
         ? [f.refs.top10, f.refs.cwe, ...f.refs.asvs, ...f.refs.wcag, ...f.refs.cheatsheets, ...f.refs.advisories, f.refs.nist]
         : [];
     const lines = [
+        ...(f.unreviewed
+            ? ["**Not reviewed yet:** the auditor has not reviewed this finding; it comes from a draft of the report.", ""]
+            : []),
         `**Severity:** ${f.severity ?? "question"} · **Checklist item:** ${f.checklistItem ?? "none"} · **Repository:** ${prose(f.repository)}${
             f.effort ? ` · **Effort:** ${effortGloss(f)}` : ""
         }`,
@@ -213,13 +216,20 @@ function body(f: ReportFinding): string {
 
 /**
  * One tracker issue per reported finding, worst first so a tracker that numbers by creation puts
- * them in the report's order. For GitHub, Linear or any tracker that takes Markdown.
+ * them in the report's order. For GitHub, Linear or any tracker that takes Markdown. A draft marks
+ * what the auditor has not reviewed in the title, which is what a tracker's list shows, as well as
+ * in the body and the labels.
  */
 export function issueDrafts(d: ReportData): IssueDraft[] {
     return bySeverity(d.findings).map(f => ({
-        title: `${f.label}: ${f.title}`,
+        title: `${f.label}${f.unreviewed ? " (not reviewed)" : ""}: ${f.title}`,
         body: body(f),
-        labels: ["audit", f.severity ?? "question", f.aspect.toLowerCase().replace(/[^a-z0-9]+/g, "-")],
+        labels: [
+            "audit",
+            f.severity ?? "question",
+            f.aspect.toLowerCase().replace(/[^a-z0-9]+/g, "-"),
+            ...(f.unreviewed ? ["not-reviewed"] : [])
+        ],
         severity: f.severity
     }));
 }

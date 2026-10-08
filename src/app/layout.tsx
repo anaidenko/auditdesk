@@ -10,10 +10,11 @@ export const metadata: Metadata = { title: "Auditdesk", description: "A local co
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
     return (
-        <html lang="en">
+        // A browser extension may add an attribute here (Google Analytics Opt-out adds data-google-analytics-opt-out).
+        <html lang="en" suppressHydrationWarning>
             <body className="min-h-screen bg-zinc-50 text-zinc-900 antialiased">
                 <header className="sticky top-0 z-10 border-b border-zinc-200 bg-white/85 backdrop-blur">
-                    <nav className="mx-auto flex max-w-6xl flex-wrap items-center gap-x-6 gap-y-2 px-4 py-3 sm:px-6">
+                    <nav className="flex flex-wrap items-center gap-x-6 gap-y-2 px-4 py-3 sm:px-6 lg:px-8">
                         <Link href="/" className="flex items-center gap-2.5">
                             <span className="grid size-8 place-items-center rounded-lg bg-gradient-to-br from-indigo-600 to-violet-600 text-white shadow-sm">
                                 <Icon name="shield" className="size-[18px]" />
@@ -40,7 +41,12 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
                         </div>
                     </nav>
                 </header>
-                <main className="mx-auto max-w-6xl px-4 py-10 sm:px-6">{children}</main>
+                <main className="px-4 py-10 sm:px-6 lg:px-8">{children}</main>
+                <div
+                    id="toasts"
+                    role="status"
+                    className="pointer-events-none fixed right-4 bottom-4 z-50 flex flex-col items-end gap-2 sm:right-6 sm:bottom-6"
+                />
             </body>
         </html>
     );

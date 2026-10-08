@@ -18,3 +18,27 @@
         position-try-fallbacks: flip-inline;
     }
 }
+
+/* A form's notice of what it did: read, then out of the way, its place in the stack freed. */
+@theme {
+    --animate-notice: notice 5s ease-in forwards;
+
+    @keyframes notice {
+        0%,
+        80% {
+            opacity: 1;
+        }
+        100% {
+            opacity: 0;
+            display: none;
+        }
+    }
+}
+
+/* Tailwind 4 leaves buttons with the default cursor; a pointer says an enabled one is clickable. */
+@layer base {
+    button:not(:disabled),
+    [role="button"]:not(:disabled) {
+        cursor: pointer;
+    }
+}
