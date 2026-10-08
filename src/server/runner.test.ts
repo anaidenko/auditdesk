@@ -12,7 +12,7 @@ import { recordPlanUsage } from "@/engine/plan-usage";
 import { message, replayFetch } from "@/engine/replay";
 import { REPLAY_RULESETS, replayRunner } from "@/engine/scanners/replay";
 import { prisma } from "@/server/db";
-import { ActiveRunError, claimJob, enqueueRerun, enqueueRun, markInterrupted } from "@/server/jobs";
+import { StaleRunError, claimJob, enqueueRerun, enqueueRun, markInterrupted } from "@/server/jobs";
 import { listen } from "@/server/pg";
 import { type Engine, engineFor, processJob, runLoop } from "@/server/runner";
 import { PrismaSink } from "@/server/sink";
@@ -159,7 +159,7 @@ describe("runner", () => {
         expect(Number(rerun.usdShare)).toBeLessThanOrEqual(0.5);
     });
 
-    it("re-runs an aspect at the commit its own run audited, not the repository's latest", async () => {
+    it("re-runs an aspect at the commit its own run audited, though the branch has moved on since", async () => {
         const source = await makeSampleRepo();
         const { project, repo } = await projectWithRepo(source);
         const first = await enqueueRun(project.id, runOptions);
@@ -169,13 +169,23 @@ describe("runner", () => {
         await writeFile(join(source, "src/later.js"), "module.exports = 1;\n");
         await git(["add", "src/later.js"], source);
         await git(["-c", "user.name=T", "-c", "user.email=t@example.com", "commit", "-q", "-m", "later"], source);
-        await enqueueRun(project.id, runOptions);
-        await processJob((await claimJob())!, await deps());
-        expect((await prisma.repository.findUniqueOrThrow({ where: { id: repo.id } })).commitSha).not.toBe(audited);
-
         await enqueueRerun(first, repo.id, "security");
         await processJob((await claimJob())!, await deps());
         expect((await prisma.repository.findUniqueOrThrow({ where: { id: repo.id } })).commitSha).toBe(audited);
+    });
+
+    it("re-runs an aspect on the run's own repositories, with their share, not on one added to the project since", async () => {
+        const { project, repo } = await projectWithRepo(await makeSampleRepo());
+        const runId = await enqueueRun(project.id, runOptions);
+        await processJob((await claimJob())!, await deps());
+        const added = await prisma.repository.create({ data: { projectId: project.id, source: await makeSampleRepo(), branch: "main" } });
+
+        await enqueueRerun(runId, repo.id, "security");
+        await processJob((await claimJob())!, await deps());
+        const rerun = await prisma.agentRun.findFirstOrThrow({ where: { runId }, orderBy: { createdAt: "desc" } });
+        expect(rerun.tokenShare).toBe(runOptions.budgetTokens);
+        expect((await prisma.repository.findUniqueOrThrow({ where: { id: added.id } })).clonePath).toBeNull();
+        expect(Object.keys((await prisma.run.findUniqueOrThrow({ where: { id: runId } })).commits as object)).toEqual([repo.id]);
     });
 
     it("queues a re-run once, however many times its button is pressed", async () => {
@@ -187,12 +197,12 @@ describe("runner", () => {
         expect(await prisma.job.count({ where: { runId, status: "queued" } })).toBe(1);
     });
 
-    it("refuses a re-run while another run of the project is queued, and says so", async () => {
+    it("refuses a re-run of a run that a newer one, queued or not, has followed, and says so", async () => {
         const { project, repo } = await projectWithRepo(await makeSampleRepo());
         const first = await enqueueRun(project.id, runOptions);
         await processJob((await claimJob())!, await deps());
         await enqueueRun(project.id, runOptions);
-        await expect(enqueueRerun(first, repo.id, "security")).rejects.toBeInstanceOf(ActiveRunError);
+        await expect(enqueueRerun(first, repo.id, "security")).rejects.toBeInstanceOf(StaleRunError);
     });
 
     it("refuses to run without the client's AI consent", async () => {

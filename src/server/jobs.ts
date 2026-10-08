@@ -11,6 +11,20 @@ export class ActiveRunError extends Error {
     }
 }
 
+/** A re-run returns to its run's commit, and the report names one commit per repository: the latest run's. */
+export class StaleRunError extends Error {
+    constructor() {
+        super("A newer run of this project exists: re-run the aspect from it, or start a new run.");
+    }
+}
+
+/** The pipeline would skip every agent of a re-run whose run has spent its cap. */
+export class SpentRunError extends Error {
+    constructor() {
+        super("This run has spent its cap: start a new run for this aspect.");
+    }
+}
+
 export class AccessChangedError extends Error {
     constructor() {
         super("This run's model access differs from the project's now; start a new run.");
@@ -53,10 +67,13 @@ export async function enqueueRerun(
         return await prisma.$transaction(async tx => {
             const run = await tx.run.findUniqueOrThrow({
                 where: { id: runId },
-                select: { modelAccess: true, project: { select: { modelAccess: true } } }
+                select: { modelAccess: true, projectId: true, createdAt: true, budgetUsd: true, project: { select: { modelAccess: true } } }
             });
             // A run keeps its access; the project's switch speaks for new runs only (plan, Decision 1).
             if (run.modelAccess !== run.project.modelAccess) throw new AccessChangedError();
+            if (await tx.run.count({ where: { projectId: run.projectId, createdAt: { gt: run.createdAt } } })) throw new StaleRunError();
+            const spent = await tx.apiCall.aggregate({ where: { runId }, _sum: { costUsd: true } });
+            if (Number(spent._sum.costUsd ?? 0) >= Number(run.budgetUsd)) throw new SpentRunError();
             // Only a finished run is re-queued: a second press would otherwise queue a second, paid job.
             const { count } = await tx.run.updateMany({
                 where: { id: runId, status: { notIn: ["queued", "running"] } },

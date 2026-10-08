@@ -2,7 +2,17 @@ import { beforeEach, describe, expect, it } from "vitest";
 
 import { prisma } from "@/server/db";
 import { createFinding } from "@/server/findings";
-import { accept, confirmRecheck, edit, exclude, listFindings, merge, reject, writeIfUnchanged } from "@/server/review";
+import {
+    ReviewedMeanwhileError,
+    accept,
+    confirmRecheck,
+    edit,
+    exclude,
+    listFindings,
+    merge,
+    reject,
+    writeIfUnchanged
+} from "@/server/review";
 import { resetDb } from "@/test/db";
 import { projectWithRepo, sampleFinding } from "@/test/factories";
 
@@ -198,6 +208,27 @@ describe("review", () => {
         await expect(merge(a.id, b.label)).rejects.toThrow(/already merged/);
         const target = await prisma.finding.findUniqueOrThrow({ where: { id: b.id } });
         expect(target.evidence as unknown[]).toHaveLength(2);
+    });
+
+    it("refuses to merge a finding into a question, where its severity would leave the counts and the sign-off list", async () => {
+        const { project, repo } = await projectWithRepo();
+        const finding = await createFinding(project.id, null, sampleFinding(repo.id, { title: "Raw SQL in login", severity: "high" }));
+        const question = await createFinding(
+            project.id,
+            null,
+            sampleFinding(repo.id, { title: "Who rotates the keys?", kind: "question", severity: null })
+        );
+        await expect(merge(finding.id, question.label)).rejects.toThrow(/question/);
+        expect(await status(finding.id)).toBe("unreviewed");
+    });
+
+    it("folds for the engine only into a finding still unreviewed, leaving one Andrii reviewed meanwhile as he left it", async () => {
+        const { a, b } = await twoFindings();
+        await accept(b.id);
+        const before = (await prisma.finding.findUniqueOrThrow({ where: { id: b.id } })).evidence;
+        await expect(merge(a.id, b.label, { onlyUnreviewed: true })).rejects.toBeInstanceOf(ReviewedMeanwhileError);
+        expect(await status(a.id)).toBe("unreviewed");
+        expect((await prisma.finding.findUniqueOrThrow({ where: { id: b.id } })).evidence).toEqual(before);
     });
 
     it("refuses to merge a finding into itself", async () => {

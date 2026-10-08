@@ -22,7 +22,7 @@ import type { Prisma } from "@/generated/prisma/client";
 import { prisma } from "@/server/db";
 import { createFinding } from "@/server/findings";
 import { RUN_CHANNEL } from "@/server/pg";
-import { REPORTABLE, merge } from "@/server/review";
+import { REPORTABLE, ReviewedMeanwhileError, merge } from "@/server/review";
 
 // Rejected findings stay in the agent's index, marked, so a re-run does not file them again (design § 9).
 const INDEXED = ["unreviewed", "accepted", "edited", "excluded", "rejected"] as const;
@@ -153,11 +153,16 @@ export class PrismaSink implements PipelineSink {
         for (const { from, into } of scannerDuplicates(agent.map(placed), scanner.map(placed))) {
             const s = byLabel.get(from)!;
             const target = await prisma.finding.findUniqueOrThrow({ where: { id: byLabel.get(into)!.id } });
-            await merge(s.id, into, { onlyUnreviewed: true });
+            try {
+                await merge(s.id, into, { onlyUnreviewed: true });
+            } catch (e) {
+                if (e instanceof ReviewedMeanwhileError) continue;
+                throw e;
+            }
             // A folded critical secret must not leave the report with no critical.
             const rank = (v: string | null) => (v ? SEVERITIES.indexOf(v as SeverityName) : SEVERITIES.length);
             const raised = rank(s.severity) < rank(target.severity) ? (s.severity as SeverityName) : undefined;
-            if (raised) await prisma.finding.update({ where: { id: target.id }, data: { severity: raised } });
+            if (raised) await prisma.finding.updateMany({ where: { id: target.id, status: "unreviewed" }, data: { severity: raised } });
             folded.push({ from, into, ...(raised ? { raised } : {}) });
         }
         if (folded.length) await this.notify();
@@ -277,12 +282,17 @@ export class PrismaSink implements PipelineSink {
         const where = { projectId: this.projectId, repositoryId, aspect, source: "agent" as const, status: "unreviewed" as const };
         await prisma.$transaction(async tx => {
             const ids = (await tx.finding.findMany({ where, select: { id: true } })).map(r => r.id);
-            // A scanner finding folded into one of them comes back to the review; nothing else would file it again.
+            // Still unreviewed at the write: one Andrii reviewed meanwhile stays as he left it.
+            await tx.finding.updateMany({ where: { id: { in: ids }, status: "unreviewed" }, data: { status: "superseded" } });
+            const gone = (await tx.finding.findMany({ where: { id: { in: ids }, status: "superseded" }, select: { id: true } })).map(
+                r => r.id
+            );
+            // Whatever was merged into them comes back to the review: a scanner's, which nothing would file
+            // again, and an agent's Andrii merged by hand, which would otherwise stay hidden behind a gap.
             await tx.finding.updateMany({
-                where: { mergedIntoId: { in: ids }, source: "scanner", status: "merged" },
+                where: { mergedIntoId: { in: gone }, status: "merged" },
                 data: { status: "unreviewed", mergedIntoId: null }
             });
-            await tx.finding.updateMany({ where: { id: { in: ids } }, data: { status: "superseded" } });
         });
     }
 }

@@ -8,7 +8,7 @@ import { hoursFrom } from "@/engine/effort";
 import { readPlanUsage, reserveRefusal } from "@/engine/plan-usage";
 import type { SeverityName } from "@/engine/types";
 import { prisma } from "@/server/db";
-import { AccessChangedError, ActiveRunError, enqueueRerun } from "@/server/jobs";
+import { AccessChangedError, ActiveRunError, SpentRunError, StaleRunError, enqueueRerun } from "@/server/jobs";
 import { accept, confirmRecheck, edit, exclude, merge, reject } from "@/server/review";
 
 async function listPath(id: string) {
@@ -90,6 +90,8 @@ export async function rerunAspect(runId: string, repositoryId: string, aspect: s
     } catch (e) {
         if (e instanceof ActiveRunError) notice = "?notice=busy";
         else if (e instanceof AccessChangedError) notice = "?notice=access";
+        else if (e instanceof StaleRunError) notice = "?notice=stale";
+        else if (e instanceof SpentRunError) notice = "?notice=spent";
         else throw e;
     }
     redirect(`/runs/${runId}${notice}`);
