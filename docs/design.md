@@ -128,8 +128,8 @@ A finding has a stable ID per project (`F-012` means the same issue in a call, a
 next report), a severity, likelihood and impact, a summary for a founder, an explanation for
 engineers, evidence as file and line ranges with the code (masked), a recommendation and an
 effort: the agent's hours for the fix as a range, and the size they fall in by their high end (S up
-to 2 hours, M up to 2 days, L more). A scanner sizes its findings by their places alone. What code
-cannot show (backups, alerting) is filed as a question.
+to 2 hours, M up to 2 days, L more). Semgrep and gitleaks size their findings by their places; an
+OSV finding is S. What code cannot show (backups, alerting) is filed as a question.
 
 The auditor accepts, edits, merges, rejects (kept with the reason, as data on false positives)
 or excludes each finding, and may move it between "fix before sign-off" and "can wait". An edit of

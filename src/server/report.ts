@@ -123,8 +123,8 @@ export function exportOptions(url: string): { includeCost: boolean; includeHours
 }
 
 /**
- * `includeCost` and `includeHours`: Andrii ticked them at export (design § 8); otherwise the report
- * states no cost, and the effort by size alone.
+ * `includeCost` and `includeHours`: Andrii ticked them at export (cost: design § 8; hours: § 10);
+ * otherwise the report states no cost, and the effort by size alone.
  */
 export async function loadReportData(projectId: string, o: { includeCost?: boolean; includeHours?: boolean } = {}): Promise<ReportData> {
     const project = await prisma.project.findUniqueOrThrow({

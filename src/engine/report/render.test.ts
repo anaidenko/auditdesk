@@ -735,11 +735,39 @@ describe("renderReport", () => {
                     hours: true,
                     findings: [
                         finding({ label: "F-001", severity: "critical", effort: "L" }),
-                        finding({ label: "F-002", severity: "low", effort: null })
+                        finding({ label: "F-002", severity: "high", effort: null }),
+                        finding({ label: "F-003", severity: "low", effort: "S", effortHours: { low: 1, high: 2 } })
                     ]
                 })
             );
-            expect(summary(html)).toContain("Estimated effort: 16 h or more to fix before sign-off, plus 1 finding not sized.");
+            expect(summary(html)).toContain(
+                "Estimated effort: 16 h or more to fix before sign-off and 1–2 h for what can wait, 17 h or more in all. Not sized, so left out of the totals: F-002."
+            );
+        });
+
+        it("says a list has no estimate when none of its findings is sized", () => {
+            const html = renderReport(
+                data({
+                    hours: true,
+                    findings: [
+                        finding({ label: "F-001", severity: "critical", effort: null }),
+                        finding({ label: "F-002", severity: "low", effort: "M", effortHours: { low: 4, high: 8 } })
+                    ]
+                })
+            );
+            expect(summary(html)).toContain(
+                "Estimated effort: no estimate to fix before sign-off and 4–8 h for what can wait. Not sized, so left out of the totals: F-001."
+            );
+        });
+
+        it("gives the legend whenever a card shows a size, a question's included", () => {
+            const question = finding({ label: "F-003", severity: null, effort: "S" });
+            const legend = "Sizes: S up to 2 hours, M up to 2 days, L over 2 days.";
+            expect(summary(renderReport(data({ findings: [], questions: [question] })))).toContain(legend);
+            const unsized = summary(renderReport(data({ findings: [finding({ effort: null })], questions: [question] })));
+            expect(unsized).toContain("Effort: not estimated.");
+            expect(unsized).toContain(legend);
+            expect(summary(renderReport(data({ findings: [finding({ effort: null })] })))).not.toContain("Sizes:");
         });
     });
 

@@ -249,18 +249,16 @@ document.addEventListener("click",ev=>{if(ev.defaultPrevented||ev.button||ev.met
 const a=ev.target.closest&&ev.target.closest('a[href^="#"]');if(a)reveal(decodeURIComponent(a.getAttribute("href").slice(1)))});
 window.addEventListener("hashchange",fromHash);fromHash();label();})();`;
 
-/** The effort line and the sizes' legend: by size alone, or in hours when the export includes them. */
-function effortSummary(fixFirst: ReportFinding[], canWait: ReportFinding[], hours: boolean): { line: string; legend?: string } | null {
+/** The effort line: findings counted by size, or their hours totalled per list when the export includes them. */
+function effortSummary(fixFirst: ReportFinding[], canWait: ReportFinding[], hours: boolean): string | null {
     const all = [...fixFirst, ...canWait];
     if (!all.length) return null;
-    const unsized = all.filter(f => !f.effort && !f.effortHours).length;
-    if (unsized === all.length) return { line: "Effort: not estimated." };
-    const notSized = unsized ? [`${unsized} not sized`] : [];
-    const legend = `Sizes: ${SIZES.map(s => `${s.size} ${s.span}`).join(", ")}.`;
+    const unsized = all.filter(f => !f.effort && !f.effortHours);
+    if (unsized.length === all.length) return "Effort: not estimated.";
     if (!hours) {
         const counts = SIZES.map(s => [all.filter(f => f.effort === s.size).length, s.size] as const).filter(([n]) => n);
         const parts = counts.map(([n, size], i) => `${i ? n : plural(n, "finding", "findings")} sized ${size}`);
-        return { line: `Estimated effort: ${listed([...parts, ...notSized])}.`, legend };
+        return `Estimated effort: ${listed([...parts, ...(unsized.length ? [`${unsized.length} not sized`] : [])])}.`;
     }
     const groups = (
         [
@@ -268,16 +266,26 @@ function effortSummary(fixFirst: ReportFinding[], canWait: ReportFinding[], hour
             ["for what can wait", canWait]
         ] as const
     )
-        .map(([what, list]) => ({ what, list, total: totalHours(list) }))
-        .filter(g => g.list.length > g.total.unsized);
-    const whole = totalHours(all);
-    const line =
-        `Estimated effort: ${groups.map(g => `${formatTotal(g.total)} ${g.what}`).join(" and ")}` +
-        (groups.length > 1 ? `, ${formatTotal(whole)} in all` : "") +
-        (unsized ? `, plus ${plural(unsized, "finding", "findings")} not sized` : "") +
-        ".";
-    const bySize = whole.bySize ? ` Findings without hours count at the range of their size: ${BY_SIZE_TEXT.join(", ")}.` : "";
-    return { line, legend: legend + bySize };
+        .filter(([, list]) => list.length)
+        .map(([what, list]) => {
+            const total = totalHours(list);
+            return { what, total, sized: list.length > total.unsized };
+        });
+    return (
+        `Estimated effort: ${groups.map(g => (g.sized ? `${formatTotal(g.total)} ${g.what}` : `no estimate ${g.what}`)).join(" and ")}` +
+        (groups.filter(g => g.sized).length > 1 ? `, ${formatTotal(totalHours(all))} in all` : "") +
+        "." +
+        (unsized.length ? ` Not sized, so left out of the totals: ${listed(unsized.map(f => f.label))}.` : "")
+    );
+}
+
+/** Whenever a card shows a size, a question's too; with hours, how a size alone counts in the totals. */
+function sizesLegend(findings: ReportFinding[], questions: ReportFinding[], hours: boolean): string | null {
+    if (![...findings, ...questions].some(f => f.effort)) return null;
+    const legend = `Sizes: ${SIZES.map(s => `${s.size} ${s.span}`).join(", ")}.`;
+    return hours && totalHours(findings).bySize
+        ? `${legend} Findings without hours count at the range of their size: ${BY_SIZE_TEXT.join(", ")}.`
+        : legend;
 }
 
 /** The model calls' cost: billed dollars and the plan's API-equivalent ones never added together. */
@@ -388,7 +396,8 @@ export function renderReport(d: ReportData): string {
         list.length
             ? `<ul class="risks">${list.map(f => `<li>${badge(f)}<a class="fid" href="#${e(f.label)}">${e(f.label)}</a><span>${e(f.title)}</span><span class="aside">${e(aside(f))}</span></li>`).join("")}</ul>`
             : `<p class="muted">${e(none)}</p>`;
-    const effort = effortSummary(fixFirst, canWait, d.hours);
+    const effortLine = effortSummary(fixFirst, canWait, d.hours);
+    const legend = sizesLegend(findings, d.questions, d.hours);
     const titleList = (list: ReportFinding[]) =>
         list.length
             ? `<ul>${list.map(f => `<li>${badge(f)}<a class="fid" href="#${e(f.label)}">${e(f.label)}</a><span>${e(f.title)}</span></li>`).join("")}</ul>`
@@ -509,8 +518,8 @@ ${riskList(fixFirst, "Nothing needs fixing before sign-off.")}
 ${canWait.length ? `<p class="muted">Still to fix, after sign-off.</p>` : ""}
 ${riskList(canWait, "Nothing else was found.")}
 ${d.questions.length ? `<p>${d.questions.length === 1 ? "1 open question needs the team's answer." : `${d.questions.length} open questions need the team's answers.`}</p>` : ""}
-${effort ? `<p>${e(effort.line)}</p>` : ""}
-${effort?.legend ? `<p class="muted">${e(effort.legend)}</p>` : ""}
+${effortLine ? `<p>${e(effortLine)}</p>` : ""}
+${legend ? `<p class="muted">${e(legend)}</p>` : ""}
 </section>
 ${since(d, findings)}
 

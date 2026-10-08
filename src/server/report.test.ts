@@ -4,7 +4,7 @@ import type { ReportData } from "@/engine/report/types";
 import { EMPTY_STACK } from "@/engine/stack";
 import { prisma } from "@/server/db";
 import { createFinding } from "@/server/findings";
-import { awaitingReview, loadReportData, reportFileName } from "@/server/report";
+import { awaitingReview, exportOptions, loadReportData, reportFileName } from "@/server/report";
 import { resetDb } from "@/test/db";
 import { projectWithRepo, sampleFinding } from "@/test/factories";
 
@@ -378,6 +378,11 @@ describe("the cost in the report", () => {
 });
 
 describe("the hours in the report", () => {
+    it("reads both boxes from the export's query", () => {
+        expect(exportOptions("http://127.0.0.1/p/report?hours=1&cost=1")).toEqual({ includeCost: true, includeHours: true });
+        expect(exportOptions("http://127.0.0.1/p/report")).toEqual({ includeCost: false, includeHours: false });
+    });
+
     it("carries each finding's hours only when the export asks for them", async () => {
         const { project, repo } = await projectWithRepo();
         const f = await createFinding(project.id, null, sampleFinding(repo.id, { effort: "M", effortHours: { low: 2, high: 4 } }));

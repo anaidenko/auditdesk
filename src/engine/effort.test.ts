@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { formatHours, formatTotal, hoursError, sizeAndHours, sizeOf, totalHours } from "./effort";
+import { formatHours, formatTotal, hoursError, hoursFrom, sizeAndHours, sizeOf, totalHours } from "./effort";
 
 describe("effort", () => {
     it("sizes a range by its high end, so the letter never contradicts the hours", () => {
@@ -25,6 +25,14 @@ describe("effort", () => {
         expect(hoursError({ low: 0, high: 2 })).toMatch(/from 1/);
         expect(hoursError({ low: 1.5, high: 2 })).toMatch(/whole/);
         expect(hoursError({ low: 4, high: 2 })).toMatch(/low .* high/);
+        expect(hoursError({ low: 1, high: 1000 })).toMatch(/split/);
+    });
+
+    it("reads the editor's two fields: both, one alone as a single number, or neither", () => {
+        expect(hoursFrom("2", "4")).toEqual({ low: 2, high: 4 });
+        expect(hoursFrom(null, "3")).toEqual({ low: 3, high: 3 });
+        expect(hoursFrom("3", null)).toEqual({ low: 3, high: 3 });
+        expect(hoursFrom(null, null)).toBeNull();
     });
 
     it("adds the hours set, counts a finding with only a size at its size's range, and leaves the unsized out", () => {

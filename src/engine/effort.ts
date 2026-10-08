@@ -25,8 +25,14 @@ export function hoursError(h: Hours): string | null {
     if (!Number.isInteger(h.low) || !Number.isInteger(h.high)) return "Hours are whole numbers.";
     if (h.low < 1) return "Hours start from 1.";
     if (h.low > h.high) return "The low end of the hours is above the high end.";
+    // The column is a 4-byte integer, and a fix this large is several findings.
+    if (h.high > 999) return "Over 999 hours is not one fix; split the finding.";
     return null;
 }
+
+/** The editor's two fields; one end alone is a single number. */
+export const hoursFrom = (low: string | null, high: string | null): Hours | null =>
+    low || high ? { low: Number(low ?? high), high: Number(high ?? low) } : null;
 
 export const formatHours = (h: Hours) => (h.low === h.high ? `${h.low} h` : `${h.low}–${h.high} h`);
 
