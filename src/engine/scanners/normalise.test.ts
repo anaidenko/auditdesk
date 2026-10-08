@@ -135,6 +135,15 @@ describe("gitleaks", () => {
         expect(f.explanation).toContain("Commits: src/a.js at c2bdcacd (2026-10-06); src/b.js at c2bdcacd (2026-10-06).");
     });
 
+    it("marks each place found only in history with its commit, its fingerprint the same as in the code", () => {
+        const two = [at("a".repeat(32), "src/a.js", 3), at("b".repeat(32), "src/b.js", 4)];
+        const [history] = normaliseGitleaks(two, { repositoryId: "r", masker, inTree: () => false });
+        const [code] = normaliseGitleaks(two, { repositoryId: "r", masker, inTree: () => true });
+        expect(history.evidence.map(e => e.commit)).toEqual([two[0].Commit, two[1].Commit]);
+        expect(code.evidence.map(e => e.commit)).toEqual([undefined, undefined]);
+        expect(history.evidence.map(e => e.key)).toEqual(code.evidence.map(e => e.key));
+    });
+
     it("keeps a single place's fingerprint, and files only the places not filed before", () => {
         const two = [at("a".repeat(32), "src/a.js", 3), at("b".repeat(32), "src/b.js", 4)];
         const [group] = normaliseGitleaks(two, { repositoryId: "r", masker, inTree: () => true });

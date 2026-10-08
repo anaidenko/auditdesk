@@ -26,6 +26,8 @@ export function sdkEnv(o: {
         // Its own config directory: no user settings, no Keychain entry, no transcript under ~/.claude.
         CLAUDE_CONFIG_DIR: o.configDir,
         CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: "1",
+        // Read by the binary before any settings tier, beside settings.autoCompactEnabled below.
+        DISABLE_AUTO_COMPACT: "1",
         // A failed stream fails the call instead of being retried without streaming: the engine reads every call from the stream.
         CLAUDE_CODE_DISABLE_NONSTREAMING_FALLBACK: "1",
         DISABLE_TELEMETRY: "1",
@@ -71,6 +73,9 @@ export function sdkOptions(o: {
         permissionMode: "dontAsk",
         permissionPrompts: "none",
         settingSources: [],
+        // The --settings tier, apart from the file sources above. A compaction would summarise the
+        // agent's history where the API engine stops, through a call the ledger may not record.
+        settings: { autoCompactEnabled: false },
         strictMcpConfig: true,
         plugins: [],
         skills: [],

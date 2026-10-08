@@ -5,6 +5,7 @@ import { EMPTY_STACK } from "@/engine/stack";
 import { prisma } from "@/server/db";
 import { createFinding } from "@/server/findings";
 import { awaitingReview, exportOptions, loadReportData, reportFileName } from "@/server/report";
+import { PrismaSink } from "@/server/sink";
 import { resetDb } from "@/test/db";
 import { projectWithRepo, sampleFinding } from "@/test/factories";
 
@@ -371,6 +372,34 @@ describe("repositories in the report", () => {
         expect(d.repositories.map(r => r.name)).toEqual(["acme/app (main)", "acme/app (develop)"]);
         expect(d.repositories.map(r => r.notCovered)).toEqual([["Python (3 files; requirements.txt)"], []]);
         expect(d.aiBuilt).toBe(true);
+    });
+});
+
+describe("the branch in the report", () => {
+    it("names the branch its commit was cloned from, though the repository's branch was changed since", async () => {
+        const { project, repo } = await projectWithRepo();
+        const run = await prisma.run.create({
+            data: { projectId: project.id, model: "m", effort: "low", aspects: ["security"], budgetUsd: 1, budgetTokens: 20_000 }
+        });
+        await new PrismaSink(run.id, project.id).repositoryCloned(repo.id, "a".repeat(40), "/tmp/clone", "release/1.2");
+        await prisma.repository.update({ where: { id: repo.id }, data: { branch: "release/1.3" } });
+        expect((await loadReportData(project.id)).repositories[0]).toMatchObject({ branch: "release/1.2", sha: "a".repeat(40) });
+    });
+});
+
+describe("repository names in the report", () => {
+    it("names a repository by its path alone, never with the credentials its URL may carry", async () => {
+        const { project } = await projectWithRepo("https://oauth2:glpat-XXXXXXXXXXXX@git.example.com/app.git");
+        await prisma.repository.create({
+            data: {
+                projectId: project.id,
+                source: "ssh://git@host.example.com:22/team/api.git",
+                branch: "main",
+                createdAt: new Date(Date.now() + 1000)
+            }
+        });
+        const d = await loadReportData(project.id);
+        expect(d.repositories.map(r => r.name)).toEqual(["app", "team/api"]);
     });
 });
 

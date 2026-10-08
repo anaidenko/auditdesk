@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { loadChecklist, parseChecklist } from "./checklists";
-import { SYSTEM_PROMPT, aspectMessage, prefixBlocks } from "./prompts";
+import { SYSTEM_PROMPT, aspectMessage, briefText, prefixBlocks } from "./prompts";
 
 describe("prompts", () => {
     it("puts the cache breakpoint on the last block of the shared prefix", () => {
@@ -44,5 +44,18 @@ describe("prompts", () => {
     it("says when no findings are filed yet", () => {
         const checklist = parseChecklist("security", "# Security\n\n## SEC-01 A\n");
         expect(aspectMessage({ checklist, findingIndex: [], budgetTokens: 20000 })).toContain("None yet.");
+    });
+});
+
+describe("briefText", () => {
+    it("masks the password of a URL in the brief and the instructions, which every agent's prompt carries", () => {
+        const text = briefText(
+            { product: "A shop; staging at https://ci:tok3n@staging.example.com/", concerns: null, outOfScope: null, aiBuilt: false },
+            "npm start; database postgres://app:Pa55w0rd@localhost:5432/app; cache redis://:s3cretpw@localhost:6379"
+        );
+        expect(text).toContain("postgres://app:[password masked]@localhost:5432/app");
+        expect(text).toContain("https://ci:[password masked]@staging.example.com/");
+        expect(text).toContain("redis://:[password masked]@localhost:6379");
+        expect(text).not.toMatch(/Pa55w0rd|tok3n|s3cretpw/);
     });
 });

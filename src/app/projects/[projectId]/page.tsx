@@ -1,9 +1,10 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 
+import { ActionForm } from "@/app/ActionForm";
 import { ReportExport } from "@/app/ReportExport";
-import { deleteProject, setConsent } from "@/app/actions";
-import { Badge, Card, Icon, PageHeader, RunStatus, button } from "@/app/ui";
+import { deleteProject, removeRepository, setBranch, setConsent } from "@/app/actions";
+import { Badge, Card, Icon, PageHeader, RunStatus, button, field } from "@/app/ui";
 import { credentialStatus } from "@/engine/credentials";
 import { overReserve, planUsageLine, readPlanUsage } from "@/engine/plan-usage";
 import { type StackProfile, stackProfileText, suggestionsFor } from "@/engine/stack";
@@ -69,7 +70,23 @@ export default async function ProjectPage({ params }: { params: Promise<{ projec
                                     <li key={r.id} className="flex flex-wrap items-center gap-x-3 gap-y-2 px-3.5 py-2.5 text-sm">
                                         <Icon name="branch" className="size-4 shrink-0 text-zinc-400" />
                                         <span className="min-w-0 flex-1 font-mono text-[13px] break-all text-zinc-800">{r.source}</span>
-                                        <Badge tone="slate">{r.branch}</Badge>
+                                        <ActionForm
+                                            action={setBranch.bind(null, project.id, r.id)}
+                                            className="flex flex-wrap items-center gap-1.5"
+                                        >
+                                            <input
+                                                name="branch"
+                                                defaultValue={r.branch}
+                                                aria-label="Branch to audit"
+                                                className={`${field} w-36 px-2 py-1 font-mono text-xs`}
+                                            />
+                                            <button className={`${button.secondary} ${button.small}`}>Save branch</button>
+                                        </ActionForm>
+                                        {r._count.findings === 0 && !active && (
+                                            <ActionForm action={removeRepository.bind(null, project.id, r.id)}>
+                                                <button className={`${button.danger} ${button.small}`}>Remove</button>
+                                            </ActionForm>
+                                        )}
                                         {r.commitSha && <code className="text-xs text-zinc-400">{r.commitSha.slice(0, 10)}</code>}
                                         <RepositoryNotes
                                             projectId={project.id}

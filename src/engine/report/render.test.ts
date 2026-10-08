@@ -94,13 +94,52 @@ describe("renderReport", () => {
         expect(html).not.toMatch(/\bpassed\b/i);
     });
 
-    it("explains a partly covered aspect", () => {
+    it("explains an aspect that did not finish in the client's words, never in the engine's note for the auditor", () => {
         const html = renderReport(
             data({
-                aspects: [{ title: "Security", status: "partial", note: "Partially covered: the budget share was spent.", coverage: [] }]
+                aspects: [
+                    {
+                        title: "Security",
+                        status: "partial",
+                        note: "Stopped: the Claude plan's 5-hour usage reached 55%, above the 50% reserve; it resets 8 Oct, 15:20. Re-run this aspect then, or allow it past the reserve.",
+                        coverage: [
+                            { item: "SEC-01", title: "Authentication", status: "examined" },
+                            { item: "SEC-02", title: "Sessions", status: "not_reported" }
+                        ]
+                    },
+                    {
+                        title: "API design",
+                        status: "partial",
+                        note: "Partially covered: the budget share was spent.",
+                        coverage: [
+                            { item: "API-01", title: "Contracts", status: "partly" },
+                            { item: "API-02", title: "Errors", status: "not_examined" }
+                        ]
+                    },
+                    {
+                        title: "Production readiness",
+                        status: "partial",
+                        note: "Not started. The Claude plan's 5-hour usage is at 62% (seen 8 Oct, 10:01), above the 50% reserve; it resets 8 Oct, 13:00. Re-run this aspect then, or allow it past the reserve.",
+                        coverage: []
+                    },
+                    {
+                        title: "Architecture and structure",
+                        status: "failed",
+                        note: "Error: connect ECONNREFUSED 127.0.0.1:5433",
+                        coverage: []
+                    },
+                    { title: "Data model and database", status: "declined", note: "Not covered (declined, category cyber).", coverage: [] },
+                    { title: "Performance", status: "stopped", note: "Interrupted by a server restart.", coverage: [] }
+                ]
             })
         );
-        expect(html).toContain("the budget share was spent");
+        expect(html).toContain("Partly covered: the agent stopped before it had examined every item of its checklist.");
+        expect(html).toContain("Not covered: the agent did not finish this aspect.");
+        expect(html).toContain("Not covered: the model declined to review this aspect.");
+        expect(html).toContain("Not covered: the audit was stopped before this aspect finished.");
+        expect(html.match(/Not covered: the agent stopped before it had examined any item\./g)).toHaveLength(1);
+        expect(html.match(/Partly covered: the agent stopped before it had examined every item of its checklist\./g)).toHaveLength(2);
+        expect(html).not.toMatch(/5-hour|allow it past|ECONNREFUSED|category cyber|server restart/);
     });
 
     it("says what reading the code alone could not show, for performance and for accessibility apart", () => {
@@ -339,6 +378,21 @@ describe("renderReport", () => {
         );
         expect(between(html, '<ul class="method">', "</ul>")).toContain(
             "None of the 12 findings the scanners and agents filed is reviewed yet."
+        );
+    });
+
+    it("says in a draft that the findings not reviewed yet are in it, marked, as its cover does", () => {
+        const some = renderReport(
+            data({ draft: true, review: { filed: 3, reported: 1, fixed: 0, merged: 0, rejected: 0, excluded: 0, unreviewed: 2 } })
+        );
+        expect(between(some, '<ul class="method">', "</ul>")).toContain(
+            "The auditor reviewed 1 of the 3 findings the scanners and agents filed: 1 is in this report; 2 not reviewed yet are in it too, marked “not reviewed”."
+        );
+        const none = renderReport(
+            data({ draft: true, review: { filed: 3, reported: 0, fixed: 0, merged: 0, rejected: 0, excluded: 0, unreviewed: 3 } })
+        );
+        expect(between(none, '<ul class="method">', "</ul>")).toContain(
+            "None of the 3 findings the scanners and agents filed is reviewed yet; all are in this draft, marked “not reviewed”."
         );
     });
 

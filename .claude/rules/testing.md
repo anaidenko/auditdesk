@@ -26,7 +26,9 @@ paths:
   `insteadOf` in this repository's config does not reach a clone made inside it.
 - **End-to-end tests (Playwright)** run the built app on port 3100 with both replays.
 - **After a click that navigates, `await page.waitForURL(…)` before reading `page.url()`:** a
-  `<Link>` click returns before the navigation, and the URL is still the old page's.
+  `<Link>` click returns before the navigation, and the URL is still the old page's. A click that
+  posts a Server Action returns before its answer too: wait for the POST's response (its
+  `next-action` header) before a reload, or the reload renders what the action replaced.
 - **Locate a card by its label (`F-005`), never by a state the test changes:** a locator
   re-resolves on every use, so `filter({ has: getByText("unreviewed") }).nth(3)` names another
   card once the first is rejected.

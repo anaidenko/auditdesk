@@ -15,7 +15,8 @@ export function parseProjectForm(fd: FormData): Parsed<{ name: string }> {
 
 export function parseRepositoryForm(fd: FormData): Parsed<{ source: string; branch: string }> {
     const source = String(fd.get("source") ?? "").trim();
-    const branch = String(fd.get("branch") ?? "").trim() || "main";
+    // Empty: the repository's default branch, read when the repository is added.
+    const branch = String(fd.get("branch") ?? "").trim();
     try {
         parseSource(source);
     } catch (e) {

@@ -101,25 +101,36 @@ export function sarif(d: ReportData, repository: string): SarifLog {
         runs: [
             {
                 tool: { driver: { name: "Auditdesk", informationUri: "https://github.com/anaidenko/auditdesk", rules } },
-                results: findings.flatMap(byPlace).map(({ f, place }) => ({
-                    ruleId: f.checklistItem ?? "other",
-                    level: LEVEL[f.severity ?? "info"],
-                    message: { text: `${f.unreviewed ? "Not reviewed yet: " : ""}${f.title.replace(/[.!?]+$/, "")}. ${f.summary}` },
-                    locations: (place ? [place] : f.evidence).map(e => ({
-                        physicalLocation: {
-                            artifactLocation: { uri: e.file.split("/").map(encodeURIComponent).join("/"), uriBaseId: "%SRCROOT%" as const },
-                            region: { startLine: e.startLine, endLine: e.endLine }
+                results: findings.flatMap(byPlace).map(({ f, place }) => {
+                    const places = place ? [place] : f.evidence;
+                    const history = [...new Set(places.filter(e => e.commit).map(e => `${e.commit!.slice(0, 8)}, line ${e.startLine}`))];
+                    return {
+                        ruleId: f.checklistItem ?? "other",
+                        level: LEVEL[f.severity ?? "info"],
+                        message: {
+                            text: `${f.unreviewed ? "Not reviewed yet: " : ""}${f.title.replace(/[.!?]+$/, "")}. ${f.summary}${history.length ? ` Found in git history at ${history.join("; ")}.` : ""}`
+                        },
+                        // A place only in history points at its file's first line, as GitHub requires a region; its own
+                        // line, named in the message with the commit, may hold other code today.
+                        locations: places.map(e => ({
+                            physicalLocation: {
+                                artifactLocation: {
+                                    uri: e.file.split("/").map(encodeURIComponent).join("/"),
+                                    uriBaseId: "%SRCROOT%" as const
+                                },
+                                region: e.commit ? { startLine: 1, endLine: 1 } : { startLine: e.startLine, endLine: e.endLine }
+                            }
+                        })),
+                        partialFingerprints: { "auditdesk/finding": f.label, ...(place ? { "auditdesk/place": place.key! } : {}) },
+                        properties: {
+                            label: f.label,
+                            severity: f.severity,
+                            aspect: f.aspect,
+                            ...(f.references.cwe ? { cwe: f.references.cwe } : {}),
+                            ...(f.unreviewed && { unreviewed: true as const })
                         }
-                    })),
-                    partialFingerprints: { "auditdesk/finding": f.label, ...(place ? { "auditdesk/place": place.key! } : {}) },
-                    properties: {
-                        label: f.label,
-                        severity: f.severity,
-                        aspect: f.aspect,
-                        ...(f.references.cwe ? { cwe: f.references.cwe } : {}),
-                        ...(f.unreviewed && { unreviewed: true as const })
-                    }
-                })),
+                    };
+                }),
                 properties: { repository: repo.name, branch: repo.branch, commit: repo.sha, ...(d.draft && { draft: true as const }) }
             }
         ]

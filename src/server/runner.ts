@@ -105,15 +105,19 @@ export async function processJob(job: Job, deps?: (sink: PrismaSink) => AuditDep
                 model: run.model,
                 effort: run.effort as never,
                 budget: { usd: Number(run.budgetUsd), tokens: run.budgetTokens },
-                repositories: run.project.repositories.map(r => ({
-                    id: r.id,
-                    source: r.source,
-                    branch: r.branch,
-                    // A re-run audits the commit its own run audited; runs from before `commits` fall back to the latest clone.
-                    sha: job.aspect ? ((run.commits as Record<string, string> | null)?.[r.id] ?? r.commitSha) : null,
-                    stackText: r.stackConfirmedAt ? r.stackText : null,
-                    instructions: r.instructions
-                })),
+                // A re-run is of the repositories its run was started with, cloned or not: one added to the
+                // project since is not cloned or counted.
+                repositories: run.project.repositories
+                    .filter(r => !job.aspect || r.createdAt <= run.createdAt)
+                    .map(r => ({
+                        id: r.id,
+                        source: r.source,
+                        branch: r.branch,
+                        // A re-run audits the commit its own run audited; runs from before `commits` fall back to the latest clone.
+                        sha: job.aspect ? ((run.commits as Record<string, string> | null)?.[r.id] ?? r.commitSha) : null,
+                        stackText: r.stackConfirmedAt ? r.stackText : null,
+                        instructions: r.instructions
+                    })),
                 brief: {
                     product: run.project.briefProduct,
                     concerns: run.project.briefConcerns,

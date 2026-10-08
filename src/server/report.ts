@@ -19,16 +19,20 @@ import { Prisma } from "@/generated/prisma/client";
 import { prisma } from "@/server/db";
 import { REPORTABLE } from "@/server/review";
 
-/** A local path is shown by its last segment: a report must not carry the auditor's home path. */
+/**
+ * A local path is shown by its last segment: a report must not carry the auditor's home path. A URL
+ * by its path's last two segments, read as a URL, so the credentials a URL may carry never reach it.
+ */
 function repoName(source: string): string {
     const s = parseSource(source);
-    return s.kind === "path"
-        ? basename(s.path)
-        : s.url
-              .replace(/\.git$/, "")
-              .split(/[/:]/)
-              .slice(-2)
-              .join("/");
+    if (s.kind === "path") return basename(s.path);
+    const path = /^[a-z][a-z0-9+.-]*:\/\//i.test(s.url) ? new URL(s.url).pathname : s.url.slice(s.url.indexOf(":") + 1);
+    return path
+        .replace(/\.git$/, "")
+        .split("/")
+        .filter(Boolean)
+        .slice(-2)
+        .join("/");
 }
 
 /** Names are unique in a report: two repositories of one name are told apart by branch, then by number. */
@@ -225,10 +229,12 @@ export async function loadReportData(
         auditorUrl: webUrl(process.env.AUDITOR_URL),
         methodUrl: webUrl(process.env.AUDIT_METHOD_URL),
         repositories: project.repositories.map(r => {
-            const links = repoLinks(r.source, r.branch, r.commitSha);
+            // The branch the audited commit came from, not one set for the next run.
+            const branch = r.commitBranch ?? r.branch;
+            const links = repoLinks(r.source, branch, r.commitSha);
             return {
                 name: names.get(r.id)!,
-                branch: r.branch,
+                branch,
                 sha: r.commitSha ?? "not cloned",
                 notCovered: (r.stack as StackProfile | null)?.notCovered ?? [],
                 ...(links && { links })

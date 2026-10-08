@@ -89,6 +89,9 @@ export async function edit(id: string, fields: EditableFields) {
     await writeIfUnchanged(id, f.status, { ...rest, ...hours, status });
 }
 
+/** The engine's fold met a finding Andrii reviewed after the fold read it: the fold leaves both alone. */
+export class ReviewedMeanwhileError extends Error {}
+
 /** `onlyUnreviewed`: the engine's automatic fold, which must not touch a finding Andrii has reviewed meanwhile. */
 export async function merge(sourceId: string, targetLabel: string, o: { onlyUnreviewed?: boolean } = {}) {
     const source = await prisma.finding.findUniqueOrThrow({ where: { id: sourceId } });
@@ -96,9 +99,13 @@ export async function merge(sourceId: string, targetLabel: string, o: { onlyUnre
     const target = await prisma.finding.findUnique({ where: { projectId_number: { projectId: source.projectId, number } } });
     if (!target) throw new Error(`No finding ${targetLabel} in this project.`);
     if (target.id === source.id) throw new Error("A finding cannot be merged into itself.");
+    if (o.onlyUnreviewed && (source.status !== "unreviewed" || target.status !== "unreviewed"))
+        throw new ReviewedMeanwhileError(`${findingLabel(source.number)} or ${targetLabel} was reviewed meanwhile.`);
     if (target.status === "merged") throw new Error(`${targetLabel} was itself merged; merge into the finding it went to.`);
     if (target.status === "rejected" || target.status === "excluded" || target.status === "superseded")
         throw new Error(`${targetLabel} is ${target.status}; merge into a finding that stays in the review.`);
+    if (source.kind === "finding" && target.kind === "question")
+        throw new Error(`${targetLabel} is a question; merge a finding into a finding, so its severity stays in the report.`);
     // A seams finding's paths start with their repository's name; a repository's own paths do not.
     if (!source.repositoryId && target.repositoryId)
         throw new Error(
@@ -114,14 +121,22 @@ export async function merge(sourceId: string, targetLabel: string, o: { onlyUnre
             where: { id: source.id, status: o.onlyUnreviewed ? "unreviewed" : { notIn: ["merged", "superseded"] } },
             data: { status: "merged", mergedIntoId: target.id }
         });
-        if (!count) throw new Error(`${findingLabel(source.number)} was already merged or superseded.`);
+        if (!count) {
+            if (o.onlyUnreviewed) throw new ReviewedMeanwhileError(`${findingLabel(source.number)} was reviewed meanwhile.`);
+            throw new Error(`${findingLabel(source.number)} was already merged or superseded.`);
+        }
         const fresh = await tx.finding.findUniqueOrThrow({ where: { id: target.id } });
         const kept = fresh.evidence as unknown as Evidence[];
         // A range the target already shows would print the same code twice in the report.
         const added = (source.evidence as unknown as Evidence[])
             .map(e => ({ ...e, file: `${prefix}${e.file}` }))
             .filter(e => !kept.some(k => k.file === e.file && k.startLine <= e.startLine && e.endLine <= k.endLine));
-        await tx.finding.update({ where: { id: target.id }, data: { evidence: [...kept, ...added] as object[] } });
+        // The fold's write holds only while the target is unreviewed, so it never changes what Andrii reviewed.
+        const written = await tx.finding.updateMany({
+            where: { id: target.id, ...(o.onlyUnreviewed ? { status: "unreviewed" as const } : {}) },
+            data: { evidence: [...kept, ...added] as object[] }
+        });
+        if (!written.count) throw new ReviewedMeanwhileError(`${targetLabel} was reviewed meanwhile.`);
     });
 }
 

@@ -1,6 +1,7 @@
 import type { BetaTextBlockParam } from "@anthropic-ai/sdk/resources/beta/messages/messages";
 
 import type { Checklist } from "./checklists";
+import { maskUrlPasswords } from "./masker";
 
 /** Shared by every aspect and repository, so it stays in the cached prefix: no dates, no IDs. */
 export const SYSTEM_PROMPT = `You are a senior software engineer auditing a client's codebase for an independent auditor, who reviews every finding before the client sees it.
@@ -70,5 +71,5 @@ export function briefText(b: Brief | undefined, instructions?: string | null): s
         b?.outOfScope?.trim() && `Out of scope: ${b.outOfScope.trim()}`,
         instructions?.trim() && `How to run this repository: ${instructions.trim()}`
     ].filter(Boolean);
-    return parts.length ? parts.join("\n\n") : "No brief was written for this audit.";
+    return parts.length ? maskUrlPasswords(parts.join("\n\n")) : "No brief was written for this audit.";
 }

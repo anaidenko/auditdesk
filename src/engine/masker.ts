@@ -38,3 +38,10 @@ export class Masker {
         return value;
     }
 }
+
+/**
+ * The password of every URL in text the auditor wrote for the agents (the brief, a repository's
+ * instructions, which ask for its database): gitleaks masks only what it finds in the code, and
+ * design § 12 keeps credentials out of every prompt.
+ */
+export const maskUrlPasswords = (text: string) => text.replace(/\b([a-z][a-z0-9+.-]*:\/\/[^\s/:@]*):[^\s/@]+@/gi, "$1:[password masked]@");

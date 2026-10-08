@@ -35,6 +35,7 @@ describe("sdkEnv", () => {
                 "CLAUDE_CODE_DISABLE_TERMINAL_TITLE",
                 "CLAUDE_CODE_OAUTH_TOKEN",
                 "CLAUDE_CONFIG_DIR",
+                "DISABLE_AUTO_COMPACT",
                 "DISABLE_ERROR_REPORTING",
                 "DISABLE_TELEMETRY",
                 "ENABLE_CLAUDEAI_MCP_SERVERS",
@@ -55,10 +56,29 @@ describe("sdkEnv", () => {
         expect(e.CLAUDE_CODE_DISABLE_NONSTREAMING_FALLBACK).toBe("1");
         expect(e.CLAUDE_CONFIG_DIR).toBe("/tmp/cfg");
         expect(e.CLAUDE_CODE_MAX_RETRIES).toBe("4");
+        // The binary reads it before any settings tier: compaction stays off whichever tier wins.
+        expect(e.DISABLE_AUTO_COMPACT).toBe("1");
     });
 });
 
 describe("sdkOptions", () => {
+    it("keeps Claude Code from compacting the agent's history, which the API engine never does and whose call the ledger may not see", () => {
+        const o = sdkOptions({
+            model: "claude-sonnet-5-5",
+            effort: "low",
+            taskBudget: 50_000,
+            maxTurns: 60,
+            systemPrompt: ["s"],
+            server: {} as never,
+            toolNames: [],
+            cwd: "/tmp/cwd",
+            env: {},
+            hooks: {},
+            stderr: () => {}
+        });
+        expect(o.settings).toEqual({ autoCompactEnabled: false });
+    });
+
     it("isolates the session: no built-in tool, no file settings, no other server, no transcript", () => {
         const o = sdkOptions({
             model: "claude-sonnet-5-5",

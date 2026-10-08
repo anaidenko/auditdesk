@@ -4,7 +4,7 @@ import type { RecheckResult } from "@/engine/recheck";
 import { EMPTY_STACK } from "@/engine/stack";
 import { prisma } from "@/server/db";
 import { createFinding } from "@/server/findings";
-import { reject } from "@/server/review";
+import { merge, reject } from "@/server/review";
 import { PrismaSink } from "@/server/sink";
 import { resetDb } from "@/test/db";
 import { projectWithRepo, sampleFinding } from "@/test/factories";
@@ -187,6 +187,20 @@ describe("PrismaSink", () => {
         expect(await status(agentAccepted.id)).toBe("accepted");
         expect(await status(scanner.id)).toBe("unreviewed");
         expect(await status(otherAspect.id)).toBe("unreviewed");
+    });
+
+    it("brings back every finding merged into a superseded one, an agent's as well as a scanner's, so a re-run strands none", async () => {
+        const { sink, repo, add } = await setup();
+        const target = await add({ source: "agent", title: "newer, unreviewed" });
+        const merged = await add({ source: "agent", title: "older, accepted, then merged into the newer" });
+        await prisma.finding.update({ where: { id: merged.id }, data: { status: "accepted" } });
+        await merge(merged.id, target.label);
+        await sink.supersedeUnreviewed(repo.id, "security");
+        expect(await prisma.finding.findUniqueOrThrow({ where: { id: merged.id } })).toMatchObject({
+            status: "unreviewed",
+            mergedIntoId: null
+        });
+        expect((await prisma.finding.findUniqueOrThrow({ where: { id: target.id } })).status).toBe("superseded");
     });
 
     it("supersedes the seams pass's unreviewed findings, which belong to no repository, on its re-run", async () => {

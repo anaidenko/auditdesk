@@ -32,7 +32,7 @@ export function AddRepositoryForm({ projectId }: { projectId: string }) {
                 className={`${input} min-w-64 flex-[3]`}
                 aria-label="Repository URL or path"
             />
-            <input name="branch" placeholder="main" className={`${input} min-w-28 flex-1`} aria-label="Branch" />
+            <input name="branch" placeholder="default branch" className={`${input} min-w-28 flex-1`} aria-label="Branch" />
             <button disabled={pending} className={button.secondary}>
                 Add repository
             </button>
@@ -349,6 +349,9 @@ export function RepositoryNotes({
                     </label>
                     <label className={label}>
                         How to run it, its local URL, its database
+                        <span className="mt-0.5 block font-normal tracking-normal normal-case">
+                            Every agent reads it: a URL&apos;s password is masked, but leave other secrets out.
+                        </span>
                         <textarea
                             key={v?.instructions ?? ""}
                             name="instructions"

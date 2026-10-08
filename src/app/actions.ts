@@ -16,7 +16,15 @@ import {
     parseRunForm
 } from "@/server/forms";
 import { ActiveRunError, enqueueRun, requestStop } from "@/server/jobs";
-import { confirmDetectedStack, detectRepositoryStack, deleteProject as removeProject, saveRepositoryNotes } from "@/server/projects";
+import {
+    confirmDetectedStack,
+    createRepository,
+    deleteRepository,
+    detectRepositoryStack,
+    deleteProject as removeProject,
+    saveRepositoryNotes,
+    setRepositoryBranch
+} from "@/server/projects";
 
 /**
  * `askReserve`: the start was refused above the plan's reserve, so the form shows its checkbox whatever it rendered with.
@@ -40,9 +48,35 @@ export async function createProject(_prev: FormState, fd: FormData): Promise<For
 export async function addRepository(projectId: string, _prev: FormState, fd: FormData): Promise<FormState> {
     const parsed = parseRepositoryForm(fd);
     if (!parsed.ok) return { error: parsed.error };
-    await prisma.repository.create({ data: { projectId, ...parsed.value } });
+    try {
+        await createRepository(projectId, parsed.value.source, parsed.value.branch);
+    } catch (e) {
+        return { error: (e as Error).message };
+    }
     revalidatePath(`/projects/${projectId}`);
     return { error: null };
+}
+
+export async function removeRepository(projectId: string, repositoryId: string, _prev: FormState, _fd: FormData): Promise<FormState> {
+    try {
+        await deleteRepository(repositoryId, workspaceDir());
+    } catch (e) {
+        return { error: (e as Error).message };
+    }
+    // No notice: its toast would unmount with the row it came from; the row going is the answer.
+    revalidatePath(`/projects/${projectId}`);
+    return { error: null };
+}
+
+export async function setBranch(projectId: string, repositoryId: string, _prev: FormState, fd: FormData): Promise<FormState> {
+    const branch = String(fd.get("branch") ?? "").trim();
+    try {
+        await setRepositoryBranch(repositoryId, branch);
+    } catch (e) {
+        return { error: (e as Error).message };
+    }
+    revalidatePath(`/projects/${projectId}`);
+    return { error: null, notice: `Branch saved: the next run clones ${branch}.` };
 }
 
 export async function saveBrief(projectId: string, _prev: FormState<BriefValues>, fd: FormData): Promise<FormState<BriefValues>> {
