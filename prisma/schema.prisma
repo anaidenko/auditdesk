@@ -109,29 +109,30 @@ model Repository {
 }
 
 model Run {
-  id            String      @id @default(uuid())
+  id            String        @id @default(uuid())
   projectId     String
-  project       Project     @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  status        RunStatus   @default(queued)
+  project       Project       @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  status        RunStatus     @default(queued)
   model         String
   effort        String
   /// Fixed at enqueue, like the model: a re-run keeps it (plan, Decision 1).
-  modelAccess   ModelAccess @default(claude_plan)
+  modelAccess   ModelAccess   @default(claude_plan)
   aspects       String[]
-  budgetUsd     Decimal     @db.Decimal(10, 4)
+  budgetUsd     Decimal       @db.Decimal(10, 4)
   budgetTokens  Int
-  stopRequested Boolean     @default(false)
+  stopRequested Boolean       @default(false)
   toolVersions  Json?
   /// Repository ID to the commit this run audited: a re-run returns to it (design § 9).
   commits       Json?
   error         String?
-  createdAt     DateTime    @default(now())
+  createdAt     DateTime      @default(now())
   startedAt     DateTime?
   finishedAt    DateTime?
   jobs          Job[]
   agents        AgentRun[]
   calls         ApiCall[]
   events        RunEvent[]
+  planReadings  PlanReading[]
   findings      Finding[]
 
   // One queued or running run per project: a double click cannot start two (plan § Decisions 6).
@@ -202,6 +203,20 @@ model RunEvent {
   level     String   @default("info")
   message   String
   createdAt DateTime @default(now())
+
+  @@index([runId, id])
+}
+
+/// The plan's 5-hour window as a Claude plan run's agents read it: the run form learns from these and
+/// the cost of the calls between them what share of the window a run takes.
+model PlanReading {
+  id          BigInt    @id @default(autoincrement())
+  runId       String
+  run         Run       @relation(fields: [runId], references: [id], onDelete: Cascade)
+  utilization Float
+  /// Null for the readings recovered from the activity log, which named the reset as a clock time only.
+  resetsAt    DateTime?
+  createdAt   DateTime  @default(now())
 
   @@index([runId, id])
 }

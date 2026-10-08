@@ -42,6 +42,10 @@ export class PrismaSink implements PipelineSink {
         await prisma.$transaction([prisma.runEvent.create({ data: { runId: this.runId, message, level } }), this.notify()]);
     }
 
+    async planReading(r: { utilization: number; resetsAt: number }) {
+        await prisma.planReading.create({ data: { runId: this.runId, utilization: r.utilization, resetsAt: new Date(r.resetsAt * 1000) } });
+    }
+
     async recordCall(c: CallRecord) {
         await prisma.$transaction([
             prisma.apiCall.create({

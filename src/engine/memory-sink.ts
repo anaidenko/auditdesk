@@ -8,10 +8,14 @@ export class MemorySink implements AuditSink {
     /** `mergedInto`: a scanner finding folded into an agent's (pipeline, after each agent). */
     readonly findings: (NewFinding & { label: string; mergedInto?: string })[] = [];
     readonly events: string[] = [];
+    readonly planReadings: { utilization: number; resetsAt: number }[] = [];
     stop = false;
 
     async progress(message: string) {
         this.events.push(message);
+    }
+    async planReading(reading: { utilization: number; resetsAt: number }) {
+        this.planReadings.push(reading);
     }
     async recordCall(call: CallRecord) {
         this.calls.push(call);

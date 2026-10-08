@@ -76,6 +76,8 @@ export interface Spend {
 /** Everything the engine writes goes through a sink: Prisma in the app, memory in `pnpm eval`. */
 export interface AuditSink {
     progress(message: string, level?: "info" | "warn" | "error"): Promise<void>;
+    /** A reading of the Claude plan's 5-hour window: utilization as a fraction, its reset in epoch seconds. */
+    planReading(reading: { utilization: number; resetsAt: number }): Promise<void>;
     recordCall(call: CallRecord): Promise<void>;
     agentSpend(agentRunId: string): Promise<Spend>;
     runSpend(): Promise<Spend>;

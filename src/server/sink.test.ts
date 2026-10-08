@@ -21,6 +21,14 @@ async function setup() {
 }
 
 describe("PrismaSink", () => {
+    it("keeps each reading of the plan's 5-hour window with its run, the reset as a time", async () => {
+        const { sink, run } = await setup();
+        await sink.planReading({ utilization: 0.23, resetsAt: 1791462000 });
+        expect(await prisma.planReading.findMany({ select: { runId: true, utilization: true, resetsAt: true } })).toEqual([
+            { runId: run.id, utilization: 0.23, resetsAt: new Date(1791462000 * 1000) }
+        ]);
+    });
+
     it("knows a grouped scanner finding's places one by one", async () => {
         const { sink, repo, add } = await setup();
         await add({

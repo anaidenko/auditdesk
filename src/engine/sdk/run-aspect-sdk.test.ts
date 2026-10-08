@@ -474,6 +474,13 @@ describe("runAspectSdk", { timeout: 60_000 }, () => {
             await expect(readPlanUsage()).resolves.toMatchObject({ utilization: 0.23 });
         });
 
+        it("hands each 5-hour reading to the sink, for the run form's forecast of a run's share", async () => {
+            const { sink, run } = await setup([tool("report_finding", finding()), finish()], { headers: windowAt(0.23) });
+            await run();
+            expect(sink.planReadings.length).toBeGreaterThan(0);
+            for (const r of sink.planReadings) expect(r).toEqual({ utilization: 0.23, resetsAt: expect.any(Number) });
+        });
+
         it("stops past 50% after that turn, keeping its finding", async () => {
             const { h, sink, run } = await setup([tool("report_finding", finding()), finish()], { headers: windowAt(0.55) });
             expect(await run()).toMatchObject({
