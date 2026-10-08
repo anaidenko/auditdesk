@@ -474,6 +474,20 @@ describe("runAspectSdk", { timeout: 60_000 }, () => {
             await expect(readPlanUsage()).resolves.toMatchObject({ utilization: 0.23 });
         });
 
+        it("keeps going when a reading cannot be kept, and says so: the reading only feeds a forecast", async () => {
+            class LosingSink extends MemorySink {
+                override async planReading(): Promise<void> {
+                    throw new Error('relation "PlanReading" does not exist');
+                }
+            }
+            const sink = new LosingSink();
+            const { run } = await setup([tool("report_finding", finding()), finish()], { headers: windowAt(0.23), sink });
+            expect((await run()).status).toBe("done");
+            expect(sink.events).toContainEqual(
+                expect.stringMatching(/^Could not keep the plan's reading: relation "PlanReading" does not exist/)
+            );
+        });
+
         it("hands each 5-hour reading to the sink, for the run form's forecast of a run's share", async () => {
             const { sink, run } = await setup([tool("report_finding", finding()), finish()], { headers: windowAt(0.23) });
             await run();

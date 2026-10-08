@@ -259,7 +259,11 @@ export async function runAspectSdk(cfg: SdkRunnerConfig, o: AspectInput): Promis
                     if (fiveHour) {
                         const note = `Claude plan: 5-hour usage ${percent(fiveHour.utilization)}, resets ${clock(fiveHour.resetsAt)}.`;
                         write(() => ctx.sink.progress(note));
-                        write(() => ctx.sink.planReading({ utilization: fiveHour.utilization, resetsAt: fiveHour.resetsAt }));
+                        write(() =>
+                            ctx.sink
+                                .planReading({ utilization: fiveHour.utilization, resetsAt: fiveHour.resetsAt })
+                                .catch(e => ctx.sink.progress(`Could not keep the plan's reading: ${(e as Error).message}`, "warn"))
+                        );
                         write(() =>
                             recordPlanUsage(fiveHour).catch(e =>
                                 ctx.sink.progress(`Could not save the plan's usage: ${(e as Error).message}`, "warn")

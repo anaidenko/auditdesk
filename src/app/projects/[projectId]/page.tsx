@@ -5,7 +5,7 @@ import { ReportExport } from "@/app/ReportExport";
 import { deleteProject, setConsent } from "@/app/actions";
 import { Badge, Card, Icon, PageHeader, RunStatus, button } from "@/app/ui";
 import { credentialStatus } from "@/engine/credentials";
-import { PLAN_RESERVE, overReserve, planUsageLine, readPlanUsage } from "@/engine/plan-usage";
+import { PLAN_RESERVE, clock, overReserve, planUsageLine, readPlanUsage } from "@/engine/plan-usage";
 import { type StackProfile, stackProfileText, suggestionsFor } from "@/engine/stack";
 import { agentCostStats, planShareRate } from "@/server/estimate";
 import { getProject } from "@/server/queries";
@@ -29,7 +29,7 @@ export default async function ProjectPage({ params }: { params: Promise<{ projec
             ? {
                   line: planUsageLine(usage),
                   overReserve: overReserve(usage),
-                  utilization: usage?.utilization ?? null,
+                  reading: usage ? { utilization: usage.utilization, seen: clock(usage.seenAt) } : null,
                   reserve: PLAN_RESERVE,
                   rate: await planShareRate()
               }

@@ -62,10 +62,16 @@ export function StartRunForm({
     /** Conditional aspects the repositories' stacks call for, ticked too. */
     suggested: string[];
     /**
-     * Claude plan only: the last 5-hour reading's line and whether it is past the reserve, its
-     * utilization while its window lasts, the reserve, and the window's share per dollar measured.
+     * Claude plan only: the last 5-hour reading's line and whether it is past the reserve, the
+     * reading itself while its window lasts, the reserve, and the window's share per dollar measured.
      */
-    planUsage: { line: string; overReserve: boolean; utilization: number | null; reserve: number; rate: PlanShareRate | null } | null;
+    planUsage: {
+        line: string;
+        overReserve: boolean;
+        reading: { utilization: number; seen: string } | null;
+        reserve: number;
+        rate: PlanShareRate | null;
+    } | null;
 }) {
     const [state, action, pending] = useActionState<FormState<RunValues>, FormData>(startRun.bind(null, projectId), { error: null });
     const ticked = (key: string) => key === "security" || (state.values?.aspects ?? [...chosen, ...suggested]).includes(key);
@@ -105,7 +111,8 @@ export function StartRunForm({
     }, [chosen, suggested, repositories, state]);
     const picked = pickStats(costStats, live.model, live.effort);
     const estimate = repositories ? estimateRun(picked.stats, agentCount(repositories, live.aspects), live.usd, picked.basis) : null;
-    const share = planUsage && estimate ? forecastPlanShare(estimate, planUsage.rate, planUsage.utilization, planUsage.reserve) : null;
+    const share =
+        planUsage && estimate ? forecastPlanShare(estimate, planUsage.rate, planUsage.reading, planUsage.reserve, live.usd) : null;
     return (
         // Remounted with what a refused start held, since React resets a form after its action.
         <form

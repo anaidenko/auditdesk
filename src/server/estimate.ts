@@ -29,20 +29,27 @@ export async function agentCostStats(): Promise<Record<string, CostStats>> {
 
 /**
  * The share of the plan's 5-hour window a dollar of API-equivalent cost takes, from every Claude plan
- * run's readings and the cost of its calls between them; null before a plan run has two readings.
+ * run's readings and the cost of its calls between them; null before a plan run moved the reading
+ * twice. A reading belongs to the job that started last before it, so a re-run counts apart.
  */
 export async function planShareRate(): Promise<PlanShareRate | null> {
     const runs = await prisma.run.findMany({
         where: { modelAccess: "claude_plan", planReadings: { some: {} } },
         select: {
             planReadings: { select: { utilization: true, resetsAt: true, createdAt: true }, orderBy: { id: "asc" } },
-            calls: { select: { costUsd: true, createdAt: true } }
+            calls: { select: { costUsd: true, createdAt: true } },
+            jobs: { where: { startedAt: { not: null } }, select: { id: true, startedAt: true }, orderBy: { startedAt: "asc" } }
         }
     });
     return shareRate(
         runs.map(r =>
             windowShare(
-                r.planReadings.map(p => ({ utilization: p.utilization, resetsAt: p.resetsAt, at: p.createdAt })),
+                r.planReadings.map(p => ({
+                    utilization: p.utilization,
+                    resetsAt: p.resetsAt,
+                    part: r.jobs.findLast(j => j.startedAt! <= p.createdAt)?.id ?? null,
+                    at: p.createdAt
+                })),
                 r.calls.map(c => ({ costUsd: c.costUsd === null ? null : Number(c.costUsd), at: c.createdAt }))
             )
         )

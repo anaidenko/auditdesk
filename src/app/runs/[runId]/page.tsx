@@ -4,7 +4,7 @@ import { notFound } from "next/navigation";
 import { rerunAspect } from "@/app/review-actions";
 import { Alert, Card, Icon, PageHeader, RunStatus, button } from "@/app/ui";
 import { SEAMS, aspectTitle } from "@/engine/aspects";
-import { overReserve, readPlanUsage } from "@/engine/plan-usage";
+import { PLAN_RESERVE, overReserve, percent, readPlanUsage } from "@/engine/plan-usage";
 import { prisma } from "@/server/db";
 
 import { RunProgress } from "./RunProgress";
@@ -66,7 +66,8 @@ export default async function RunPage({
             {notice === "access" && <Alert>This run used another model access than the project uses now; start a new run.</Alert>}
             {notice === "reserve" && (
                 <Alert>
-                    The Claude plan&apos;s 5-hour usage is above the 50% reserve. Tick &quot;Allow past the 50% reserve&quot; to re-run now.
+                    The Claude plan&apos;s 5-hour usage is above the {percent(PLAN_RESERVE)} reserve. Tick &quot;Allow past the{" "}
+                    {percent(PLAN_RESERVE)} reserve&quot; to re-run now.
                 </Alert>
             )}
             {/* A re-run adds a job: the new key starts a fresh stream, where the old one had ended on "done". */}
@@ -96,7 +97,7 @@ export default async function RunPage({
                                                 name="allowPastReserve"
                                                 className="size-4 rounded border-zinc-300 accent-amber-600"
                                             />
-                                            Allow past the 50% reserve
+                                            Allow past the {percent(PLAN_RESERVE)} reserve
                                         </label>
                                     )}
                                     <button className={`${button.secondary} ${button.small} ${askReserve ? "" : "ml-auto"}`}>

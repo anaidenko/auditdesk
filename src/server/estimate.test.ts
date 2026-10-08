@@ -78,7 +78,12 @@ describe("agentCostStats", () => {
 describe("planShareRate", () => {
     const at = (minute: number) => new Date(Date.UTC(2026, 9, 8, 7, minute));
 
-    async function runWith(access: "claude_plan" | "api_key", readings: [number, number][], calls: [number, number][]) {
+    async function runWith(
+        access: "claude_plan" | "api_key",
+        readings: [number, number][],
+        calls: [number, number][],
+        jobsStartedAt: number[] = [0]
+    ) {
         const { project, repo } = await projectWithRepo();
         const run = await prisma.run.create({
             data: {
@@ -86,11 +91,14 @@ describe("planShareRate", () => {
                 model: "claude-opus-5-5",
                 effort: "high",
                 modelAccess: access,
+                status: "done",
                 aspects: ["security"],
-                budgetUsd: 3,
+                budgetUsd: 33,
                 budgetTokens: 400_000
             }
         });
+        for (const minute of jobsStartedAt)
+            await prisma.job.create({ data: { runId: run.id, status: "done", startedAt: at(minute), finishedAt: at(minute + 30) } });
         for (const [minute, utilization] of readings)
             await prisma.planReading.create({ data: { runId: run.id, utilization, resetsAt: at(300), createdAt: at(minute) } });
         const a = await prisma.agentRun.create({
@@ -115,15 +123,16 @@ describe("planShareRate", () => {
             });
     }
 
-    it("weighs the plan runs' window points by their dollars, leaving out API-key runs and runs with one reading", async () => {
+    it("weighs the plan runs' window points by their dollars, leaving out API-key runs and runs whose reading barely moved", async () => {
         await runWith(
             "claude_plan",
             [
                 [1, 0.07],
+                [2, 0.08],
                 [30, 0.3]
             ],
             [
-                [2, 4],
+                [3, 4],
                 [30, 6]
             ]
         );
@@ -131,6 +140,7 @@ describe("planShareRate", () => {
             "claude_plan",
             [
                 [1, 0.67],
+                [2, 0.68],
                 [9, 0.76]
             ],
             [[5, 2.5]]
@@ -140,16 +150,38 @@ describe("planShareRate", () => {
             "api_key",
             [
                 [1, 0.1],
+                [2, 0.2],
                 [9, 0.9]
             ],
             [[5, 1]]
         );
         const rate = await planShareRate();
         expect(rate?.runs).toBe(2);
-        expect(rate?.pointsPerUsd).toBeCloseTo(32 / 12.5, 10);
+        expect(rate?.pointsPerUsd).toBeCloseTo(30 / 12.5, 10);
     });
 
-    it("has no rate before a plan run has two readings", async () => {
+    it("keeps a re-run's readings apart from its run's, so the use of the plan between the two jobs is not counted", async () => {
+        await runWith(
+            "claude_plan",
+            [
+                [1, 0.07],
+                [2, 0.08],
+                [9, 0.3],
+                [45, 0.45],
+                [46, 0.46]
+            ],
+            [
+                [5, 11],
+                [46, 0.4]
+            ],
+            [0, 40]
+        );
+        const rate = await planShareRate();
+        expect(rate?.runs).toBe(1);
+        expect(rate?.pointsPerUsd).toBeCloseTo(22 / 11, 10);
+    });
+
+    it("has no rate before a plan run moved the reading twice", async () => {
         await runWith("claude_plan", [[1, 0.59]], [[2, 0.12]]);
         expect(await planShareRate()).toBeNull();
     });

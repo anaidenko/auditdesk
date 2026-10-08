@@ -5,7 +5,7 @@ import { redirect } from "next/navigation";
 
 import { workspaceDir } from "@/engine/config";
 import { credentialStatus } from "@/engine/credentials";
-import { readPlanUsage, reserveRefusal } from "@/engine/plan-usage";
+import { PLAN_RESERVE, percent, readPlanUsage, reserveRefusal } from "@/engine/plan-usage";
 import { prisma } from "@/server/db";
 import {
     parseBriefForm,
@@ -137,7 +137,7 @@ async function tryStartRun(projectId: string, fd: FormData): Promise<FormState> 
         };
     const allowPastReserve = fd.get("allowPastReserve") === "on";
     const refusal = project.modelAccess === "claude_plan" ? reserveRefusal(await readPlanUsage(), allowPastReserve) : null;
-    if (refusal) return { error: `${refusal} Tick "Allow past the 50% reserve" to start anyway.`, askReserve: true };
+    if (refusal) return { error: `${refusal} Tick "Allow past the ${percent(PLAN_RESERVE)} reserve" to start anyway.`, askReserve: true };
     if (!project.repositories.length) return { error: "Add a repository first." };
     const parsed = parseRunForm(fd, project.repositories.length);
     if (!parsed.ok) return { error: parsed.error };
