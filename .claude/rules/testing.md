@@ -25,6 +25,8 @@ paths:
   through `GIT_CONFIG_COUNT`/`GIT_CONFIG_KEY_0`/`GIT_CONFIG_VALUE_0` (README § Tests): an
   `insteadOf` in this repository's config does not reach a clone made inside it.
 - **End-to-end tests (Playwright)** run the built app on port 3100 with both replays.
+- **After a click that navigates, `await page.waitForURL(…)` before reading `page.url()`:** a
+  `<Link>` click returns before the navigation, and the URL is still the old page's.
 - **A worktree for unit tests:** `scripts/worktree.sh <branch> <dir>` links `node_modules`,
   generates the Prisma client, which a bare `git worktree add` leaves out (type checks then fail
   with implicit `any` everywhere), and points `.env.test.local` at the worktree's own test
@@ -33,7 +35,9 @@ paths:
 - **e2e in a worktree:** replace the linked `node_modules` with an install
   (`rm node_modules && DATABASE_URL=… pnpm install --frozen-lockfile --offline`; the postinstall
   generates the client), then run with `E2E_DATABASE_URL` naming a database of its own. Port 3100
-  stays shared: one e2e run at a time.
+  stays shared: one e2e run at a time. A server started to look at a branch (`next dev` on another
+  port) runs the job runner too: point it at a database no test or session uses, and stop it
+  before an e2e run, or it takes the e2e's jobs.
 - **A socket a test server hands over** in a `connect` or `upgrade` event needs its own error
   listener: Linux resets it where macOS closes it, and the uncaught `ECONNRESET` fails CI only.
 - **A test that passes before the change exists** is a finding about the test. A red run counts
