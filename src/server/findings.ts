@@ -29,6 +29,8 @@ export async function createFinding(projectId: string, runId: string | null, f: 
                 explanation: f.explanation,
                 recommendation: f.recommendation,
                 effort: f.effort,
+                effortHoursLow: f.effortHours?.low ?? null,
+                effortHoursHigh: f.effortHours?.high ?? null,
                 evidence: f.evidence as object[],
                 references: f.references as object,
                 tags: f.tags,

@@ -93,6 +93,7 @@ function semgrepFinding(group: Result[], repositoryId: string): NewFinding {
         explanation: `Semgrep rule ${r.check_id}.`,
         recommendation: "Confirm the input is attacker-controlled; if so, follow the rule's references.",
         effort: effortFor(places),
+        effortHours: null,
         references: { cwe, cheatSheets: r.extra.metadata.references?.filter(u => u.includes("cheatsheetseries.owasp.org")) },
         tags: [],
         source: "scanner",

@@ -6,6 +6,7 @@ import { ReportExport } from "@/app/ReportExport";
 import { acceptAction, confirmRecheckAction, excludeAction, rejectAction } from "@/app/review-actions";
 import { Badge, FindingStatus, Icon, PageHeader, RecheckBadge, SeverityBadge, button, field, input, select } from "@/app/ui";
 import { ASPECTS, aspectTitle } from "@/engine/aspects";
+import { hoursOf, sizeAndHours } from "@/engine/effort";
 import { prisma } from "@/server/db";
 import { listFindings } from "@/server/review";
 
@@ -112,6 +113,7 @@ export default async function FindingsPage({
                                 <span className="hidden items-center gap-1.5 md:flex">
                                     <Badge tone="slate">{aspectTitle(f.aspect)}</Badge>
                                     <Badge tone="slate">{f.source}</Badge>
+                                    {f.effort && <Badge tone="slate">{sizeAndHours(f.effort, hoursOf(f))}</Badge>}
                                 </span>
                                 <span className="ml-auto flex items-center gap-3">
                                     <RecheckBadge recheck={f.recheck} sha={f.recheckedSha} />

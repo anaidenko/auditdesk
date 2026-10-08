@@ -56,6 +56,28 @@ describe("review", () => {
         expect((await prisma.finding.findUniqueOrThrow({ where: { id: a.id } })).fixBeforeSignoff).toBeNull();
     });
 
+    it("sets the hours as a range, and sizes the finding by their high end", async () => {
+        const { a } = await twoFindings();
+        await edit(a.id, { effort: "S", effortHours: { low: 4, high: 12 } });
+        expect(await prisma.finding.findUniqueOrThrow({ where: { id: a.id } })).toMatchObject({
+            effort: "M",
+            effortHoursLow: 4,
+            effortHoursHigh: 12
+        });
+    });
+
+    it("refuses hours that run backwards, and clears them back to the size alone", async () => {
+        const { a } = await twoFindings();
+        await expect(edit(a.id, { effortHours: { low: 8, high: 4 } })).rejects.toThrow(/low end/);
+        await edit(a.id, { effortHours: { low: 1, high: 2 } });
+        await edit(a.id, { effort: "L", effortHours: null });
+        expect(await prisma.finding.findUniqueOrThrow({ where: { id: a.id } })).toMatchObject({
+            effort: "L",
+            effortHoursLow: null,
+            effortHoursHigh: null
+        });
+    });
+
     it("refuses a severity on a question", async () => {
         const { project, a: _a } = await twoFindings();
         const repo = await prisma.repository.findFirstOrThrow({ where: { projectId: project.id } });

@@ -136,9 +136,23 @@
         "recommendation": {
           "type": "string"
         },
-        "effort": {
-          "type": "string",
-          "description": "S: under 2 hours. M: under 2 days. L: more.\n\n{enum: [\"S\",\"M\",\"L\"]}"
+        "effort_hours": {
+          "type": "object",
+          "properties": {
+            "low": {
+              "type": "integer",
+              "description": "Whole hours for one engineer who knows the stack to make and test the fix, if it goes as planned. For a question, to find the answer."
+            },
+            "high": {
+              "type": "integer",
+              "description": "The same, if it does not."
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "low",
+            "high"
+          ]
         },
         "evidence": {
           "type": "array",
@@ -185,7 +199,7 @@
         "summary",
         "explanation",
         "recommendation",
-        "effort",
+        "effort_hours",
         "evidence",
         "cwe",
         "tags"

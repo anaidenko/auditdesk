@@ -1,4 +1,5 @@
 import { SEAMS, aspectTitle } from "../aspects";
+import { SIZES, formatHours } from "../effort";
 import { compareFindings } from "../findings";
 import type { Ref } from "../references";
 import type { Evidence, SeverityName } from "../types";
@@ -157,13 +158,19 @@ const code = (s: string) => {
     return t.length > 1 ? `${t} ${s} ${t}` : `\`${s}\``;
 };
 
+/** An issue has no legend, so the size says what it means, or the hours when the export includes them. */
+function effortGloss(f: ReportFinding): string {
+    const gloss = f.effortHours ? formatHours(f.effortHours) : SIZES.find(s => s.size === f.effort)?.span;
+    return gloss ? `${f.effort} (${gloss})` : `${f.effort}`;
+}
+
 function body(f: ReportFinding): string {
     const refs = f.refs
         ? [f.refs.top10, f.refs.cwe, ...f.refs.asvs, ...f.refs.wcag, ...f.refs.cheatsheets, ...f.refs.advisories, f.refs.nist]
         : [];
     const lines = [
         `**Severity:** ${f.severity ?? "question"} · **Checklist item:** ${f.checklistItem ?? "none"} · **Repository:** ${prose(f.repository)}${
-            f.effort ? ` · **Effort:** ${f.effort}` : ""
+            f.effort ? ` · **Effort:** ${effortGloss(f)}` : ""
         }`,
         "",
         prose(f.summary),

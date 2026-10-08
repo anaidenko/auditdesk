@@ -1,9 +1,10 @@
 import "server-only";
 
 import { ASPECTS } from "@/engine/aspects";
+import { hoursError, sizeOf } from "@/engine/effort";
 import { compareFindings, findingLabel } from "@/engine/findings";
 import { pathNames } from "@/engine/pipeline";
-import type { Evidence, SeverityName } from "@/engine/types";
+import type { Evidence, Hours, SeverityName } from "@/engine/types";
 import type { Prisma } from "@/generated/prisma/client";
 import { FindingStatus, RecheckStatus } from "@/generated/prisma/enums";
 import { prisma } from "@/server/db";
@@ -20,7 +21,8 @@ export interface EditableFields {
     explanation?: string;
     recommendation?: string;
     effort?: "S" | "M" | "L" | null;
-    effortHours?: number | null;
+    /** Null clears the hours; set, they decide the size. */
+    effortHours?: Hours | null;
     note?: string | null;
 }
 
@@ -74,7 +76,16 @@ export async function edit(id: string, fields: EditableFields) {
     if (f.kind === "question" && fields.severity) throw new Error("A question carries no severity.");
     // A rejected or excluded finding stays out of the report when its text or note changes.
     const status = f.status === "rejected" || f.status === "excluded" ? f.status : "edited";
-    await writeIfUnchanged(id, f.status, { ...fields, status });
+    const { effortHours: h, ...rest } = fields;
+    const error = h && hoursError(h);
+    if (error) throw new Error(error);
+    const hours =
+        h === undefined
+            ? {}
+            : h
+              ? { effort: sizeOf(h), effortHoursLow: h.low, effortHoursHigh: h.high }
+              : { effortHoursLow: null, effortHoursHigh: null };
+    await writeIfUnchanged(id, f.status, { ...rest, ...hours, status });
 }
 
 /** `onlyUnreviewed`: the engine's automatic fold, which must not touch a finding Andrii has reviewed meanwhile. */

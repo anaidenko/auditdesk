@@ -53,7 +53,9 @@ export async function excludeAction(id: string, _prev: FormState, fd: FormData):
 }
 
 export async function editAction(id: string, _prev: FormState, fd: FormData): Promise<FormState> {
-    const hours = optional(fd, "effortHours");
+    // One end alone is a single number of hours.
+    const low = optional(fd, "effortHoursLow");
+    const high = optional(fd, "effortHoursHigh");
     const r = await refusal(() =>
         edit(id, {
             title: text(fd, "title"),
@@ -64,7 +66,7 @@ export async function editAction(id: string, _prev: FormState, fd: FormData): Pr
             explanation: text(fd, "explanation"),
             recommendation: text(fd, "recommendation"),
             effort: optional(fd, "effort") as "S" | "M" | "L" | null,
-            effortHours: hours ? Number(hours) : null,
+            effortHours: low || high ? { low: Number(low ?? high), high: Number(high ?? low) } : null,
             fixBeforeSignoff: { before: true, later: false }[text(fd, "signoff")] ?? null,
             note: optional(fd, "note")
         })

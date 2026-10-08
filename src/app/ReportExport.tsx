@@ -6,9 +6,10 @@ import { awaitingReview, reportRepositoryNames } from "@/server/report";
 const count = (n: number, noun: string) => `${n} ${noun}${n === 1 ? "" : "s"}`;
 
 /**
- * The report downloads, with the run's cost stated only when Andrii ticks it (design § 8). SARIF is
- * one file per repository, since an upload goes to one; the button's name and value carry it. What
- * awaits review is named beside them: the exports leave it out, and an empty file looks broken.
+ * The report downloads, with the findings' hours and the run's cost stated only when Andrii ticks
+ * them (design § 8). SARIF is one file per repository, since an upload goes to one; the button's
+ * name and value carry it. What awaits review is named beside them: the exports leave it out, and
+ * an empty file looks broken.
  */
 export async function ReportExport({ projectId }: { projectId: string }) {
     const repositories = await reportRepositoryNames(projectId);
@@ -20,9 +21,16 @@ export async function ReportExport({ projectId }: { projectId: string }) {
     return (
         <div className="flex flex-col items-end gap-1.5">
             <form method="get" className="flex flex-wrap items-center gap-2">
-                <label className="flex items-center gap-1.5 text-xs text-zinc-600">
+                <label
+                    className="flex items-center gap-1.5 text-xs text-zinc-600"
+                    title="Each finding's hours and the totals, in the HTML, the PDF and the Issues CSV"
+                >
+                    <input type="checkbox" name="hours" value="1" className="size-4 rounded border-zinc-300 accent-indigo-600" />
+                    Include the hours
+                </label>
+                <label className="flex items-center gap-1.5 text-xs text-zinc-600" title="What the model calls cost, in the HTML and the PDF">
                     <input type="checkbox" name="cost" value="1" className="size-4 rounded border-zinc-300 accent-indigo-600" />
-                    Include the cost
+                    Include the AI cost
                 </label>
                 <button formAction={`/projects/${projectId}/report`} className={button.secondary}>
                     <Icon name="download" />

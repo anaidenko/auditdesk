@@ -4,6 +4,7 @@ import { notFound } from "next/navigation";
 import { ActionForm } from "@/app/ActionForm";
 import { editAction, mergeAction } from "@/app/review-actions";
 import { Card, FindingStatus, PageHeader, SeverityBadge, button, input, label, select } from "@/app/ui";
+import { SIZES } from "@/engine/effort";
 import { findingLabel } from "@/engine/findings";
 import { SEVERITIES } from "@/engine/types";
 import { prisma } from "@/server/db";
@@ -61,10 +62,28 @@ export default async function FindingPage({ params }: { params: Promise<{ projec
                                 <option>L</option>
                             </select>
                         </label>
-                        <label className={label}>
-                            Hours
-                            <input name="effortHours" type="number" min="0" defaultValue={f.effortHours ?? ""} className={field} />
-                        </label>
+                        <fieldset className={label}>
+                            <legend>Hours, low to high</legend>
+                            <span className="flex items-center gap-1.5">
+                                <input
+                                    name="effortHoursLow"
+                                    type="number"
+                                    min="1"
+                                    defaultValue={f.effortHoursLow ?? ""}
+                                    aria-label="Hours, low"
+                                    className={field}
+                                />
+                                –
+                                <input
+                                    name="effortHoursHigh"
+                                    type="number"
+                                    min="1"
+                                    defaultValue={f.effortHoursHigh ?? ""}
+                                    aria-label="Hours, high"
+                                    className={field}
+                                />
+                            </span>
+                        </fieldset>
                         <label className={label}>
                             Sign-off
                             <select
@@ -79,6 +98,10 @@ export default async function FindingPage({ params }: { params: Promise<{ projec
                             </select>
                         </label>
                     </div>
+                    <p className="-mt-2 text-xs text-zinc-500">
+                        Hours, when set, decide the size by their high end:{" "}
+                        {SIZES.map(s => `${s.size} ${s.upTo ? `up to ${s.upTo} h` : "more"}`).join(", ")}.
+                    </p>
                     <div className="grid gap-4 sm:grid-cols-2">
                         {(["likelihood", "impact"] as const).map(k => (
                             <label key={k} className={label}>

@@ -31,6 +31,7 @@ export const reportData = (over: Partial<ReportData> = {}): ReportData => ({
     toolVersions: null,
     findings: [reportFinding({ label: "F-002", severity: "low" }), reportFinding({ label: "F-001", severity: "critical" })],
     questions: [],
+    hours: false,
     cost: null,
     aiBuilt: false,
     ...over

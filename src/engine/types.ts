@@ -1,6 +1,12 @@
 export const SEVERITIES = ["critical", "high", "medium", "low", "info"] as const;
 export type SeverityName = (typeof SEVERITIES)[number];
 
+/** Whole hours, low to high, for one finding's fix. */
+export interface Hours {
+    low: number;
+    high: number;
+}
+
 export interface Evidence {
     file: string;
     startLine: number;
@@ -33,6 +39,8 @@ export interface NewFinding {
     explanation: string;
     recommendation: string;
     effort: "S" | "M" | "L" | null;
+    /** The agent's estimate for the fix; a scanner sizes its findings by letter only. */
+    effortHours: Hours | null;
     evidence: Evidence[];
     references: References;
     tags: string[];

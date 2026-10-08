@@ -377,6 +377,20 @@ describe("the cost in the report", () => {
     });
 });
 
+describe("the hours in the report", () => {
+    it("carries each finding's hours only when the export asks for them", async () => {
+        const { project, repo } = await projectWithRepo();
+        const f = await createFinding(project.id, null, sampleFinding(repo.id, { effort: "M", effortHours: { low: 2, high: 4 } }));
+        await prisma.finding.update({ where: { id: f.id }, data: { status: "accepted" } });
+        const without = await loadReportData(project.id);
+        expect(without.hours).toBe(false);
+        expect(without.findings[0]).toMatchObject({ effort: "M", effortHours: null });
+        const withHours = await loadReportData(project.id, { includeHours: true });
+        expect(withHours.hours).toBe(true);
+        expect(withHours.findings[0]).toMatchObject({ effort: "M", effortHours: { low: 2, high: 4 } });
+    });
+});
+
 describe("the report's file name", () => {
     it("joins the project's name and the date with one hyphen, whatever the name ends with", () => {
         const d = { projectName: "naidenko.dev (own site)", generatedAt: "2026-10-06" } as ReportData;

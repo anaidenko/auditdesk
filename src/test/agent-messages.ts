@@ -20,7 +20,7 @@ export const finding = (over: object = {}) => ({
     summary: "s",
     explanation: "e",
     recommendation: "r",
-    effort: "S",
+    effort_hours: { low: 1, high: 2 },
     evidence: [{ file: "src/db.js", start_line: 2, end_line: 2 }],
     cwe: "CWE-89",
     tags: [],

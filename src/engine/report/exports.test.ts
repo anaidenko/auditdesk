@@ -185,6 +185,11 @@ describe("issue drafts", () => {
         expect(issueDrafts(data())).toHaveLength(2);
     });
 
+    it("glosses the effort's size in an issue, and gives the hours instead when the export includes them", () => {
+        expect(issueDrafts(one({ effort: "M" }))[0].body).toContain(" · **Effort:** M (up to 2 days)");
+        expect(issueDrafts(one({ effort: "M", effortHours: { low: 4, high: 6 } }))[0].body).toContain(" · **Effort:** M (4–6 h)");
+    });
+
     it("links an accessibility finding's WCAG criteria in its issue, as the report does", () => {
         const wcag = { label: "WCAG 2.2 SC 2.4.7 Focus Visible (Level AA)", url: "https://www.w3.org/TR/WCAG22/#focus-visible" };
         const [draft] = issueDrafts(

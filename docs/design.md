@@ -127,11 +127,14 @@ leave it.
 A finding has a stable ID per project (`F-012` means the same issue in a call, an email and the
 next report), a severity, likelihood and impact, a summary for a founder, an explanation for
 engineers, evidence as file and line ranges with the code (masked), a recommendation and an
-effort. What code cannot show (backups, alerting) is filed as a question.
+effort: the agent's hours for the fix as a range, and the size they fall in by their high end (S up
+to 2 hours, M up to 2 days, L more). A scanner sizes its findings by their places alone. What code
+cannot show (backups, alerting) is filed as a question.
 
 The auditor accepts, edits, merges, rejects (kept with the reason, as data on false positives)
-or excludes each finding, and may move it between "fix before sign-off" and "can wait". A re-run
-of one aspect replaces its unreviewed findings and tells the agent about the reviewed ones.
+or excludes each finding, and may move it between "fix before sign-off" and "can wait". An edit of
+the hours resizes the finding. A re-run of one aspect replaces its unreviewed findings and tells the
+agent about the reviewed ones.
 
 Three rules keep the scanners' noise down. A scanner files one finding per rule, listing every
 place: gitleaks per rule, code or history and file role, Semgrep per rule and message. Each place
@@ -161,7 +164,8 @@ problem in other code is filed again.
 One self-contained HTML file, opening offline, and a PDF of the same document: a cover with the
 auditor (linked by `AUDITOR_URL`), each repository's branch and commit (linked when it was cloned
 from GitHub, GitLab or Bitbucket) and the severity counts, a summary (what to fix before sign-off and what can wait, one line per finding
-with its aspect and effort, and the estimated effort), scope and method (each aspect's coverage
+with its aspect and effort, the estimated effort and a legend of the sizes; the hours, on each
+finding and totalled per list as a range, only when the auditor ticks them at export), scope and method (each aspect's coverage
 in a line, the items not fully examined, the steps that ran, what the review made of the findings
 filed, what was not run or not covered, and the method in full when `AUDIT_METHOD_URL` names it),
 each finding as a card,
