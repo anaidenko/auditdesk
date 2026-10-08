@@ -468,3 +468,28 @@ test("a run form rendered below the reserve offers the checkbox when the start i
         rmSync(usage, { force: true });
     }
 });
+
+test("every page fits a narrow window, and a select's arrow keeps the fields' inner margin", async ({ page }) => {
+    await finishedRun(page, "Narrow");
+    const run = new URL(page.url()).pathname;
+    await page.getByRole("link", { name: "Review the findings" }).click();
+    await page.waitForURL(/\/findings$/);
+    const findings = new URL(page.url()).pathname;
+    const project = findings.replace(/\/findings$/, "");
+    for (const width of [550, 390]) {
+        await page.setViewportSize({ width, height: 900 });
+        for (const path of ["/", project, findings, `${findings}/1`, run, "/evals", "/settings"]) {
+            await page.goto(path);
+            await page.evaluate(() => document.querySelectorAll("details").forEach(d => (d.open = true)));
+            const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
+            expect(overflow, `${path} at ${width} px`).toBeLessThanOrEqual(0);
+        }
+    }
+    await page.goto(findings);
+    const style = await page.getByLabel("Aspect").evaluate(el => {
+        const s = getComputedStyle(el);
+        return { appearance: s.appearance, padding: parseFloat(s.paddingRight), image: s.backgroundImage, position: s.backgroundPosition };
+    });
+    expect(style).toMatchObject({ appearance: "none", image: expect.stringContaining("svg"), position: "calc(100% - 12px) 50%" });
+    expect(style.padding).toBeGreaterThanOrEqual(36);
+});

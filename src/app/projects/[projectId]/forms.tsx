@@ -15,7 +15,7 @@ import {
     startRun
 } from "@/app/actions";
 import { ACCESS_LABEL } from "@/app/model-access";
-import { Badge, FormError, Icon, button, input, label } from "@/app/ui";
+import { Badge, FormError, Icon, button, input, label, select } from "@/app/ui";
 import { DEFAULT_EFFORT, DEFAULT_MODEL, type Effort } from "@/engine/agent/request";
 import { ASPECTS, agentCount } from "@/engine/aspects";
 import { type CostStats, estimateRun, pickStats } from "@/engine/estimate";
@@ -32,7 +32,7 @@ export function AddRepositoryForm({ projectId }: { projectId: string }) {
                 className={`${input} min-w-64 flex-[3]`}
                 aria-label="Repository URL or path"
             />
-            <input name="branch" placeholder="main" className={`${input} w-32 flex-1`} aria-label="Branch" />
+            <input name="branch" placeholder="main" className={`${input} min-w-28 flex-1`} aria-label="Branch" />
             <button disabled={pending} className={button.secondary}>
                 Add repository
             </button>
@@ -140,7 +140,7 @@ export function StartRunForm({
             <div className="grid grid-cols-2 gap-3">
                 <label className={label}>
                     Model
-                    <select name="model" defaultValue={state.values?.model || DEFAULT_MODEL} className={`${input} mt-1.5`}>
+                    <select name="model" defaultValue={state.values?.model || DEFAULT_MODEL} className={`${select} mt-1.5 w-full`}>
                         {MODEL_CHOICES.map(m => (
                             <option key={m.id} value={m.id}>
                                 {m.label}
@@ -150,7 +150,7 @@ export function StartRunForm({
                 </label>
                 <label className={label}>
                     Effort
-                    <select name="effort" defaultValue={state.values?.effort || DEFAULT_EFFORT} className={`${input} mt-1.5`}>
+                    <select name="effort" defaultValue={state.values?.effort || DEFAULT_EFFORT} className={`${select} mt-1.5 w-full`}>
                         {EFFORTS.map(e => (
                             <option key={e}>{e}</option>
                         ))}

@@ -23,6 +23,9 @@ export const field =
 
 export const input = `${field} w-full`;
 
+/** A select with its arrow inside the same inner margin as the text. */
+export const select = `${field} select-arrow pr-9`;
+
 export const label = "block text-xs font-medium tracking-wide text-zinc-600 uppercase";
 
 export function Card({
@@ -74,7 +77,7 @@ export function PageHeader({
                 <h1 className="text-2xl font-semibold tracking-tight text-zinc-900">{title}</h1>
                 {children && <div className="mt-1.5 text-sm text-zinc-500">{children}</div>}
             </div>
-            {actions && <div className="flex shrink-0 flex-wrap items-start gap-2">{actions}</div>}
+            {actions && <div className="flex min-w-0 flex-wrap items-start gap-2">{actions}</div>}
         </div>
     );
 }
