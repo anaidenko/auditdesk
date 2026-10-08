@@ -1,6 +1,6 @@
 import "server-only";
 
-import { type CostStats, costStats } from "@/engine/estimate";
+import { type CostStats, type PlanShareRate, costStats, shareRate, windowShare } from "@/engine/estimate";
 import { MODEL_CHOICES } from "@/engine/models";
 import { prisma } from "@/server/db";
 
@@ -25,4 +25,26 @@ export async function agentCostStats(): Promise<Record<string, CostStats>> {
         byPair.set(key, pair);
     }
     return Object.fromEntries([...byPair].map(([key, p]) => [key, costStats(p.costs, 0, p.capped)]));
+}
+
+/**
+ * The share of the plan's 5-hour window a dollar of API-equivalent cost takes, from every Claude plan
+ * run's readings and the cost of its calls between them; null before a plan run has two readings.
+ */
+export async function planShareRate(): Promise<PlanShareRate | null> {
+    const runs = await prisma.run.findMany({
+        where: { modelAccess: "claude_plan", planReadings: { some: {} } },
+        select: {
+            planReadings: { select: { utilization: true, resetsAt: true, createdAt: true }, orderBy: { id: "asc" } },
+            calls: { select: { costUsd: true, createdAt: true } }
+        }
+    });
+    return shareRate(
+        runs.map(r =>
+            windowShare(
+                r.planReadings.map(p => ({ utilization: p.utilization, resetsAt: p.resetsAt, at: p.createdAt })),
+                r.calls.map(c => ({ costUsd: c.costUsd === null ? null : Number(c.costUsd), at: c.createdAt }))
+            )
+        )
+    );
 }
