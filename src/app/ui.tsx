@@ -74,7 +74,7 @@ export function PageHeader({
                 <h1 className="text-2xl font-semibold tracking-tight text-zinc-900">{title}</h1>
                 {children && <div className="mt-1.5 text-sm text-zinc-500">{children}</div>}
             </div>
-            {actions && <div className="flex shrink-0 flex-wrap gap-2">{actions}</div>}
+            {actions && <div className="flex shrink-0 flex-wrap items-start gap-2">{actions}</div>}
         </div>
     );
 }

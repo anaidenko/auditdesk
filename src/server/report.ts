@@ -49,6 +49,13 @@ export async function reportRepositoryNames(projectId: string): Promise<string[]
     return [...reportNames(repositories).values()];
 }
 
+/** What the exports leave out until Andrii reviews it: a merged finding waits on the one it joined. */
+export async function awaitingReview(projectId: string): Promise<{ findings: number; questions: number }> {
+    const counts = await prisma.finding.groupBy({ by: ["kind"], where: { projectId, status: "unreviewed" }, _count: { _all: true } });
+    const of = (kind: string) => counts.find(c => c.kind === kind)?._count._all ?? 0;
+    return { findings: of("finding"), questions: of("question") };
+}
+
 /**
  * The latest re-audit against the findings reported before it (design § 9): what it fixed, left
  * open, found back or changed, and how many reported findings its own run filed. Null until one ran.
