@@ -222,6 +222,7 @@ const ICONS: Record<string, ReactNode> = {
         </>
     ),
     play: <path d="M8 5.5v13l10.5-6.5L8 5.5z" />,
+    check: <path d="M5 12.5l4.5 4.5L19 7.5" />,
     download: <path d="M12 4v11 M7.5 10.5L12 15l4.5-4.5 M5 19.5h14" />,
     search: (
         <>

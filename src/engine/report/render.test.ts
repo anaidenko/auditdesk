@@ -133,6 +133,10 @@ describe("renderReport", () => {
         const from = html.indexOf(start);
         return html.slice(from, html.indexOf(end, from));
     };
+    /** The effort tiles as [figure, label], and the sizes' legend as "S up to 2 hours". */
+    const tiles = (html: string) =>
+        [...html.matchAll(/<div class="sum[^"]*"><b[^>]*>(.*?)<\/b><span>(.*?)<\/span><\/div>/g)].map(m => [m[1], m[2]]);
+    const sizes = (html: string) => [...html.matchAll(/<li><b>([SML])<\/b> (.*?)<\/li>/g)].map(m => `${m[1]} ${m[2]}`);
 
     it("opens with a cover naming the project, the auditor and each repository's commit", () => {
         const cover = between(renderReport(data()), '<header class="cover"', "</header>");
@@ -731,8 +735,13 @@ describe("renderReport", () => {
                     ]
                 })
             );
-            expect(summary(html)).toContain("Estimated effort: 2 findings sized S, 1 sized M, 1 sized L and 1 not sized.");
-            expect(summary(html)).toContain("Sizes: S up to 2 hours, M up to 2 days, L over 2 days.");
+            expect(tiles(summary(html))).toEqual([
+                ["2", "sized S"],
+                ["1", "sized M"],
+                ["1", "sized L"],
+                ["1", "not sized"]
+            ]);
+            expect(sizes(summary(html))).toEqual(["S up to 2 hours", "M up to 2 days", "L over 2 days"]);
             expect(summary(html)).not.toMatch(/\d h\b/);
         });
 
@@ -748,9 +757,14 @@ describe("renderReport", () => {
                     ]
                 })
             );
-            expect(summary(html)).toContain("Estimated effort: 5–10 h to fix before sign-off and 4–8 h for what can wait, 9–18 h in all.");
+            expect(tiles(summary(html))).toEqual([
+                ["5–10 h", "Fix before sign-off"],
+                ["4–8 h", "Can wait"],
+                ["9–18 h", "In all"]
+            ]);
+            expect(sizes(summary(html))).toEqual(["S up to 2 hours", "M up to 2 days", "L over 2 days"]);
             expect(summary(html)).toContain(
-                "Sizes: S up to 2 hours, M up to 2 days, L over 2 days. Findings without hours count at the range of their size: S at 1–2 h, M at 2–16 h, L at 16 h or more."
+                "Findings without hours count at the range of their size: S at 1–2 h, M at 2–16 h, L at 16 h or more."
             );
         });
 
@@ -765,9 +779,12 @@ describe("renderReport", () => {
                     ]
                 })
             );
-            expect(summary(html)).toContain(
-                "Estimated effort: 16 h or more to fix before sign-off and 1–2 h for what can wait, 17 h or more in all. Not sized, so left out of the totals: F-002."
-            );
+            expect(tiles(summary(html))).toEqual([
+                ["16 h or more", "Fix before sign-off"],
+                ["1–2 h", "Can wait"],
+                ["17 h or more", "In all"]
+            ]);
+            expect(summary(html)).toContain("Not sized, so left out of the totals: F-002.");
         });
 
         it("says a list has no estimate when none of its findings is sized", () => {
@@ -780,19 +797,21 @@ describe("renderReport", () => {
                     ]
                 })
             );
-            expect(summary(html)).toContain(
-                "Estimated effort: no estimate to fix before sign-off and 4–8 h for what can wait. Not sized, so left out of the totals: F-001."
-            );
+            expect(tiles(summary(html))).toEqual([
+                ["not estimated", "Fix before sign-off"],
+                ["4–8 h", "Can wait"]
+            ]);
+            expect(summary(html)).toContain("Not sized, so left out of the totals: F-001.");
         });
 
         it("gives the legend whenever a card shows a size, a question's included", () => {
             const question = finding({ label: "F-003", severity: null, effort: "S" });
-            const legend = "Sizes: S up to 2 hours, M up to 2 days, L over 2 days.";
-            expect(summary(renderReport(data({ findings: [], questions: [question] })))).toContain(legend);
+            const legend = ["S up to 2 hours", "M up to 2 days", "L over 2 days"];
+            expect(sizes(summary(renderReport(data({ findings: [], questions: [question] }))))).toEqual(legend);
             const unsized = summary(renderReport(data({ findings: [finding({ effort: null })], questions: [question] })));
-            expect(unsized).toContain("Effort: not estimated.");
-            expect(unsized).toContain(legend);
-            expect(summary(renderReport(data({ findings: [finding({ effort: null })] })))).not.toContain("Sizes:");
+            expect(unsized).toContain("Not estimated: no finding has a size.");
+            expect(sizes(unsized)).toEqual(legend);
+            expect(sizes(summary(renderReport(data({ findings: [finding({ effort: null })] }))))).toEqual([]);
         });
     });
 
@@ -823,11 +842,13 @@ describe("renderReport", () => {
     describe("the summary's edge cases", () => {
         const summary = (html: string) => between(html, '<section id="summary">', "</section>");
         it("says the effort is not estimated when nothing is sized", () => {
-            expect(summary(renderReport(data({ findings: [finding({ effort: null })] })))).toContain("Effort: not estimated.");
+            expect(summary(renderReport(data({ findings: [finding({ effort: null })] })))).toContain(
+                "Not estimated: no finding has a size."
+            );
         });
         it("writes hours whose ends agree as one number, on the card and in the total", () => {
             const html = renderReport(data({ hours: true, findings: [finding({ effort: "S", effortHours: { low: 2, high: 2 } })] }));
-            expect(summary(html)).toContain("Estimated effort: 2 h to fix before sign-off.");
+            expect(tiles(summary(html))).toEqual([["2 h", "Fix before sign-off"]]);
             expect(between(html, 'id="F-001"', "</article>")).toContain("effort S (2 h)");
         });
         it("says the findings that can wait still need fixing, and shows Andrii's call on the card", () => {

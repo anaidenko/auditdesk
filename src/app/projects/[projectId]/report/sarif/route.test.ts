@@ -36,7 +36,7 @@ describe("the SARIF and issue exports", () => {
         expect(log.runs[0].results.map((r: { message: { text: string } }) => r.message.text)).toEqual([expect.stringMatching(/^Raw SQL/)]);
     });
 
-    it("serves a draft's SARIF with the unreviewed marked, while the issues stay reviewed only", async () => {
+    it("serves a draft's SARIF with the unreviewed marked", async () => {
         const id = await project();
         const res = await get(sarif, id, "sarif?draft=1");
         expect(res.headers.get("content-disposition")).toMatch(/filename="auditdesk-acme-x-draft-\d{4}-\d{2}-\d{2}\.sarif"/);
@@ -45,7 +45,6 @@ describe("the SARIF and issue exports", () => {
             expect.stringMatching(/^Raw SQL/),
             expect.stringMatching(/^Not reviewed yet: Not reviewed yet/)
         ]);
-        expect(await (await get(issues, id, "issues?draft=1")).text()).not.toContain("Not reviewed yet");
     });
 
     it("serves one repository's SARIF at a time when the project has several", async () => {
@@ -80,6 +79,19 @@ describe("the SARIF and issue exports", () => {
         await prisma.finding.updateMany({ where: { projectId: id, status: "accepted" }, data: { effortHoursLow: 2, effortHoursHigh: 4 } });
         expect(await (await get(issues, id, "issues")).text()).toContain("**Effort:** S (up to 2 hours)");
         expect(await (await get(issues, id, "issues?hours=1")).text()).toContain("**Effort:** S (2–4 h)");
+    });
+
+    it("adds the unreviewed to a draft's issues, marked, in the CSV and the JSON alike", async () => {
+        const id = await project();
+        const csv = await get(issues, id, "issues?draft=1");
+        expect(csv.headers.get("content-disposition")).toMatch(/filename="auditdesk-acme-issues-draft-\d{4}-\d{2}-\d{2}\.csv"/);
+        expect(await csv.text()).toContain('"F-002 (not reviewed): Not reviewed yet"');
+        const json = await get(issues, id, "issues?format=json&draft=1");
+        expect(json.headers.get("content-disposition")).toMatch(/filename="auditdesk-acme-issues-draft-\d{4}-\d{2}-\d{2}\.json"/);
+        expect((await json.json()).map((d: { title: string }) => d.title)).toEqual([
+            "F-001: Raw SQL",
+            "F-002 (not reviewed): Not reviewed yet"
+        ]);
     });
 
     it("serves the same drafts as JSON for pnpm issues:gh", async () => {
