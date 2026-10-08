@@ -111,6 +111,13 @@ reading the plan reports to `~/.auditdesk/plan-usage.json`; above 50% a run star
 "Allow past the 50% reserve" ticked, and a run that crosses 50% stops after that turn. A call
 paid by extra usage stops the agent in any case.
 
+Before a plan run starts, the run form forecasts its share of the 5-hour window: the dollar
+estimate times the share a dollar has taken so far, learnt from every plan run's readings of the
+window and the cost of its calls between them. Other use of the plan in the same window, Claude
+Code included, counts in that rate, so the forecast leans high. With a reading of the current
+window, the form warns when the run may stop at the reserve partway and offers the box to let it
+go past.
+
 ![A finished run: its spend per serving model and the agents' activity](docs/screenshots/run.png)
 
 ## Tests
@@ -171,6 +178,12 @@ All eleven aspects on the own fixture, at Sonnet 5.5 `high` with an $11 and 550,
 findings outside the key, for $2.31 in 14 minutes. The eight-aspect run before it found 18 of the
 then 25 entries for $1.55. The run's Auditdesk commit (`966b7a8`) adds Semgrep grouping to the
 scanners; the agents, prompts and checklists are those of `main`.
+
+On a real repository, through the app (2026-10-08, Auditdesk at `11eedfe`): naidenko.dev, a
+Next.js site with a Cloudflare Worker (about 11,000 lines in 155 files), all eleven aspects at
+Opus 5.5 `high` on the Claude plan took 267 calls and 34 minutes, $11.23 API-equivalent, and the
+5-hour window from 7% to 30%. The run form had estimated $6.66–$68.84 from three Opus agents at
+`medium`.
 
 ## Live checks
 
