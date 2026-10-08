@@ -25,9 +25,15 @@ paths:
   through `GIT_CONFIG_COUNT`/`GIT_CONFIG_KEY_0`/`GIT_CONFIG_VALUE_0` (README § Tests): an
   `insteadOf` in this repository's config does not reach a clone made inside it.
 - **End-to-end tests (Playwright)** run the built app on port 3100 with both replays.
-- **A worktree for unit tests:** `scripts/worktree.sh <branch> <dir>` links `node_modules` and
+- **A worktree for unit tests:** `scripts/worktree.sh <branch> <dir>` links `node_modules`,
   generates the Prisma client, which a bare `git worktree add` leaves out (type checks then fail
-  with implicit `any` everywhere). e2e still runs only in the main tree.
+  with implicit `any` everywhere), and points `.env.test.local` at the worktree's own test
+  database: `global-setup` drops the database with `FORCE`, so a shared one fails a parallel
+  session's run.
+- **e2e in a worktree:** replace the linked `node_modules` with an install
+  (`rm node_modules && DATABASE_URL=… pnpm install --frozen-lockfile --offline`; the postinstall
+  generates the client), then run with `E2E_DATABASE_URL` naming a database of its own. Port 3100
+  stays shared: one e2e run at a time.
 - **A socket a test server hands over** in a `connect` or `upgrade` event needs its own error
   listener: Linux resets it where macOS closes it, and the uncaught `ECONNRESET` fails CI only.
 - **A test that passes before the change exists** is a finding about the test. A red run counts
