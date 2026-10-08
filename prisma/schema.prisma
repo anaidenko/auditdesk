@@ -235,7 +235,9 @@ model Finding {
   explanation      String
   recommendation   String
   effort           String?
-  effortHours      Int?
+  /// The fix in whole hours, low to high: the agent's estimate, or Andrii's; the size follows the high end.
+  effortHoursLow   Int?
+  effortHoursHigh  Int?
   /// Andrii's call on fixing it before sign-off; null follows the severity (design § 10).
   fixBeforeSignoff Boolean?
   evidence         Json                     @db.JsonB

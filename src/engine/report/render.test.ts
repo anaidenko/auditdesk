@@ -353,8 +353,10 @@ describe("renderReport", () => {
 
     it("puts each finding's aspect and effort on its Summary line, and its repository when there are several", () => {
         const line = (html: string) => between(between(html, '<section id="summary">', "</section>"), 'href="#F-001"', "</li>");
-        const one = renderReport(data({ findings: [finding({ aspect: "Security", effort: "M", effortHours: 6 })] }));
-        expect(line(one)).toContain('<span class="aside">Security · effort M (6 h)</span>');
+        const one = renderReport(
+            data({ hours: true, findings: [finding({ aspect: "Security", effort: "M", effortHours: { low: 4, high: 6 } })] })
+        );
+        expect(line(one)).toContain('<span class="aside">Security · effort M (4–6 h)</span>');
         const two = renderReport(
             data({
                 repositories: [...data().repositories, { name: "api", branch: "main", sha: "fedcba9876543210", notCovered: [] }],
@@ -692,21 +694,80 @@ describe("renderReport", () => {
             expect(listed(html, "Can wait")).toEqual(["F-001"]);
         });
 
-        it("adds up the hours Andrii set and counts the rest by size", () => {
+        it("counts the findings by size when the export leaves the hours out, with a legend of the sizes", () => {
             const html = renderReport(
                 data({
                     findings: [
-                        finding({ label: "F-001", effort: "S", effortHours: 3 }),
-                        finding({ label: "F-002", effort: "M", effortHours: 10 }),
+                        finding({ label: "F-001", effort: "S" }),
+                        finding({ label: "F-002", effort: "S" }),
                         finding({ label: "F-003", effort: "M" }),
                         finding({ label: "F-004", effort: "L" }),
                         finding({ label: "F-005", effort: null })
                     ]
                 })
             );
-            expect(summary(html)).toContain(
-                "Estimated effort: 13 h for the 2 findings with hours set, plus 1 medium finding (under 2 days), 1 large finding (over 2 days) and 1 finding not sized."
+            expect(summary(html)).toContain("Estimated effort: 2 findings sized S, 1 sized M, 1 sized L and 1 not sized.");
+            expect(summary(html)).toContain("Sizes: S up to 2 hours, M up to 2 days, L over 2 days.");
+            expect(summary(html)).not.toMatch(/\d h\b/);
+        });
+
+        it("totals the hours to fix before sign-off and after it as ranges, a finding without hours at its size's", () => {
+            const html = renderReport(
+                data({
+                    hours: true,
+                    findings: [
+                        finding({ label: "F-001", severity: "critical", effort: "S", effortHours: { low: 1, high: 2 } }),
+                        finding({ label: "F-002", severity: "high", effort: "M", effortHours: { low: 4, high: 8 } }),
+                        finding({ label: "F-003", severity: "low", effort: "S" }),
+                        finding({ label: "F-004", severity: "low", effort: "M", effortHours: { low: 3, high: 6 } })
+                    ]
+                })
             );
+            expect(summary(html)).toContain("Estimated effort: 5–10 h to fix before sign-off and 4–8 h for what can wait, 9–18 h in all.");
+            expect(summary(html)).toContain(
+                "Sizes: S up to 2 hours, M up to 2 days, L over 2 days. Findings without hours count at the range of their size: S at 1–2 h, M at 2–16 h, L at 16 h or more."
+            );
+        });
+
+        it("leaves a total open when a large finding has no hours, and names the findings not sized", () => {
+            const html = renderReport(
+                data({
+                    hours: true,
+                    findings: [
+                        finding({ label: "F-001", severity: "critical", effort: "L" }),
+                        finding({ label: "F-002", severity: "high", effort: null }),
+                        finding({ label: "F-003", severity: "low", effort: "S", effortHours: { low: 1, high: 2 } })
+                    ]
+                })
+            );
+            expect(summary(html)).toContain(
+                "Estimated effort: 16 h or more to fix before sign-off and 1–2 h for what can wait, 17 h or more in all. Not sized, so left out of the totals: F-002."
+            );
+        });
+
+        it("says a list has no estimate when none of its findings is sized", () => {
+            const html = renderReport(
+                data({
+                    hours: true,
+                    findings: [
+                        finding({ label: "F-001", severity: "critical", effort: null }),
+                        finding({ label: "F-002", severity: "low", effort: "M", effortHours: { low: 4, high: 8 } })
+                    ]
+                })
+            );
+            expect(summary(html)).toContain(
+                "Estimated effort: no estimate to fix before sign-off and 4–8 h for what can wait. Not sized, so left out of the totals: F-001."
+            );
+        });
+
+        it("gives the legend whenever a card shows a size, a question's included", () => {
+            const question = finding({ label: "F-003", severity: null, effort: "S" });
+            const legend = "Sizes: S up to 2 hours, M up to 2 days, L over 2 days.";
+            expect(summary(renderReport(data({ findings: [], questions: [question] })))).toContain(legend);
+            const unsized = summary(renderReport(data({ findings: [finding({ effort: null })], questions: [question] })));
+            expect(unsized).toContain("Effort: not estimated.");
+            expect(unsized).toContain(legend);
+            expect(summary(renderReport(data({ findings: [finding({ effort: null })] })))).not.toContain("Sizes:");
         });
     });
 
@@ -739,10 +800,10 @@ describe("renderReport", () => {
         it("says the effort is not estimated when nothing is sized", () => {
             expect(summary(renderReport(data({ findings: [finding({ effort: null })] })))).toContain("Effort: not estimated.");
         });
-        it("counts hours set to zero as hours, as the card does", () => {
-            const html = renderReport(data({ findings: [finding({ effort: "S", effortHours: 0 })] }));
-            expect(summary(html)).toContain("Estimated effort: 0 h for the finding with hours set.");
-            expect(between(html, 'id="F-001"', "</article>")).toContain("effort S (0 h)");
+        it("writes hours whose ends agree as one number, on the card and in the total", () => {
+            const html = renderReport(data({ hours: true, findings: [finding({ effort: "S", effortHours: { low: 2, high: 2 } })] }));
+            expect(summary(html)).toContain("Estimated effort: 2 h to fix before sign-off.");
+            expect(between(html, 'id="F-001"', "</article>")).toContain("effort S (2 h)");
         });
         it("says the findings that can wait still need fixing, and shows Andrii's call on the card", () => {
             const html = renderReport(data({ findings: [finding({ label: "F-001", severity: "critical", fixBeforeSignoff: false })] }));

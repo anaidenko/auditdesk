@@ -12,4 +12,8 @@ if git show-ref --verify --quiet "refs/heads/$1"; then git worktree add "$2" "$1
 ln -s "$root/node_modules" "$2/node_modules"
 cd "$2"
 DATABASE_URL="${DATABASE_URL:-$(sed -n 's/^DATABASE_URL=//p' .env.test)}" pnpm exec prisma generate >/dev/null
-echo "$2 is on $1, with node_modules linked and the Prisma client generated."
+# Its own test database: global-setup drops the database WITH (FORCE), so a shared one fails the
+# run another worktree has in progress.
+db="auditdesk_test_$(basename "$2" | tr -c 'A-Za-z0-9\n' _)"
+sed -n "s|^\(TEST_DATABASE_URL=.*/\)[^/]*\$|\1$db|p" .env.test >.env.test.local
+echo "$2 is on $1, with node_modules linked, the Prisma client generated and tests on $db."

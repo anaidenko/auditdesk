@@ -5,6 +5,7 @@ import { z } from "zod";
 
 import type { Checklist } from "../checklists";
 import { limitedReview } from "../coverage";
+import { hoursError, sizeOf } from "../effort";
 import { grepFiles, listFiles, readFileRange, snippetOf } from "../files";
 import { fingerprint } from "../findings";
 import type { Masker } from "../masker";
@@ -95,7 +96,16 @@ const findingInput = z.strictObject({
     summary: z.string().describe("For a non-technical founder."),
     explanation: z.string().describe("For the client's engineers."),
     recommendation: z.string(),
-    effort: z.enum(["S", "M", "L"]).describe("S: under 2 hours. M: under 2 days. L: more."),
+    // Described per field: a described object is walked twice under `reused: "ref"` and its fields become $defs.
+    effort_hours: z.strictObject({
+        low: z
+            .number()
+            .int()
+            .describe(
+                "Whole hours for one engineer who knows the stack to make and test the fix, if it goes as planned. For a question, to find the answer."
+            ),
+        high: z.number().int().describe("The same, if it does not.")
+    }),
     evidence: z.array(z.strictObject({ file: z.string(), start_line: z.number().int(), end_line: z.number().int() })),
     cwe: z.string().describe("A CWE ID such as CWE-89, or an empty string."),
     tags: z.array(z.string())
@@ -294,6 +304,8 @@ async function reportFinding(ctx: AgentContext, input: z.infer<typeof findingInp
     const ids = ctx.checklist.items.map(i => i.id);
     if (!ids.includes(input.checklist_item))
         throw new ToolError(`Unknown checklist item ${input.checklist_item}; use one of ${ids.join(", ")}.`);
+    const hours = hoursError(input.effort_hours);
+    if (hours) throw new ToolError(`${hours} effort_hours was ${input.effort_hours.low}-${input.effort_hours.high}.`);
     if (input.kind === "finding" && input.severity === "none") throw new ToolError('A finding needs a severity; "none" is for questions.');
     if (input.kind === "finding" && !input.evidence.length) throw new ToolError("A finding needs at least one evidence range.");
     if (input.evidence.length > 5) throw new ToolError("At most five evidence ranges; file the rest as a separate finding.");
@@ -324,7 +336,8 @@ async function reportFinding(ctx: AgentContext, input: z.infer<typeof findingInp
         summary: input.summary,
         explanation: input.explanation,
         recommendation: input.recommendation,
-        effort: input.effort,
+        effort: sizeOf(input.effort_hours),
+        effortHours: input.effort_hours,
         references: input.cwe ? { cwe: input.cwe } : {},
         // The engine alone decides "ai-built", by the item: a model's own tag would put any finding in that section.
         tags: [

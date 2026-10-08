@@ -382,13 +382,39 @@ test("the run shows its spend per serving model, and the report states the cost 
     await accepted.getByRole("button", { name: "Accept" }).click();
     await expect(accepted).toContainText("accepted");
     const text = async (withCost: boolean) => {
-        if (withCost) await page.getByLabel("Include the cost").check();
-        else await page.getByLabel("Include the cost").uncheck();
+        await page.getByLabel("Include the AI cost").setChecked(withCost);
         const [download] = await Promise.all([page.waitForEvent("download"), page.getByRole("button", { name: "HTML report" }).click()]);
         return readFileSync((await download.path())!, "utf8");
     };
     expect(await text(false)).not.toMatch(/cost of the model calls/i);
     expect(await text(true)).toMatch(/API-equivalent cost of the model calls: \$\d+\.\d{2}; the Claude plan bills nothing/);
+});
+
+test("the review shows the agent's hours, an edit of them resizes the finding, and the report gives them only when asked", async ({
+    page
+}) => {
+    await finishedRun(page, "Hours");
+    await page.getByRole("link", { name: "Review the findings" }).click();
+    const evalFinding = page.locator("details", { hasText: "User input reaches eval" });
+    await expect(evalFinding.locator("summary")).toContainText("S · 1–2 h");
+    await evalFinding.locator("summary").click();
+    await evalFinding.getByRole("link", { name: "Edit or merge" }).click();
+    await page.getByLabel("Hours, low").fill("3");
+    await page.getByLabel("Hours, high").fill("5");
+    await page.getByRole("button", { name: "Save", exact: true }).click();
+    await expect(page.getByRole("heading", { name: "Findings" })).toBeVisible();
+    await expect(evalFinding.locator("summary")).toContainText("M · 3–5 h");
+    const text = async (withHours: boolean) => {
+        await page.getByLabel("Include the hours").setChecked(withHours);
+        const [download] = await Promise.all([page.waitForEvent("download"), page.getByRole("button", { name: "HTML report" }).click()]);
+        return readFileSync((await download.path())!, "utf8");
+    };
+    const without = await text(false);
+    expect(without).toContain("effort M");
+    expect(without).not.toContain("3–5 h");
+    const withHours = await text(true);
+    expect(withHours).toContain("effort M (3–5 h)");
+    expect(withHours).toMatch(/Estimated effort: 3–5 h (to fix before sign-off|for what can wait)\./);
 });
 
 test("starting twice queues one run", async ({ page }) => {

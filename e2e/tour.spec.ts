@@ -115,12 +115,12 @@ test("tour of the features", async ({ page }) => {
     await page.locator('select[name="signoff"]').selectOption("before");
     await shot("07-finding-edit-signoff", { fullPage: true });
 
-    // The report: cover, summary, scope with the cost, a finding with its references, the filters.
+    // The report: cover, summary with the hours, scope with the cost, a finding with its references, the filters.
     const base = findingsUrl.replace(/\/findings.*$/, "");
-    const html = await (await page.request.get(`${base}/report?cost=1`)).text();
+    const html = await (await page.request.get(`${base}/report?cost=1&hours=1`)).text();
     const file = join(out, "report.html");
     writeFileSync(file, html);
-    writeFileSync(join(out, "report.pdf"), await (await page.request.get(`${base}/report/pdf?cost=1`)).body());
+    writeFileSync(join(out, "report.pdf"), await (await page.request.get(`${base}/report/pdf?cost=1&hours=1`)).body());
     await page.goto(`file://${file}`);
     await shot("08-report-cover");
     await part("09-report-summary", "section#summary");

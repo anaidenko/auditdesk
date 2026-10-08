@@ -22,6 +22,7 @@ export function sampleFinding(repositoryId: string, over: Partial<NewFinding> = 
         explanation: "e",
         recommendation: "r",
         effort: "S",
+        effortHours: null,
         evidence: [{ file: "a.ts", startLine: 1, endLine: 1 }],
         references: {},
         tags: [],

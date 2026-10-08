@@ -41,6 +41,7 @@ const scanned = (over: Partial<NewFinding>): NewFinding => ({
     explanation: "e",
     recommendation: "r",
     effort: "S",
+    effortHours: null,
     references: {},
     tags: [],
     source: "scanner",

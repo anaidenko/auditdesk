@@ -203,6 +203,7 @@ function leakFinding(group: Leak[], repositoryId: string): NewFinding {
               ? "Rotate the credential first, then remove it from the code and load it from the environment or a secret store."
               : "Rotate the credentials first, then remove them from the code and load them from the environment or a secret store.",
         effort: effortFor(places),
+        effortHours: null,
         references: { cwe: "CWE-798" },
         tags: [],
         source: "scanner",
