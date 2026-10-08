@@ -1,5 +1,8 @@
+import { readdir, rm } from "node:fs/promises";
+import { join } from "node:path";
 import "server-only";
 
+import { pathNames } from "@/engine/pipeline";
 import { type StackProfile, detectStack, stackProfileText } from "@/engine/stack";
 import { deleteProjectClones, isBranchName, readRemote, withScratchClone } from "@/engine/workspace";
 import type { Prisma } from "@/generated/prisma/client";
@@ -19,15 +22,26 @@ export async function createRepository(projectId: string, source: string, branch
     return prisma.repository.create({ data: { projectId, source, branch: branch || head || "main" } });
 }
 
-/** A repository added by mistake, or taken away by the client, while it has no findings: findings are the audit's record. */
-export async function deleteRepository(repositoryId: string): Promise<void> {
+/**
+ * A repository added by mistake, or taken away by the client, while no finding cites it: findings
+ * are the audit's record, and a seams finding cites it by its path name. Its clones go with it.
+ */
+export async function deleteRepository(repositoryId: string, workspaceDir: string): Promise<void> {
     const repo = await prisma.repository.findUniqueOrThrow({
         where: { id: repositoryId },
         select: { projectId: true, _count: { select: { findings: true } } }
     });
     if (repo._count.findings) throw new Error("This repository has findings, the audit's record: it stays.");
+    const prefix = `${pathNames(await prisma.repository.findMany({ where: { projectId: repo.projectId }, orderBy: { createdAt: "asc" } })).get(repositoryId)}/`;
+    const seams = await prisma.finding.findMany({ where: { projectId: repo.projectId, repositoryId: null }, select: { evidence: true } });
+    if (seams.some(f => (f.evidence as { file: string }[]).some(e => e.file.startsWith(prefix))))
+        throw new Error("A seams finding cites this repository, the audit's record: it stays.");
     if (await hasActiveRun(repo.projectId)) throw new ActiveRunError();
     await prisma.repository.delete({ where: { id: repositoryId } });
+    const dir = join(workspaceDir, repo.projectId);
+    for (const name of await readdir(dir).catch(() => []))
+        if (name.startsWith(`${repositoryId}@`) || name === `${repositoryId}.cloning`)
+            await rm(join(dir, name), { recursive: true, force: true });
 }
 
 /**

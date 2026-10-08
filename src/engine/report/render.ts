@@ -489,11 +489,13 @@ ${manyRepos ? `<label>Repository <select name="repo">${option("", "All")}${names
         ? `<h3>Coverage</h3>\n<ul class="coverage">${d.aspects
               .map(a => {
                   const examined = a.coverage.filter(c => c.status === "examined").length;
+                  // Partly examined counts as looked at, as for the limited-review mark.
+                  const looked = a.coverage.filter(c => c.status === "examined" || c.status === "partly").length;
                   const gaps = a.coverage.filter(c => c.status !== "examined");
                   return `<li><b>${e(a.title)}</b>${a.coverage.length ? `: ${examined} of ${plural(a.coverage.length, "item", "items")} examined.` : ""} <span class="pill ${e(a.status)}">${e(a.status)}</span>${
                       limited(a) ? ` <span class="pill limited">limited review</span>` : ""
                   }
-${UNFINISHED[a.status] ? `<p>${a.status === "partial" && examined === 0 ? NOTHING_EXAMINED : UNFINISHED[a.status]}</p>` : ""}
+${UNFINISHED[a.status] ? `<p>${a.status === "partial" && looked === 0 ? NOTHING_EXAMINED : UNFINISHED[a.status]}</p>` : ""}
 ${limited(a) ? `<p>The agent looked at fewer than half of its checklist; the items it did not examine are listed below.</p>` : ""}
 ${gaps.length ? `<ul class="gaps">${gaps.map(c => `<li><span class="fid">${e(c.item)}</span> ${e(c.title)} <span class="pill ${e(c.status)}">${e(COVERAGE[c.status] ?? c.status)}</span></li>`).join("")}</ul>` : ""}</li>`;
               })

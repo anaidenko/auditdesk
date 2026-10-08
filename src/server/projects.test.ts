@@ -121,15 +121,38 @@ describe("the repositories of a project", () => {
         expect(await prisma.repository.count({ where: { projectId: project.id } })).toBe(0);
     });
 
+    it("removes a repository's clones with it, leaving the other repositories' alone", async () => {
+        const { project } = await projectWithRepo();
+        const spare = await prisma.repository.create({ data: { projectId: project.id, source: "/tmp/spare", branch: "main" } });
+        const workspaceDir = await mkdtemp(join(tmpdir(), "ws-"));
+        const dir = join(workspaceDir, project.id);
+        for (const d of [`${spare.id}@abc`, `${spare.id}.cloning`, "other@abc"]) await mkdir(join(dir, d), { recursive: true });
+        await deleteRepository(spare.id, workspaceDir);
+        expect(await readdir(dir)).toEqual(["other@abc"]);
+    });
+
+    it("keeps a repository that a seams finding cites by its path name, though it has no findings of its own", async () => {
+        const { project, repo } = await projectWithRepo("/tmp/web");
+        await prisma.repository.create({
+            data: { projectId: project.id, source: "/tmp/api", branch: "main", createdAt: new Date(Date.now() + 1000) }
+        });
+        const seam = await createFinding(project.id, null, {
+            ...sampleFinding(repo.id, { aspect: "seams", evidence: [{ file: "web/src/client.ts", startLine: 1, endLine: 2 }] }),
+            repositoryId: null
+        });
+        expect(seam.label).toBeTruthy();
+        await expect(deleteRepository(repo.id, await mkdtemp(join(tmpdir(), "ws-")))).rejects.toThrow(/seams finding/);
+    });
+
     it("removes a repository that has no findings, and refuses one that has, or any while a run is queued or running", async () => {
         const { project, repo } = await projectWithRepo();
         const spare = await prisma.repository.create({ data: { projectId: project.id, source: "/tmp/spare", branch: "main" } });
         await createFinding(project.id, null, sampleFinding(repo.id, {}));
-        await expect(deleteRepository(repo.id)).rejects.toThrow(/has findings/);
+        await expect(deleteRepository(repo.id, await mkdtemp(join(tmpdir(), "ws-")))).rejects.toThrow(/has findings/);
         const runId = await enqueueRun(project.id, runOptions);
-        await expect(deleteRepository(spare.id)).rejects.toThrow(/queued or running/);
+        await expect(deleteRepository(spare.id, await mkdtemp(join(tmpdir(), "ws-")))).rejects.toThrow(/queued or running/);
         await prisma.run.update({ where: { id: runId }, data: { status: "done" } });
-        await deleteRepository(spare.id);
+        await deleteRepository(spare.id, await mkdtemp(join(tmpdir(), "ws-")));
         expect(await prisma.repository.findMany({ where: { projectId: project.id }, select: { id: true } })).toEqual([{ id: repo.id }]);
     });
 

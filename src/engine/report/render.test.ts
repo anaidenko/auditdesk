@@ -108,6 +108,15 @@ describe("renderReport", () => {
                         ]
                     },
                     {
+                        title: "API design",
+                        status: "partial",
+                        note: "Partially covered: the budget share was spent.",
+                        coverage: [
+                            { item: "API-01", title: "Contracts", status: "partly" },
+                            { item: "API-02", title: "Errors", status: "not_examined" }
+                        ]
+                    },
+                    {
                         title: "Production readiness",
                         status: "partial",
                         note: "Not started. The Claude plan's 5-hour usage is at 62% (seen 8 Oct, 10:01), above the 50% reserve; it resets 8 Oct, 13:00. Re-run this aspect then, or allow it past the reserve.",
@@ -128,7 +137,8 @@ describe("renderReport", () => {
         expect(html).toContain("Not covered: the agent did not finish this aspect.");
         expect(html).toContain("Not covered: the model declined to review this aspect.");
         expect(html).toContain("Not covered: the audit was stopped before this aspect finished.");
-        expect(html).toContain("Not covered: the agent stopped before it had examined any item.");
+        expect(html.match(/Not covered: the agent stopped before it had examined any item\./g)).toHaveLength(1);
+        expect(html.match(/Partly covered: the agent stopped before it had examined every item of its checklist\./g)).toHaveLength(2);
         expect(html).not.toMatch(/5-hour|allow it past|ECONNREFUSED|category cyber|server restart/);
     });
 

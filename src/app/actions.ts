@@ -59,7 +59,7 @@ export async function addRepository(projectId: string, _prev: FormState, fd: For
 
 export async function removeRepository(projectId: string, repositoryId: string, _prev: FormState, _fd: FormData): Promise<FormState> {
     try {
-        await deleteRepository(repositoryId);
+        await deleteRepository(repositoryId, workspaceDir());
     } catch (e) {
         return { error: (e as Error).message };
     }

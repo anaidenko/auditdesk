@@ -174,6 +174,16 @@ describe("runner", () => {
         expect((await prisma.repository.findUniqueOrThrow({ where: { id: repo.id } })).commitSha).toBe(audited);
     });
 
+    it("keeps the branch the audited commit came from when an aspect is re-run after the branch was changed", async () => {
+        const { project, repo } = await projectWithRepo(await makeSampleRepo());
+        const runId = await enqueueRun(project.id, runOptions);
+        await processJob((await claimJob())!, await deps());
+        await prisma.repository.update({ where: { id: repo.id }, data: { branch: "release/1.3" } });
+        await enqueueRerun(runId, repo.id, "security");
+        await processJob((await claimJob())!, await deps());
+        expect(await prisma.repository.findUniqueOrThrow({ where: { id: repo.id } })).toMatchObject({ commitBranch: "main" });
+    });
+
     it("re-runs an aspect on a repository its run never got to clone, once its branch is fixed", async () => {
         const { project } = await projectWithRepo(await makeSampleRepo());
         const second = await prisma.repository.create({

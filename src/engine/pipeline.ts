@@ -24,7 +24,8 @@ import type { AuditSink, SeverityName } from "./types";
 import { cloneRepository } from "./workspace";
 
 export interface PipelineSink extends AuditSink {
-    repositoryCloned(repositoryId: string, sha: string, clonePath: string, branch: string): Promise<void>;
+    /** `branch`: what the clone checked out; null on a re-run, which returns to a recorded commit and keeps its branch. */
+    repositoryCloned(repositoryId: string, sha: string, clonePath: string, branch: string | null): Promise<void>;
     stackDetected(repositoryId: string, profile: StackProfile): Promise<void>;
     toolVersions(v: ToolVersions): Promise<void>;
     startAgent(repositoryId: string, aspect: string, share: { usd: number; tokens: number }): Promise<string>;
@@ -140,7 +141,7 @@ export async function runAudit(input: AuditInput, deps: AuditDeps): Promise<{ st
             if (seamsOnly) scanned.push({ repo, sha, clonePath, scan: null });
             continue;
         }
-        await sink.repositoryCloned(repo.id, sha, clonePath, repo.branch);
+        await sink.repositoryCloned(repo.id, sha, clonePath, repo.sha ? null : repo.branch);
         await sink.progress("Running gitleaks, osv-scanner and Semgrep…");
         const scan = await runScanners({
             clonePath,
