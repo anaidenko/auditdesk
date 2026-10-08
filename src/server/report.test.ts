@@ -374,6 +374,22 @@ describe("repositories in the report", () => {
     });
 });
 
+describe("repository names in the report", () => {
+    it("names a repository by its path alone, never with the credentials its URL may carry", async () => {
+        const { project } = await projectWithRepo("https://oauth2:glpat-XXXXXXXXXXXX@git.example.com/app.git");
+        await prisma.repository.create({
+            data: {
+                projectId: project.id,
+                source: "ssh://git@host.example.com:22/team/api.git",
+                branch: "main",
+                createdAt: new Date(Date.now() + 1000)
+            }
+        });
+        const d = await loadReportData(project.id);
+        expect(d.repositories.map(r => r.name)).toEqual(["app", "team/api"]);
+    });
+});
+
 describe("references in the report", () => {
     it("resolves each finding's references from its item, its own CWE first", async () => {
         const { project, repo } = await projectWithRepo();

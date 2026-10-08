@@ -111,6 +111,17 @@ const COVERAGE: Record<string, string> = {
     not_reported: "not reported (the agent stopped first)"
 };
 
+/**
+ * What the client reads of an aspect that did not finish. The engine's own note stays in the app: it
+ * speaks to the auditor, of the plan's reserve, a re-run or a raw error.
+ */
+const UNFINISHED: Record<string, string> = {
+    partial: "Partly covered: the agent stopped before it had examined every item of its checklist.",
+    failed: "Not covered: the agent did not finish this aspect.",
+    declined: "Not covered: the model declined to review this aspect.",
+    stopped: "Not covered: the audit was stopped before this aspect finished."
+};
+
 const STATIC_ONLY: Record<string, string> = {
     performance: "Performance was judged from the code alone: no page was rendered or timed.",
     accessibility:
@@ -142,11 +153,13 @@ function method(d: ReportData): string {
         ];
         const reviewed = r.filed - r.unreviewed;
         const filed = `${plural(r.filed, "finding", "findings")} the scanners and agents filed`;
+        // A draft carries the findings awaiting review, marked; the final report leaves them out.
+        const awaiting = `${r.unreviewed} not reviewed yet ${r.unreviewed === 1 ? "is" : "are"} ${d.draft ? "in it too, marked “not reviewed”" : "not"}`;
         steps.push(
             reviewed === 0
-                ? `None of the ${filed} is reviewed yet.`
+                ? `None of the ${filed} is reviewed yet${d.draft ? `; ${r.filed === 1 ? "it is" : "all are"} in this draft, marked “not reviewed”` : ""}.`
                 : r.unreviewed
-                  ? `The auditor reviewed ${reviewed} of the ${filed}: ${listed(outcomes)}; ${r.unreviewed} not reviewed yet ${r.unreviewed === 1 ? "is" : "are"} not.`
+                  ? `The auditor reviewed ${reviewed} of the ${filed}: ${listed(outcomes)}; ${awaiting}.`
                   : `The auditor reviewed ${r.filed === 1 ? "the 1 finding" : `all ${r.filed} findings`} the scanners and agents filed: ${listed(outcomes)}.`
         );
     }
@@ -463,7 +476,7 @@ ${manyRepos ? `<label>Repository <select name="repo">${option("", "All")}${names
                   return `<li><b>${e(a.title)}</b>${a.coverage.length ? `: ${examined} of ${plural(a.coverage.length, "item", "items")} examined.` : ""} <span class="pill ${e(a.status)}">${e(a.status)}</span>${
                       limited(a) ? ` <span class="pill limited">limited review</span>` : ""
                   }
-${a.note ? `<p>${e(a.note)}</p>` : ""}
+${UNFINISHED[a.status] ? `<p>${UNFINISHED[a.status]}</p>` : ""}
 ${limited(a) ? `<p>The agent looked at fewer than half of its checklist; the items it did not examine are listed below.</p>` : ""}
 ${gaps.length ? `<ul class="gaps">${gaps.map(c => `<li><span class="fid">${e(c.item)}</span> ${e(c.title)} <span class="pill ${e(c.status)}">${e(COVERAGE[c.status] ?? c.status)}</span></li>`).join("")}</ul>` : ""}</li>`;
               })

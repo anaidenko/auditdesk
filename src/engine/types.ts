@@ -14,6 +14,8 @@ export interface Evidence {
     snippet?: string;
     /** A scanner place's own fingerprint: a finding of several places is known place by place at the next run and re-check. */
     key?: string;
+    /** A place found only in git history: the commit that held it. Today's file may hold other code at its lines. */
+    commit?: string;
 }
 
 export interface References {

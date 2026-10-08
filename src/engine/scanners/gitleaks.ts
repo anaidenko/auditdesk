@@ -134,7 +134,9 @@ export function normaliseGitleaks(
             checklistItem: "SEC-10",
             evidence: [{ ...evidence, snippet: `${leak.RuleID}:${secretHash(leak.Secret)}` }]
         });
-        return { leak, current: o.inTree(leak), role: sampleRole(leak.File), place: { ...evidence, key } };
+        const current = o.inTree(leak);
+        // After the key, so the commit never changes a place's fingerprint.
+        return { leak, current, role: sampleRole(leak.File), place: { ...evidence, key, ...(current ? {} : { commit: leak.Commit }) } };
     });
     // Rule, code or history, and sample role set a finding's severity and words: one finding per each.
     return groupPlaces(located, l => `${l.leak.RuleID}\n${l.current}\n${l.role}`, o.known).map(g => leakFinding(g, o.repositoryId));

@@ -50,6 +50,27 @@ describe("sarif", () => {
         expect(() => sarif(data(), "web")).toThrow(/No repository "web"/);
     });
 
+    it("places a secret found only in history in its file without lines, which may hold other code today, and names its commit", () => {
+        const commit = "c2bdcacd".padEnd(40, "0");
+        const log = sarif(
+            reportData({
+                findings: [
+                    reportFinding({
+                        label: "F-001",
+                        severity: "high",
+                        title: "Secret in git history: generic API key",
+                        summary: "s",
+                        evidence: [{ file: "src/config.ts", startLine: 12, endLine: 12, key: "k1", commit }]
+                    })
+                ]
+            }),
+            "app"
+        );
+        const [result] = log.runs[0].results;
+        expect(result.locations[0].physicalLocation).toEqual({ artifactLocation: { uri: "src/config.ts", uriBaseId: "%SRCROOT%" } });
+        expect(result.message.text).toContain("in git history at c2bdcacd");
+    });
+
     it("marks a draft's run, and each result the auditor has not reviewed yet, in its message as well as its properties", () => {
         const log = sarif(
             reportData({
