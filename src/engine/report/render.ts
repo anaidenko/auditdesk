@@ -168,6 +168,9 @@ export function escapeHtml(s: string): string {
 
 const e = escapeHtml;
 
+/** A link out of the report opens beside it, so a reader keeps their place in a long file. */
+const out = (href: string, html: string) => `<a href="${e(href)}" target="_blank" rel="noopener noreferrer">${html}</a>`;
+
 // The client's report says which terms their code went under (plan, Decision for Andrii 3).
 const ACCESS_TEXT: Record<ModelAccess, string> = {
     api_key: "the Claude API, under Anthropic's Commercial Terms",
@@ -303,7 +306,7 @@ function finding(f: ReportFinding, manyRepos: boolean): string {
                 : "agreed to fix after sign-off"
             : null;
     const meta = [manyRepos ? f.repository : null, f.aspect, f.checklistItem, effortText(f), call].filter(Boolean).join(" · ");
-    const link = (r: Ref) => (r.url ? `<a href="${e(r.url)}">${e(r.label)}</a>` : e(r.label));
+    const link = (r: Ref) => (r.url ? out(r.url, e(r.label)) : e(r.label));
     const R = f.refs;
     const refs = R
         ? [
@@ -415,7 +418,7 @@ ${manyRepos ? `<label>Repository <select name="repo">${option("", "All")}${names
     const tiles = SEVERITIES.map(s => `<div class="tile ${s}${count(s) ? "" : " zero"}"><b>${count(s)}</b><span>${s}</span></div>`).join(
         ""
     );
-    const link = (href: string | null | undefined, html: string) => (href ? `<a href="${e(href)}">${html}</a>` : html);
+    const link = (href: string | null | undefined, html: string) => (href ? out(href, html) : html);
     const repos = d.repositories
         .map(
             r =>
@@ -522,7 +525,7 @@ ${d.repositories
             `<li>Not covered in ${e(r.name)}: ${e(r.notCovered.join("; "))}. The audit covers JavaScript and TypeScript; these were not analysed.</li>`
     )
     .join("\n")}
-${d.methodUrl ? `<li>More on the method: <a href="${e(d.methodUrl)}">${e(d.methodUrl.replace(/^https?:\/\//, "").replace(/\/$/, ""))}</a>.</li>` : ""}
+${d.methodUrl ? `<li>More on the method: ${out(d.methodUrl, e(d.methodUrl.replace(/^https?:\/\//, "").replace(/\/$/, "")))}.</li>` : ""}
 </ul>
 </section>
 

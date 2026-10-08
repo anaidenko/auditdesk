@@ -171,7 +171,7 @@ describe("renderReport", () => {
     });
 
     it("links the auditor's name to their page, on the cover and at the end, and only when there is one", () => {
-        const link = '<a href="https://naidenko.dev/">Andrii Naidenko</a>';
+        const link = '<a href="https://naidenko.dev/" target="_blank" rel="noopener noreferrer">Andrii Naidenko</a>';
         const html = renderReport(data({ auditorUrl: "https://naidenko.dev/" }));
         expect(between(html, '<header class="cover"', "</header>")).toContain(link);
         expect(between(html, '<p class="colophon">', "</p>")).toContain(link);
@@ -200,11 +200,54 @@ describe("renderReport", () => {
             })
         );
         const repos = between(html, '<div class="repos">', "</div>");
-        expect(repos).toContain('<a href="https://github.com/acme/app">acme/app</a>');
-        expect(repos).toContain('<a href="https://github.com/acme/app/tree/main">main</a>');
-        expect(repos).toContain(`<a href="https://github.com/acme/app/commit/${sha}"><code>0123456789</code></a>`);
+        expect(repos).toContain('<a href="https://github.com/acme/app" target="_blank" rel="noopener noreferrer">acme/app</a>');
+        expect(repos).toContain('<a href="https://github.com/acme/app/tree/main" target="_blank" rel="noopener noreferrer">main</a>');
+        expect(repos).toContain(
+            `<a href="https://github.com/acme/app/commit/${sha}" target="_blank" rel="noopener noreferrer"><code>0123456789</code></a>`
+        );
         expect(repos).toContain("<li>web <span");
         expect(repos.match(/<a /g)).toHaveLength(3);
+    });
+
+    it("opens every link that leaves the report in a new tab, and keeps the in-page links in the report", () => {
+        const sha = "0123456789abcdef0123456789abcdef01234567";
+        const html = renderReport(
+            data({
+                auditorUrl: "https://naidenko.dev/",
+                methodUrl: "https://naidenko.dev/audit",
+                repositories: [
+                    {
+                        name: "acme/app",
+                        branch: "main",
+                        sha,
+                        notCovered: [],
+                        links: {
+                            repo: "https://github.com/acme/app",
+                            branch: "https://github.com/acme/app/tree/main",
+                            commit: `https://github.com/acme/app/commit/${sha}`
+                        }
+                    }
+                ],
+                findings: [
+                    finding({
+                        refs: {
+                            top10: null,
+                            cwe: { label: "CWE-862", url: "https://cwe.mitre.org/data/definitions/862.html" },
+                            asvs: [],
+                            cheatsheets: [],
+                            advisories: [],
+                            nist: null,
+                            wcag: []
+                        }
+                    })
+                ]
+            })
+        );
+        const anchors = [...html.matchAll(/<a [^>]*>/g)].map(m => m[0]);
+        const outward = anchors.filter(a => !a.startsWith('<a href="#') && !a.startsWith('<a class="fid" href="#'));
+        expect(outward).toHaveLength(7);
+        for (const a of outward) expect(a).toMatch(/ target="_blank" rel="noopener noreferrer">$/);
+        for (const a of anchors.filter(a => !outward.includes(a))) expect(a).not.toContain("target=");
     });
 
     it("walks through the method: scanners, an agent per aspect, the auditor's review with its tally, then the method in full", () => {
@@ -229,7 +272,7 @@ describe("renderReport", () => {
         expect(method).toContain(
             "The auditor reviewed all 59 findings the scanners and agents filed: 43 are in this report, 10 were merged into others, 5 rejected as wrong and 1 kept out of the report."
         );
-        expect(method).toContain('<a href="https://naidenko.dev/audit">naidenko.dev/audit</a>');
+        expect(method).toContain('<a href="https://naidenko.dev/audit" target="_blank" rel="noopener noreferrer">naidenko.dev/audit</a>');
         expect(method.indexOf("gitleaks")).toBeLessThan(method.indexOf("one agent per aspect"));
         expect(method.indexOf("one agent per aspect")).toBeLessThan(method.indexOf("The auditor reviewed"));
         expect(method.indexOf("The auditor reviewed")).toBeLessThan(method.indexOf("not installed, built or run"));
@@ -563,9 +606,11 @@ describe("renderReport", () => {
         );
         const card = between(html, 'id="F-001"', "</article>");
         expect(card).toMatch(
-            /Relevant to: <a href="https:\/\/owasp\.org\/Top10\/2025\/A01_2025-Broken_Access_Control\/">A01:2025 Broken Access Control<\/a>/
+            /Relevant to: <a href="https:\/\/owasp\.org\/Top10\/2025\/A01_2025-Broken_Access_Control\/" target="_blank" rel="noopener noreferrer">A01:2025 Broken Access Control<\/a>/
         );
-        expect(card).toContain('<a href="https://cwe.mitre.org/data/definitions/862.html">CWE-862</a>');
+        expect(card).toContain(
+            '<a href="https://cwe.mitre.org/data/definitions/862.html" target="_blank" rel="noopener noreferrer">CWE-862</a>'
+        );
         expect(card).toContain("Authorization Cheat Sheet</a>");
         expect(html).not.toMatch(/complian/i);
     });
@@ -600,7 +645,7 @@ describe("renderReport", () => {
             })
         );
         expect(between(html, 'id="F-001"', "</article>")).toContain(
-            'Relevant to: <a href="https://www.w3.org/TR/WCAG22/#non-text-content">WCAG 2.2 SC 1.1.1 Non-text Content (Level A)</a>; <a href="https://www.w3.org/TR/WCAG22/#name-role-value">WCAG 2.2 SC 4.1.2 Name, Role, Value (Level A)</a>.'
+            'Relevant to: <a href="https://www.w3.org/TR/WCAG22/#non-text-content" target="_blank" rel="noopener noreferrer">WCAG 2.2 SC 1.1.1 Non-text Content (Level A)</a>; <a href="https://www.w3.org/TR/WCAG22/#name-role-value" target="_blank" rel="noopener noreferrer">WCAG 2.2 SC 4.1.2 Name, Role, Value (Level A)</a>.'
         );
     });
 
