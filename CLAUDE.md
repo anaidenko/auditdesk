@@ -16,8 +16,8 @@ read-only tools. Setup and commands: README.md.
 ## This project
 
 - A local code-audit workbench. The design and the private reasoning are outside this
-  repository: `../../.claude/plans/2026-10-05-code-audit-tool-design.md` and the build plan
-  next to it. Read the design's section for any area before changing it.
+  repository: `~/Work/andrii/resume/.claude/plans/2026-10-05-code-audit-tool-design.md` and the
+  build plan next to it. Read the design's section for any area before changing it.
 - `src/engine` imports nothing from Next.js (ESLint enforces it): `pnpm eval` runs it bare.
 - Two engines: `src/engine/agent` (Messages API) and `src/engine/sdk` (Agent SDK). Both take an
   `AspectRunner`'s input and return its outcome; change one, check the other. SDK tests spawn
