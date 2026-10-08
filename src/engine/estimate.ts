@@ -91,3 +91,84 @@ export function estimateRun(
               : null;
     return { low, high, text: `About ${money(low)}–${money(high)} for ${plural(agents, "agent", "agents")}, ${from}.`, warning };
 }
+
+/** A reading of the plan's 5-hour window during a run, as a fraction, with its reset when known. */
+export interface PlanReadingAt {
+    utilization: number;
+    resetsAt: Date | null;
+    at: Date;
+}
+
+/**
+ * The points of the 5-hour window a run used, and the API-equivalent dollars of its calls meanwhile.
+ * The readings are split where the window reset (a lower reading, or another reset time); each part
+ * counts from its first reading to its last, with the calls priced after the first up to the last.
+ * Null when no part has two readings or a part holds an unpriced call.
+ */
+export function windowShare(
+    readings: PlanReadingAt[],
+    calls: { costUsd: number | null; at: Date }[]
+): { points: number; usd: number } | null {
+    const parts: PlanReadingAt[][] = [];
+    for (const r of readings) {
+        const last = parts.at(-1)?.at(-1);
+        const reset =
+            !last ||
+            r.utilization < last.utilization ||
+            (!!r.resetsAt && !!last.resetsAt && r.resetsAt.getTime() !== last.resetsAt.getTime());
+        if (reset) parts.push([r]);
+        else parts.at(-1)!.push(r);
+    }
+    let points = 0;
+    let usd = 0;
+    for (const part of parts) {
+        if (part.length < 2) continue;
+        const [first, last] = [part[0], part.at(-1)!];
+        const between = calls.filter(c => c.at > first.at && c.at <= last.at);
+        if (between.some(c => c.costUsd === null)) return null;
+        points += (last.utilization - first.utilization) * 100;
+        usd += between.reduce((s, c) => s + c.costUsd!, 0);
+    }
+    return usd > 0 ? { points, usd } : null;
+}
+
+/** Points of the plan's 5-hour window per API-equivalent dollar, from the runs it was measured on. */
+export interface PlanShareRate {
+    pointsPerUsd: number;
+    runs: number;
+}
+
+export function shareRate(shares: ({ points: number; usd: number } | null)[]): PlanShareRate | null {
+    const known = shares.filter(s => s !== null);
+    const usd = known.reduce((s, x) => s + x.usd, 0);
+    return usd > 0 ? { pointsPerUsd: known.reduce((s, x) => s + x.points, 0) / usd, runs: known.length } : null;
+}
+
+/**
+ * What the estimate would take of the plan's 5-hour window, and, from a reading of the current
+ * window, whether the run may stop at the reserve partway. The rate counts any other use of the
+ * plan in the same window, such as Claude Code, so it leans high.
+ */
+export function forecastPlanShare(
+    estimate: { low: number; high: number },
+    rate: PlanShareRate | null,
+    utilization: number | null,
+    reserve: number
+): { text: string; mayCross: boolean; warning: string | null } {
+    if (!rate)
+        return {
+            text: "Share of the plan's 5-hour window: not measured yet; the first Claude plan run measures it.",
+            mayCross: false,
+            warning: null
+        };
+    const [low, high] = [estimate.low * rate.pointsPerUsd, estimate.high * rate.pointsPerUsd];
+    const span = Math.round(low) === Math.round(high) ? `${Math.round(low)}%` : `${Math.round(low)}–${Math.round(high)}%`;
+    const text = `About ${span} of the plan's 5-hour window${high > 100 ? ", more than one window" : ""}, at ${rate.pointsPerUsd.toFixed(1)}% per API-equivalent dollar from ${rate.runs} past ${rate.runs === 1 ? "run" : "runs"}; other use of the plan in the same window counts in that rate, so it leans high.`;
+    const room = utilization === null ? null : (reserve - utilization) * 100;
+    if (room === null || room < 0 || high <= room) return { text, mayCross: false, warning: null };
+    return {
+        text,
+        mayCross: true,
+        warning: `At ${Math.round(utilization! * 100)}% now, about ${money(room / rate.pointsPerUsd)} of API-equivalent fits under the ${Math.round(reserve * 100)}% reserve: the run ${low > room ? "is likely to" : "may"} stop there partway, and the rest can be re-run after the window resets. Tick the box to let it go past.`
+    };
+}
