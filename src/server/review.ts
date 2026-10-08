@@ -45,9 +45,10 @@ export async function writeIfUnchanged(id: string, read: FindingStatus, data: Pr
     throw new Error("The finding changed meanwhile; reload the page and review it again.");
 }
 
+/** A rejection's or an exclusion's reason goes with it: it would otherwise stand under an accepted finding. */
 export async function accept(id: string) {
     const f = await reviewable(id);
-    await writeIfUnchanged(id, f.status, { status: "accepted" });
+    await writeIfUnchanged(id, f.status, { status: "accepted", statusReason: null });
 }
 
 async function withReason(id: string, status: "rejected" | "excluded", reason: string) {
