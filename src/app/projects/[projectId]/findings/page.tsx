@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 
-import { ActionForm } from "@/app/ActionForm";
+import { ActionForm, SubmitButton } from "@/app/ActionForm";
 import { ReportExport } from "@/app/ReportExport";
 import { acceptAction, confirmRecheckAction, excludeAction, rejectAction } from "@/app/review-actions";
 import { Badge, FindingStatus, Icon, PageHeader, RecheckBadge, SeverityBadge, button, field, input, select } from "@/app/ui";
@@ -18,7 +18,7 @@ function Section({ title, children }: { title: string; children: React.ReactNode
     return (
         <div>
             <div className="text-xs font-medium tracking-wide text-zinc-500 uppercase">{title}</div>
-            <div className="mt-1 text-zinc-800">{children}</div>
+            <div className="mt-1 whitespace-pre-wrap text-zinc-800">{children}</div>
         </div>
     );
 }
@@ -140,11 +140,13 @@ export default async function FindingsPage({
                                         </div>
                                     )}
                                     <Section title="Explanation">
-                                        <span className="whitespace-pre-wrap text-zinc-700">{f.explanation}</span>
+                                        <span className="text-zinc-700">{f.explanation}</span>
                                     </Section>
                                     <div className="rounded-lg bg-emerald-50 px-3.5 py-3 ring-1 ring-emerald-600/15 ring-inset">
                                         <div className="text-xs font-medium tracking-wide text-emerald-800 uppercase">Recommendation</div>
-                                        <p className="mt-1 text-emerald-950">{f.recommendation}</p>
+                                        <p data-testid="recommendation" className="mt-1 whitespace-pre-wrap text-emerald-950">
+                                            {f.recommendation}
+                                        </p>
                                     </div>
                                     {f.statusReason && (
                                         <p className="text-zinc-500">
@@ -171,8 +173,17 @@ export default async function FindingsPage({
                                 </div>
                             </div>
                             <div className="flex flex-wrap items-start gap-2 rounded-b-xl border-t border-zinc-100 bg-zinc-50/70 px-4 py-3">
-                                <ActionForm action={acceptAction.bind(null, f.id)}>
-                                    <button className={`${button.success} ${button.small}`}>Accept</button>
+                                <ActionForm action={acceptAction.bind(null, f.id)} className="flex flex-wrap gap-2">
+                                    <SubmitButton disabled={f.status === "accepted"} className={`${button.success} ${button.small}`}>
+                                        {f.status === "accepted" ? (
+                                            <>
+                                                <Icon name="check" className="size-3.5" />
+                                                Accepted
+                                            </>
+                                        ) : (
+                                            "Accept"
+                                        )}
+                                    </SubmitButton>
                                 </ActionForm>
                                 <ActionForm action={excludeAction.bind(null, f.id)} className="flex flex-wrap gap-2">
                                     <input
@@ -181,7 +192,7 @@ export default async function FindingsPage({
                                         placeholder="Why it stays out of the report"
                                         className={`${field} w-56 py-1.5 text-xs`}
                                     />
-                                    <button className={`${button.secondary} ${button.small}`}>Exclude</button>
+                                    <SubmitButton className={`${button.secondary} ${button.small}`}>Exclude</SubmitButton>
                                 </ActionForm>
                                 <ActionForm action={rejectAction.bind(null, f.id)} className="flex flex-wrap gap-2">
                                     <input
@@ -190,15 +201,18 @@ export default async function FindingsPage({
                                         placeholder="Why it is wrong"
                                         className={`${field} w-48 py-1.5 text-xs`}
                                     />
-                                    <button className={`${button.danger} ${button.small}`}>Reject</button>
+                                    <SubmitButton className={`${button.danger} ${button.small}`}>Reject</SubmitButton>
                                 </ActionForm>
                                 {f.recheck && (
                                     <>
-                                        <ActionForm action={confirmRecheckAction.bind(null, f.id, "fixed")}>
-                                            <button className={`${button.secondary} ${button.small}`}>Verified fixed</button>
+                                        <ActionForm
+                                            action={confirmRecheckAction.bind(null, f.id, "fixed")}
+                                            className="flex flex-wrap gap-2"
+                                        >
+                                            <SubmitButton className={`${button.secondary} ${button.small}`}>Verified fixed</SubmitButton>
                                         </ActionForm>
-                                        <ActionForm action={confirmRecheckAction.bind(null, f.id, "open")}>
-                                            <button className={`${button.secondary} ${button.small}`}>Still open</button>
+                                        <ActionForm action={confirmRecheckAction.bind(null, f.id, "open")} className="flex flex-wrap gap-2">
+                                            <SubmitButton className={`${button.secondary} ${button.small}`}>Still open</SubmitButton>
                                         </ActionForm>
                                     </>
                                 )}

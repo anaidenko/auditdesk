@@ -19,36 +19,36 @@ async function listPath(id: string) {
 const text = (fd: FormData, k: string) => String(fd.get(k) ?? "").trim();
 const optional = (fd: FormData, k: string) => text(fd, k) || null;
 
-/** A refusal (no reason given, a merge target that left the review) comes back as text for the form. */
-async function refusal(work: () => Promise<void>): Promise<FormState> {
+/** A refusal (no reason given, a merge target that left the review) comes back as text for the form; a success, as the notice. */
+async function refusal(work: () => Promise<void>, notice?: string): Promise<FormState> {
     try {
         await work();
-        return { error: null };
+        return { error: null, notice };
     } catch (e) {
         return { error: (e as Error).message };
     }
 }
 
 export async function acceptAction(id: string, _prev: FormState, _fd: FormData): Promise<FormState> {
-    const r = await refusal(() => accept(id));
+    const r = await refusal(() => accept(id), "Accepted: it goes in the report.");
     revalidatePath(await listPath(id));
     return r;
 }
 
 export async function confirmRecheckAction(id: string, status: "fixed" | "open", _prev: FormState, _fd: FormData): Promise<FormState> {
-    const r = await refusal(() => confirmRecheck(id, status));
+    const r = await refusal(() => confirmRecheck(id, status), status === "fixed" ? "Verified fixed." : "Marked still open.");
     revalidatePath(await listPath(id));
     return r;
 }
 
 export async function rejectAction(id: string, _prev: FormState, fd: FormData): Promise<FormState> {
-    const r = await refusal(() => reject(id, text(fd, "reason")));
+    const r = await refusal(() => reject(id, text(fd, "reason")), "Rejected: kept with the reason as eval data.");
     revalidatePath(await listPath(id));
     return r;
 }
 
 export async function excludeAction(id: string, _prev: FormState, fd: FormData): Promise<FormState> {
-    const r = await refusal(() => exclude(id, text(fd, "reason")));
+    const r = await refusal(() => exclude(id, text(fd, "reason")), "Excluded: it stays out of the report.");
     revalidatePath(await listPath(id));
     return r;
 }

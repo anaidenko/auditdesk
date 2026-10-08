@@ -18,3 +18,18 @@
         position-try-fallbacks: flip-inline;
     }
 }
+
+/* A form's notice of what it did: read, then out of the way. */
+@theme {
+    --animate-notice: notice 5s ease-in forwards;
+
+    @keyframes notice {
+        0%,
+        80% {
+            opacity: 1;
+        }
+        100% {
+            opacity: 0;
+        }
+    }
+}
