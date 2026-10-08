@@ -91,3 +91,98 @@ export function estimateRun(
               : null;
     return { low, high, text: `About ${money(low)}–${money(high)} for ${plural(agents, "agent", "agents")}, ${from}.`, warning };
 }
+
+/**
+ * A reading of the plan's 5-hour window during a run, as a fraction, with its reset when known.
+ * `part`: the job it was read in; a re-run is another job of the same run, and the use of the plan
+ * between the two belongs to neither.
+ */
+export interface PlanReadingAt {
+    utilization: number;
+    resetsAt: Date | null;
+    part: string | null;
+    at: Date;
+}
+
+/**
+ * The points of the 5-hour window a run used, and the API-equivalent dollars of its calls meanwhile.
+ * The readings are split where the window reset (a lower reading, or another reset time) and where
+ * another job began. Each part counts from the reading's first change to its last change, with the
+ * calls priced between them: the plan reports a reading when its whole per cent changes, so a part's
+ * first reading falls anywhere within its per cent, and readings after its last change carry
+ * dollars whose points no reading shows. Null when no part
+ * changed twice, or a part holds an unpriced call.
+ */
+export function windowShare(
+    readings: PlanReadingAt[],
+    calls: { costUsd: number | null; at: Date }[]
+): { points: number; usd: number } | null {
+    const parts: PlanReadingAt[][] = [];
+    for (const r of readings) {
+        const last = parts.at(-1)?.at(-1);
+        const split =
+            !last ||
+            r.part !== last.part ||
+            r.utilization < last.utilization ||
+            (!!r.resetsAt && !!last.resetsAt && r.resetsAt.getTime() !== last.resetsAt.getTime());
+        if (split) parts.push([r]);
+        else parts.at(-1)!.push(r);
+    }
+    let points = 0;
+    let usd = 0;
+    for (const part of parts) {
+        const first = part.find(r => r.utilization > part[0].utilization);
+        // The last change, not the last reading: the dollars after it used points no reading shows.
+        const last = part.findLast((r, i) => i > 0 && r.utilization > part[i - 1].utilization);
+        if (!first || !last || last.utilization <= first.utilization) continue;
+        const between = calls.filter(c => c.at > first.at && c.at <= last.at);
+        if (between.some(c => c.costUsd === null)) return null;
+        points += (last.utilization - first.utilization) * 100;
+        usd += between.reduce((s, c) => s + c.costUsd!, 0);
+    }
+    return usd > 0 ? { points, usd } : null;
+}
+
+/** Points of the plan's 5-hour window per API-equivalent dollar, from the runs it was measured on. */
+export interface PlanShareRate {
+    pointsPerUsd: number;
+    runs: number;
+}
+
+export function shareRate(shares: ({ points: number; usd: number } | null)[]): PlanShareRate | null {
+    const known = shares.filter(s => s !== null);
+    const usd = known.reduce((s, x) => s + x.usd, 0);
+    return usd > 0 ? { pointsPerUsd: known.reduce((s, x) => s + x.points, 0) / usd, runs: known.length } : null;
+}
+
+/**
+ * What the estimate would take of the plan's 5-hour window, as far as the dollar cap lets the run
+ * spend, and, from the last reading while its window lasts, whether the run may stop at the reserve
+ * partway. The rate counts any other use of the plan in the same window, such as Claude Code, so it
+ * leans high.
+ */
+export function forecastPlanShare(
+    estimate: { low: number; high: number },
+    rate: PlanShareRate | null,
+    reading: { utilization: number; seen: string } | null,
+    reserve: number,
+    capUsd: number
+): { text: string; mayCross: boolean; warning: string | null } {
+    if (!rate)
+        return {
+            text: "Share of the plan's 5-hour window: not measured yet; a Claude plan run that moves the window's reading by two points or more measures it.",
+            mayCross: false,
+            warning: null
+        };
+    const capped = capUsd < estimate.high;
+    const [low, high] = [Math.min(estimate.low, capUsd) * rate.pointsPerUsd, Math.min(estimate.high, capUsd) * rate.pointsPerUsd];
+    const span = Math.round(low) === Math.round(high) ? `${Math.round(low)}%` : `${Math.round(low)}–${Math.round(high)}%`;
+    const text = `About ${span} of the plan's 5-hour window${capped ? `, as far as the ${money(capUsd)} cap allows` : ""}${high > 100 ? ", more than one window" : ""}, at ${rate.pointsPerUsd.toFixed(1)}% per API-equivalent dollar from ${rate.runs} past ${rate.runs === 1 ? "run" : "runs"}; other use of the plan in the same window counts in that rate, so it leans high.`;
+    const room = reading === null ? null : (reserve - reading.utilization) * 100;
+    if (room === null || room < 0 || high <= room) return { text, mayCross: false, warning: null };
+    return {
+        text,
+        mayCross: true,
+        warning: `At ${Math.round(reading!.utilization * 100)}% when last read (${reading!.seen}), about ${money(room / rate.pointsPerUsd)} of API-equivalent fits under the ${Math.round(reserve * 100)}% reserve: the run ${low > room ? "is likely to" : "may"} stop there partway, and the rest can be re-run after the window resets. Tick the box to let it go past.`
+    };
+}

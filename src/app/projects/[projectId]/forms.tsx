@@ -18,7 +18,7 @@ import { ACCESS_LABEL } from "@/app/model-access";
 import { Badge, FormError, Icon, button, input, label, select } from "@/app/ui";
 import { DEFAULT_EFFORT, DEFAULT_MODEL, type Effort } from "@/engine/agent/request";
 import { ASPECTS, agentCount } from "@/engine/aspects";
-import { type CostStats, estimateRun, pickStats } from "@/engine/estimate";
+import { type CostStats, type PlanShareRate, estimateRun, forecastPlanShare, pickStats } from "@/engine/estimate";
 import { EFFORTS, MODEL_CHOICES } from "@/engine/models";
 import type { ModelAccess } from "@/engine/types";
 
@@ -61,8 +61,17 @@ export function StartRunForm({
     chosen: string[];
     /** Conditional aspects the repositories' stacks call for, ticked too. */
     suggested: string[];
-    /** Claude plan only: the last 5-hour reading, and whether it is past the reserve. */
-    planUsage: { line: string; overReserve: boolean } | null;
+    /**
+     * Claude plan only: the last 5-hour reading's line and whether it is past the reserve, the
+     * reading itself while its window lasts, the reserve, and the window's share per dollar measured.
+     */
+    planUsage: {
+        line: string;
+        overReserve: boolean;
+        reading: { utilization: number; seen: string } | null;
+        reserve: number;
+        rate: PlanShareRate | null;
+    } | null;
 }) {
     const [state, action, pending] = useActionState<FormState<RunValues>, FormData>(startRun.bind(null, projectId), { error: null });
     const ticked = (key: string) => key === "security" || (state.values?.aspects ?? [...chosen, ...suggested]).includes(key);
@@ -102,6 +111,8 @@ export function StartRunForm({
     }, [chosen, suggested, repositories, state]);
     const picked = pickStats(costStats, live.model, live.effort);
     const estimate = repositories ? estimateRun(picked.stats, agentCount(repositories, live.aspects), live.usd, picked.basis) : null;
+    const share =
+        planUsage && estimate ? forecastPlanShare(estimate, planUsage.rate, planUsage.reading, planUsage.reserve, live.usd) : null;
     return (
         // Remounted with what a refused start held, since React resets a form after its action.
         <form
@@ -191,10 +202,12 @@ export function StartRunForm({
             {planUsage && (
                 <div className="space-y-2 text-xs text-zinc-600">
                     <p data-testid="plan-usage">{planUsage.line}</p>
-                    {(planUsage.overReserve || state.askReserve) && (
+                    {share && <p data-testid="plan-share">{share.text}</p>}
+                    {share?.warning && <p className="font-medium text-amber-800">{share.warning}</p>}
+                    {(planUsage.overReserve || state.askReserve || share?.mayCross) && (
                         <label className="flex items-center gap-2 font-medium text-amber-800">
                             <input type="checkbox" name="allowPastReserve" className="size-4 rounded border-zinc-300 accent-amber-600" />
-                            Allow past the 50% reserve
+                            Allow past the {Math.round(planUsage.reserve * 100)}% reserve
                         </label>
                     )}
                 </div>

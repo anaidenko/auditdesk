@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { BASELINE_USD, costStats, estimateRun, pickStats } from "./estimate";
+import { BASELINE_USD, costStats, estimateRun, forecastPlanShare, pickStats, shareRate, windowShare } from "./estimate";
 import { MODEL_CHOICES } from "./models";
 
 describe("costStats", () => {
@@ -76,5 +76,138 @@ describe("pickStats", () => {
         const picked = pickStats({}, "claude-opus-5-5", "max");
         expect(picked.basis).toEqual({ guess: "claude-opus-5-5" });
         expect(picked.stats).toMatchObject({ samples: 0, low: 0.22, high: 2.2 });
+    });
+});
+
+describe("windowShare", () => {
+    const at = (minute: number) => new Date(Date.UTC(2026, 9, 8, 7, minute));
+    const reset = new Date(Date.UTC(2026, 9, 8, 12, 20));
+    const reading = (minute: number, utilization: number, o: { resetsAt?: Date | null; part?: string | null } = {}) => ({
+        utilization,
+        resetsAt: o.resetsAt === undefined ? reset : o.resetsAt,
+        part: o.part ?? null,
+        at: at(minute)
+    });
+    const call = (minute: number, costUsd: number | null) => ({ costUsd, at: at(minute) });
+
+    it("counts from the reading's first change to its last, with the calls priced between them", () => {
+        // The first reading falls anywhere within its per cent; a change marks a crossing.
+        const share = windowShare(
+            [reading(1, 0.07), reading(2, 0.07), reading(5, 0.08), reading(10, 0.12), reading(30, 0.3)],
+            [call(0, 5), call(3, 1), call(6, 4), call(30, 7), call(31, 9)]
+        );
+        expect(share?.usd).toBe(11);
+        expect(share?.points).toBeCloseTo(22);
+    });
+
+    it("ends a part at the reading's last change, leaving out the dollars after it, whose points it cannot see", () => {
+        const share = windowShare([reading(1, 0.07), reading(2, 0.08), reading(20, 0.3), reading(25, 0.3)], [call(10, 11), call(24, 0.45)]);
+        expect(share?.usd).toBe(11);
+        expect(share?.points).toBeCloseTo(22);
+    });
+
+    it("splits the readings at a lower reading, at another reset time and at another job, and adds the parts", () => {
+        const later = new Date(Date.UTC(2026, 9, 8, 17, 20));
+        const share = windowShare(
+            [
+                reading(1, 0.4),
+                reading(2, 0.41),
+                reading(5, 0.43),
+                // A lower reading: the window reset.
+                reading(10, 0.02, { resetsAt: later }),
+                reading(11, 0.03, { resetsAt: later }),
+                reading(20, 0.05, { resetsAt: later }),
+                // Not lower, but another reset time.
+                reading(40, 0.05, { resetsAt: new Date(Date.UTC(2026, 9, 8, 22, 0)) }),
+                reading(41, 0.06, { resetsAt: new Date(Date.UTC(2026, 9, 8, 22, 0)) }),
+                reading(45, 0.08, { resetsAt: new Date(Date.UTC(2026, 9, 8, 22, 0)) })
+            ],
+            [call(3, 1), call(15, 1), call(30, 50), call(43, 0.5)]
+        );
+        expect(share?.usd).toBe(2.5);
+        expect(share?.points).toBeCloseTo(6);
+    });
+
+    it("keeps a re-run's readings apart from its run's, so the use in between is not counted", () => {
+        const share = windowShare(
+            [
+                reading(1, 0.07, { part: "job-1" }),
+                reading(2, 0.08, { part: "job-1" }),
+                reading(9, 0.3, { part: "job-1" }),
+                reading(50, 0.45, { part: "job-2" }),
+                reading(51, 0.46, { part: "job-2" })
+            ],
+            [call(5, 11.13), call(51, 0.4)]
+        );
+        expect(share?.usd).toBe(11.13);
+        expect(share?.points).toBeCloseTo(22);
+    });
+
+    it("leaves out a run whose reading did not change twice in one part, and one with an unpriced call in a part", () => {
+        expect(windowShare([reading(1, 0.59)], [call(2, 0.1)])).toBeNull();
+        expect(windowShare([reading(1, 0.02), reading(5, 0.03)], [call(3, 0.07)])).toBeNull();
+        expect(windowShare([reading(1, 0.1), reading(2, 0.11), reading(9, 0.2)], [call(5, null)])).toBeNull();
+    });
+});
+
+describe("shareRate", () => {
+    it("weighs each run by its dollars and counts the runs it learnt from", () => {
+        const rate = shareRate([{ points: 1, usd: 0.07 }, null, { points: 9, usd: 3.49 }, { points: 23, usd: 11.13 }]);
+        expect(rate?.runs).toBe(3);
+        expect(rate?.pointsPerUsd).toBeCloseTo(33 / 14.69, 10);
+        expect(shareRate([null])).toBeNull();
+    });
+});
+
+describe("forecastPlanShare", () => {
+    const rate = { pointsPerUsd: 2.25, runs: 3 };
+    const at = (utilization: number) => ({ utilization, seen: "8 Oct, 17:53" });
+
+    it("says the window's share is not measured before a plan run moved the reading twice", () => {
+        expect(forecastPlanShare({ low: 9, high: 16 }, null, at(0.3), 0.5, 33)).toEqual({
+            text: "Share of the plan's 5-hour window: not measured yet; a Claude plan run that moves the window's reading by two points or more measures it.",
+            mayCross: false,
+            warning: null
+        });
+    });
+
+    it("multiplies the estimate by the measured rate, and says the rate leans high", () => {
+        const f = forecastPlanShare({ low: 9, high: 16 }, rate, null, 0.5, 33);
+        expect(f.text).toBe(
+            "About 20–36% of the plan's 5-hour window, at 2.3% per API-equivalent dollar from 3 past runs; other use of the plan in the same window counts in that rate, so it leans high."
+        );
+        expect(f).toMatchObject({ mayCross: false, warning: null });
+    });
+
+    it("says when the high end would take more than one window", () => {
+        expect(forecastPlanShare({ low: 6.66, high: 68.84 }, { pointsPerUsd: 2.25, runs: 1 }, null, 0.5, 100).text).toMatch(
+            /^About 15–155% of the plan's 5-hour window, more than one window, at 2\.3% per API-equivalent dollar from 1 past run;/
+        );
+    });
+
+    it("stops at the dollar cap, since no run spends past it", () => {
+        const f = forecastPlanShare({ low: 6.66, high: 68.84 }, rate, at(0.2), 0.5, 10);
+        expect(f.text).toMatch(/^About 15–23% of the plan's 5-hour window, as far as the \$10\.00 cap allows, at 2\.3%/);
+        expect(f).toMatchObject({ mayCross: false, warning: null });
+        expect(forecastPlanShare({ low: 12, high: 20 }, rate, at(0.3), 0.5, 10).warning).toMatch(/the run is likely to stop there partway/);
+    });
+
+    it("warns that the run may stop at the reserve partway when its high end does not fit in the room left at the last reading", () => {
+        expect(forecastPlanShare({ low: 6, high: 12 }, rate, at(0.3), 0.5, 33)).toMatchObject({
+            mayCross: true,
+            warning:
+                "At 30% when last read (8 Oct, 17:53), about $8.89 of API-equivalent fits under the 50% reserve: the run may stop there partway, and the rest can be re-run after the window resets. Tick the box to let it go past."
+        });
+        expect(forecastPlanShare({ low: 10, high: 12 }, rate, at(0.3), 0.5, 33).warning).toMatch(/the run is likely to stop there partway/);
+        expect(forecastPlanShare({ low: 2, high: 8 }, rate, at(0.3), 0.5, 33)).toMatchObject({ mayCross: false, warning: null });
+    });
+
+    it("names the reserve it was given, and says nothing of the room when the last reading's window has reset", () => {
+        expect(forecastPlanShare({ low: 6, high: 40 }, rate, at(0.3), 0.8, 50).warning).toMatch(/under the 80% reserve/);
+        expect(forecastPlanShare({ low: 6, high: 40 }, rate, null, 0.5, 50)).toMatchObject({ mayCross: false, warning: null });
+    });
+
+    it("leaves a reading already past the reserve to the refusal the form shows", () => {
+        expect(forecastPlanShare({ low: 6, high: 40 }, rate, at(0.62), 0.5, 50)).toMatchObject({ mayCross: false, warning: null });
     });
 });

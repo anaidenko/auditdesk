@@ -6,9 +6,9 @@ import { ReportExport } from "@/app/ReportExport";
 import { deleteProject, removeRepository, setBranch, setConsent } from "@/app/actions";
 import { Badge, Card, Icon, PageHeader, RunStatus, button, field } from "@/app/ui";
 import { credentialStatus } from "@/engine/credentials";
-import { overReserve, planUsageLine, readPlanUsage } from "@/engine/plan-usage";
+import { PLAN_RESERVE, clock, overReserve, planUsageLine, readPlanUsage } from "@/engine/plan-usage";
 import { type StackProfile, stackProfileText, suggestionsFor } from "@/engine/stack";
-import { agentCostStats } from "@/server/estimate";
+import { agentCostStats, planShareRate } from "@/server/estimate";
 import { getProject } from "@/server/queries";
 
 import { ModelAccessCard } from "./ModelAccess";
@@ -25,7 +25,16 @@ export default async function ProjectPage({ params }: { params: Promise<{ projec
     const defaults = { usd: Number(process.env.DEFAULT_BUDGET_USD ?? 10), tokens: Number(process.env.DEFAULT_BUDGET_TOKENS ?? 400000) };
     const active = project.runs.some(r => r.status === "queued" || r.status === "running");
     const usage = project.modelAccess === "claude_plan" ? await readPlanUsage() : null;
-    const planUsage = project.modelAccess === "claude_plan" ? { line: planUsageLine(usage), overReserve: overReserve(usage) } : null;
+    const planUsage =
+        project.modelAccess === "claude_plan"
+            ? {
+                  line: planUsageLine(usage),
+                  overReserve: overReserve(usage),
+                  reading: usage ? { utilization: usage.utilization, seen: clock(usage.seenAt) } : null,
+                  reserve: PLAN_RESERVE,
+                  rate: await planShareRate()
+              }
+            : null;
     const stackOf = (r: { stack: unknown }) => (r.stack ? (r.stack as StackProfile) : null);
     // A suggestion ticks an aspect only when its detection is newer than the last run, so an aspect
     // Andrii left out of that run is not ticked again by the run's own detection.
