@@ -43,6 +43,15 @@ section,.toc{margin-top:3rem}
 .tile b{display:block;font-size:1.75rem;line-height:1.1;font-variant-numeric:tabular-nums}
 .tile span{font-size:.75rem;font-weight:600;letter-spacing:.05em;text-transform:uppercase}
 .tile.zero{background:transparent;border-color:var(--line)}.tile.zero b,.tile.zero span{color:var(--muted)}
+.sums{display:grid;grid-template-columns:repeat(auto-fit,minmax(9rem,1fr));gap:.6rem;margin:.6rem 0}
+.sum{border:1px solid var(--line);border-radius:10px;padding:.7rem .9rem;background:var(--wash)}
+.sum b{display:block;font-size:1.45rem;line-height:1.15;font-variant-numeric:tabular-nums}.sum b.na{font-size:1rem;color:var(--muted)}
+.sum span{font-size:.72rem;font-weight:600;letter-spacing:.05em;text-transform:uppercase;color:var(--muted)}
+.sum.all{background:#eef2ff;border-color:#e0e7ff}.sum.all b,.sum.all span{color:var(--accent)}
+.sum.zero{background:transparent}.sum.zero b{color:var(--muted)}
+.sizes{list-style:none;display:flex;flex-wrap:wrap;gap:.4rem 1.4rem;padding:0;margin:.8rem 0 .3rem;font-size:.85rem;color:var(--muted)}
+.sizes b{display:inline-grid;place-items:center;min-width:1.45rem;height:1.45rem;margin-right:.3rem;border:1px solid var(--line);border-radius:6px;background:var(--wash);color:var(--ink);font-size:.75rem}
+.effort .note{font-size:.82rem}
 .toc ol{margin:0;padding-left:1.2rem}.toc>ol>li{margin:.45rem 0;font-weight:600}
 .toc ul{list-style:none;padding:0;margin:.4rem 0 .7rem;font-weight:400;font-size:.9rem}
 .toc ul li{display:flex;gap:.6rem;align-items:baseline;margin:.25rem 0;break-inside:avoid}
@@ -99,7 +108,7 @@ section#findings,section#questions{margin-top:0;break-before:page}
 h2,h3,h4,summary,figcaption{break-after:avoid}
 .finding{-webkit-box-decoration-break:clone;box-decoration-break:clone}.more[open]>summary .print-only{display:none}
 .finding .title,.finding .lead,.pair,.callout,figure{break-inside:avoid}.finding .title,.finding .meta{break-after:avoid}.rest{display:none}
-.risks li,.gaps li{break-inside:avoid}
+.risks li,.gaps li,.effort{break-inside:avoid}
 a{color:inherit}
 }
 `;
@@ -251,43 +260,49 @@ document.addEventListener("click",ev=>{if(ev.defaultPrevented||ev.button||ev.met
 const a=ev.target.closest&&ev.target.closest('a[href^="#"]');if(a)reveal(decodeURIComponent(a.getAttribute("href").slice(1)))});
 window.addEventListener("hashchange",fromHash);fromHash();label();})();`;
 
-/** The effort line: findings counted by size, or their hours totalled per list when the export includes them. */
-function effortSummary(fixFirst: ReportFinding[], canWait: ReportFinding[], hours: boolean): string | null {
-    const all = [...fixFirst, ...canWait];
-    if (!all.length) return null;
-    const unsized = all.filter(f => !f.effort && !f.effortHours);
-    if (unsized.length === all.length) return "Effort: not estimated.";
-    if (!hours) {
-        const counts = SIZES.map(s => [all.filter(f => f.effort === s.size).length, s.size] as const).filter(([n]) => n);
-        const parts = counts.map(([n, size], i) => `${i ? n : plural(n, "finding", "findings")} sized ${size}`);
-        return `Estimated effort: ${listed([...parts, ...(unsized.length ? [`${unsized.length} not sized`] : [])])}.`;
-    }
-    const groups = (
-        [
-            ["to fix before sign-off", fixFirst],
-            ["for what can wait", canWait]
-        ] as const
-    )
-        .filter(([, list]) => list.length)
-        .map(([what, list]) => {
-            const total = totalHours(list);
-            return { what, total, sized: list.length > total.unsized };
-        });
-    return (
-        `Estimated effort: ${groups.map(g => (g.sized ? `${formatTotal(g.total)} ${g.what}` : `no estimate ${g.what}`)).join(" and ")}` +
-        (groups.filter(g => g.sized).length > 1 ? `, ${formatTotal(totalHours(all))} in all` : "") +
-        "." +
-        (unsized.length ? ` Not sized, so left out of the totals: ${listed(unsized.map(f => f.label))}.` : "")
-    );
-}
+const tile = (figure: string, label: string, cls = "") =>
+    `<div class="sum${cls ? ` ${cls}` : ""}"><b${figure === "not estimated" ? ' class="na"' : ""}>${e(figure)}</b><span>${e(label)}</span></div>`;
 
-/** Whenever a card shows a size, a question's too; with hours, how a size alone counts in the totals. */
-function sizesLegend(findings: ReportFinding[], questions: ReportFinding[], hours: boolean): string | null {
-    if (![...findings, ...questions].some(f => f.effort)) return null;
-    const legend = `Sizes: ${SIZES.map(s => `${s.size} ${s.span}`).join(", ")}.`;
-    return hours && totalHours(findings).bySize
-        ? `${legend} Findings without hours count at the range of their size: ${BY_SIZE_TEXT.join(", ")}.`
-        : legend;
+/**
+ * The summary's effort: tiles of the findings counted by size, or of their hours totalled per list
+ * when the export includes them; then, whenever a card shows a size, a question's too, the sizes'
+ * legend, and with hours how a size alone counts in the totals.
+ */
+function effortBlock(fixFirst: ReportFinding[], canWait: ReportFinding[], questions: ReportFinding[], hours: boolean): string {
+    const all = [...fixFirst, ...canWait];
+    const unsized = all.filter(f => !f.effort && !f.effortHours);
+    const parts: string[] = [];
+    if (all.length && unsized.length === all.length) parts.push(`<p class="muted">Not estimated: no finding has a size.</p>`);
+    else if (all.length && !hours) {
+        const counts = SIZES.map(s => [all.filter(f => f.effort === s.size).length, `sized ${s.size}`] as const).filter(([n]) => n);
+        const shown = [...counts, ...(unsized.length ? [[unsized.length, "not sized"] as const] : [])];
+        parts.push(
+            `<div class="sums">${shown.map(([n, label]) => tile(String(n), label, label === "not sized" ? "zero" : "")).join("")}</div>`
+        );
+    } else if (all.length) {
+        const groups = (
+            [
+                ["Fix before sign-off", fixFirst],
+                ["Can wait", canWait]
+            ] as const
+        )
+            .filter(([, list]) => list.length)
+            .map(([what, list]) => {
+                const total = totalHours(list);
+                return { what, total, sized: list.length > total.unsized };
+            });
+        const sums = groups.map(g => tile(g.sized ? formatTotal(g.total) : "not estimated", g.what));
+        if (groups.filter(g => g.sized).length > 1) sums.push(tile(formatTotal(totalHours(all)), "In all", "all"));
+        parts.push(`<div class="sums">${sums.join("")}</div>`);
+        if (unsized.length)
+            parts.push(`<p class="muted">Not sized, so left out of the totals: ${e(listed(unsized.map(f => f.label)))}.</p>`);
+    }
+    if ([...all, ...questions].some(f => f.effort)) {
+        parts.push(`<ul class="sizes">${SIZES.map(s => `<li><b>${s.size}</b> ${e(s.span)}</li>`).join("")}</ul>`);
+        if (hours && totalHours(all).bySize)
+            parts.push(`<p class="muted note">Findings without hours count at the range of their size: ${e(BY_SIZE_TEXT.join(", "))}.</p>`);
+    }
+    return parts.length ? `<div class="effort"><h3>Estimated effort</h3>\n${parts.join("\n")}\n</div>` : "";
 }
 
 /** The model calls' cost: billed dollars and the plan's API-equivalent ones never added together. */
@@ -412,8 +427,7 @@ export function renderReport(d: ReportData): string {
         list.length
             ? `<ul class="risks">${list.map(f => `<li>${badge(f)}<a class="fid" href="#${e(f.label)}">${e(f.label)}</a><span>${e(f.title)}${unreviewed(f)}</span><span class="aside">${e(aside(f))}</span></li>`).join("")}</ul>`
             : `<p class="muted">${e(none)}</p>`;
-    const effortLine = effortSummary(fixFirst, canWait, d.hours);
-    const legend = sizesLegend(findings, d.questions, d.hours);
+    const effort = effortBlock(fixFirst, canWait, d.questions, d.hours);
     const titleList = (list: ReportFinding[]) =>
         list.length
             ? `<ul>${list.map(f => `<li>${badge(f)}<a class="fid" href="#${e(f.label)}">${e(f.label)}</a><span>${e(f.title)}${unreviewed(f)}</span></li>`).join("")}</ul>`
@@ -535,8 +549,7 @@ ${riskList(fixFirst, "Nothing needs fixing before sign-off.")}
 ${canWait.length ? `<p class="muted">Still to fix, after sign-off.</p>` : ""}
 ${riskList(canWait, "Nothing else was found.")}
 ${d.questions.length ? `<p>${d.questions.length === 1 ? "1 open question needs the team's answer." : `${d.questions.length} open questions need the team's answers.`}</p>` : ""}
-${effortLine ? `<p>${e(effortLine)}</p>` : ""}
-${legend ? `<p class="muted">${e(legend)}</p>` : ""}
+${effort}
 </section>
 ${since(d, findings)}
 

@@ -165,8 +165,9 @@ problem in other code is filed again.
 One self-contained HTML file, opening offline, and a PDF of the same document: a cover with the
 auditor (linked by `AUDITOR_URL`), each repository's branch and commit (linked when it was cloned
 from GitHub, GitLab or Bitbucket) and the severity counts, a summary (what to fix before sign-off and what can wait, one line per finding
-with its aspect and effort, the estimated effort and a legend of the sizes; the hours, on each
-finding and totalled per list as a range, only when the auditor ticks them at export), scope and method (each aspect's coverage
+with its aspect and effort, the estimated effort as tiles, findings counted by size, and a legend
+of the sizes; the hours, on each finding and totalled per list and in all as ranges, only when the
+auditor ticks them at export), scope and method (each aspect's coverage
 in a line, the items not fully examined, the steps that ran, what the review made of the findings
 filed, what was not run or not covered, and the method in full when `AUDIT_METHOD_URL` names it),
 each finding as a card,
