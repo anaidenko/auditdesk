@@ -1,5 +1,5 @@
 import { renderReport } from "@/engine/report/render";
-import { keepReportCopy, loadReportData, reportFileName } from "@/server/report";
+import { exportOptions, keepReportCopy, loadReportData, reportFileName } from "@/server/report";
 
 export const dynamic = "force-dynamic";
 
@@ -9,8 +9,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ proj
     // request could not read the report, but it would still write a copy.
     if (request.headers.get("sec-fetch-site") === "cross-site") return new Response("Cross-site request refused", { status: 403 });
     const { projectId } = await params;
-    const query = new URL(request.url).searchParams;
-    const data = await loadReportData(projectId, { includeCost: query.get("cost") === "1", draft: query.get("draft") === "1" });
+    const data = await loadReportData(projectId, exportOptions(request.url));
     const html = renderReport(data);
     const name = reportFileName(data, "html");
     await keepReportCopy(projectId, name, html);

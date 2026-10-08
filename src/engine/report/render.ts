@@ -1,5 +1,6 @@
 import { SEAMS, aspectTitle } from "../aspects";
 import { limitedReview } from "../coverage";
+import { BY_SIZE_TEXT, SIZES, formatHours, formatTotal, totalHours } from "../effort";
 import { compareFindings } from "../findings";
 import type { Ref } from "../references";
 import { shortSha } from "../short-sha";
@@ -182,7 +183,7 @@ const ACCESS_TEXT: Record<ModelAccess, string> = {
 const severityOf = (f: ReportFinding) => f.severity ?? "question";
 const badge = (f: ReportFinding) => `<span class="badge ${e(severityOf(f))}">${e(severityOf(f))}</span>`;
 const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
-const effortText = (f: ReportFinding) => (f.effort ? `effort ${f.effort}${f.effortHours != null ? ` (${f.effortHours} h)` : ""}` : null);
+const effortText = (f: ReportFinding) => (f.effort ? `effort ${f.effort}${f.effortHours ? ` (${formatHours(f.effortHours)})` : ""}` : null);
 
 /** The lines of an excerpt a printout shows; the HTML keeps them all. */
 const PRINT_LINES = 12;
@@ -250,33 +251,43 @@ document.addEventListener("click",ev=>{if(ev.defaultPrevented||ev.button||ev.met
 const a=ev.target.closest&&ev.target.closest('a[href^="#"]');if(a)reveal(decodeURIComponent(a.getAttribute("href").slice(1)))});
 window.addEventListener("hashchange",fromHash);fromHash();label();})();`;
 
-const SIZES = [
-    ["S", "small", "under 2 hours"],
-    ["M", "medium", "under 2 days"],
-    ["L", "large", "over 2 days"]
-] as const;
+/** The effort line: findings counted by size, or their hours totalled per list when the export includes them. */
+function effortSummary(fixFirst: ReportFinding[], canWait: ReportFinding[], hours: boolean): string | null {
+    const all = [...fixFirst, ...canWait];
+    if (!all.length) return null;
+    const unsized = all.filter(f => !f.effort && !f.effortHours);
+    if (unsized.length === all.length) return "Effort: not estimated.";
+    if (!hours) {
+        const counts = SIZES.map(s => [all.filter(f => f.effort === s.size).length, s.size] as const).filter(([n]) => n);
+        const parts = counts.map(([n, size], i) => `${i ? n : plural(n, "finding", "findings")} sized ${size}`);
+        return `Estimated effort: ${listed([...parts, ...(unsized.length ? [`${unsized.length} not sized`] : [])])}.`;
+    }
+    const groups = (
+        [
+            ["to fix before sign-off", fixFirst],
+            ["for what can wait", canWait]
+        ] as const
+    )
+        .filter(([, list]) => list.length)
+        .map(([what, list]) => {
+            const total = totalHours(list);
+            return { what, total, sized: list.length > total.unsized };
+        });
+    return (
+        `Estimated effort: ${groups.map(g => (g.sized ? `${formatTotal(g.total)} ${g.what}` : `no estimate ${g.what}`)).join(" and ")}` +
+        (groups.filter(g => g.sized).length > 1 ? `, ${formatTotal(totalHours(all))} in all` : "") +
+        "." +
+        (unsized.length ? ` Not sized, so left out of the totals: ${listed(unsized.map(f => f.label))}.` : "")
+    );
+}
 
-/** The hours Andrii set, added up, and the other findings counted by size. */
-function effortSummary(findings: ReportFinding[]): string | null {
-    if (!findings.length) return null;
-    const estimated = findings.filter(f => f.effortHours != null);
-    const rest = findings.filter(f => f.effortHours == null);
-    const noun = (n: number) => (n === 1 ? "finding" : "findings");
-    const parts = [
-        ...SIZES.map(
-            ([s, size, span]) => [rest.filter(f => f.effort === s).length, (n: number) => `${size} ${noun(n)} (${span})`] as const
-        ),
-        [rest.filter(f => !f.effort).length, (n: number) => `${noun(n)} not sized`] as const
-    ]
-        .filter(([n]) => n > 0)
-        .map(([n, words]) => `${n} ${words(n)}`);
-    if (!estimated.length && parts.length === 1 && rest.every(f => !f.effort)) return "Effort: not estimated.";
-    const list = (xs: string[]) => (xs.length > 1 ? `${xs.slice(0, -1).join(", ")} and ${xs.at(-1)}` : (xs[0] ?? ""));
-    const hours = estimated.reduce((sum, f) => sum + (f.effortHours ?? 0), 0);
-    const head = estimated.length
-        ? `${hours} h for the ${estimated.length === 1 ? "finding" : `${estimated.length} findings`} with hours set`
-        : "";
-    return `Estimated effort: ${head && parts.length ? `${head}, plus ${list(parts)}` : head || list(parts)}.`;
+/** Whenever a card shows a size, a question's too; with hours, how a size alone counts in the totals. */
+function sizesLegend(findings: ReportFinding[], questions: ReportFinding[], hours: boolean): string | null {
+    if (![...findings, ...questions].some(f => f.effort)) return null;
+    const legend = `Sizes: ${SIZES.map(s => `${s.size} ${s.span}`).join(", ")}.`;
+    return hours && totalHours(findings).bySize
+        ? `${legend} Findings without hours count at the range of their size: ${BY_SIZE_TEXT.join(", ")}.`
+        : legend;
 }
 
 /** The model calls' cost: billed dollars and the plan's API-equivalent ones never added together. */
@@ -401,7 +412,8 @@ export function renderReport(d: ReportData): string {
         list.length
             ? `<ul class="risks">${list.map(f => `<li>${badge(f)}<a class="fid" href="#${e(f.label)}">${e(f.label)}</a><span>${e(f.title)}${unreviewed(f)}</span><span class="aside">${e(aside(f))}</span></li>`).join("")}</ul>`
             : `<p class="muted">${e(none)}</p>`;
-    const effortLine = effortSummary(findings);
+    const effortLine = effortSummary(fixFirst, canWait, d.hours);
+    const legend = sizesLegend(findings, d.questions, d.hours);
     const titleList = (list: ReportFinding[]) =>
         list.length
             ? `<ul>${list.map(f => `<li>${badge(f)}<a class="fid" href="#${e(f.label)}">${e(f.label)}</a><span>${e(f.title)}${unreviewed(f)}</span></li>`).join("")}</ul>`
@@ -524,6 +536,7 @@ ${canWait.length ? `<p class="muted">Still to fix, after sign-off.</p>` : ""}
 ${riskList(canWait, "Nothing else was found.")}
 ${d.questions.length ? `<p>${d.questions.length === 1 ? "1 open question needs the team's answer." : `${d.questions.length} open questions need the team's answers.`}</p>` : ""}
 ${effortLine ? `<p>${e(effortLine)}</p>` : ""}
+${legend ? `<p class="muted">${e(legend)}</p>` : ""}
 </section>
 ${since(d, findings)}
 

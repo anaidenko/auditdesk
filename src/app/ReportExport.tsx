@@ -29,8 +29,9 @@ function Option({ id, name, title, note }: { id: string; name: string; title: st
 }
 
 /**
- * The downloads behind one Export button, its options beside them (design § 8): the cost stated only
- * when Andrii ticks it; a draft with what awaits review, marked, for a first look before the review.
+ * The downloads behind one Export button, its options beside them: the findings' hours and the run's
+ * cost stated only when Andrii ticks them (cost: design § 8; hours: § 10); a draft with what awaits
+ * review, marked, for a first look before the review.
  * SARIF is one file per repository, since an upload goes to one; the button's name and value carry
  * it. The panel is a native popover: it closes on Escape or a click outside, with no script.
  */
@@ -87,10 +88,16 @@ export async function ReportExport({ projectId }: { projectId: string }) {
                     <fieldset className="space-y-3">
                         <legend className={`${label} mb-2.5`}>Options</legend>
                         <Option
+                            id={`${panel}-hours`}
+                            name="hours"
+                            title="Include the hours"
+                            note="Each finding's hours and the totals, in the HTML, the PDF and the Issues CSV."
+                        />
+                        <Option
                             id={`${panel}-cost`}
                             name="cost"
-                            title="Include the cost"
-                            note="The model calls' cost, under Technical details."
+                            title="Include the AI cost"
+                            note="What the model calls cost, in the HTML and the PDF."
                         />
                         {parts.length > 0 && (
                             <Option

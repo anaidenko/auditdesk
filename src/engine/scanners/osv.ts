@@ -150,6 +150,7 @@ export function normaliseOsv(pkgs: OsvPackage[], o: { repositoryId: string; loca
                 explanation: p.vulnerabilities.map(v => `${v.id}: ${v.summary}`).join("\n"),
                 recommendation: `Upgrade ${p.name} to a release that fixes these advisories, then re-run the tests.`,
                 effort: "S",
+                effortHours: null,
                 references: { advisories: ids },
                 tags: [],
                 source: "scanner",

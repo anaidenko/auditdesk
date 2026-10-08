@@ -54,6 +54,7 @@ describe("a cross-repository agent's tools", () => {
             explanation: "e",
             recommendation: "r",
             effort: "S",
+            effortHours: null,
             references: {},
             tags: [],
             source: "scanner",
@@ -160,7 +161,7 @@ describe("a cross-repository agent's tools", () => {
             summary: "s",
             explanation: "e",
             recommendation: "r",
-            effort: "S",
+            effort_hours: { low: 1, high: 2 },
             evidence: [
                 { file: "web/src/api.ts", start_line: 1, end_line: 1 },
                 { file: "api/src/routes.ts", start_line: 1, end_line: 1 }

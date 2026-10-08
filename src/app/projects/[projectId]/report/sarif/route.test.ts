@@ -75,6 +75,13 @@ describe("the SARIF and issue exports", () => {
         expect(csv).not.toContain("Not reviewed yet");
     });
 
+    it("gives the hours in the CSV only when the download asks for them", async () => {
+        const id = await project();
+        await prisma.finding.updateMany({ where: { projectId: id, status: "accepted" }, data: { effortHoursLow: 2, effortHoursHigh: 4 } });
+        expect(await (await get(issues, id, "issues")).text()).toContain("**Effort:** S (up to 2 hours)");
+        expect(await (await get(issues, id, "issues?hours=1")).text()).toContain("**Effort:** S (2–4 h)");
+    });
+
     it("serves the same drafts as JSON for pnpm issues:gh", async () => {
         const res = await get(issues, await project(), "issues?format=json");
         expect(res.headers.get("content-type")).toBe("application/json");

@@ -5,6 +5,7 @@ import "server-only";
 import { ASPECTS, SEAMS, aspectTitle } from "@/engine/aspects";
 import { loadChecklist } from "@/engine/checklists";
 import { workspaceDir } from "@/engine/config";
+import { hoursOf } from "@/engine/effort";
 import { findingLabel } from "@/engine/findings";
 import { pathNames } from "@/engine/pipeline";
 import { loadReferences, referencesFor } from "@/engine/references";
@@ -115,11 +116,21 @@ async function reviewTally(projectId: string): Promise<NonNullable<ReportData["r
     return tally;
 }
 
+/** What the export form's boxes asked for: `cost=1`, `hours=1` and `draft=1`. */
+export function exportOptions(url: string): { includeCost: boolean; includeHours: boolean; draft: boolean } {
+    const q = new URL(url).searchParams;
+    return { includeCost: q.get("cost") === "1", includeHours: q.get("hours") === "1", draft: q.get("draft") === "1" };
+}
+
 /**
- * `includeCost`: Andrii ticked the cost at export (design § 8); otherwise the report states none.
- * `draft`: the findings and questions awaiting review go in too, marked, for a first look before it.
+ * `includeCost` and `includeHours`: Andrii ticked them at export (cost: design § 8; hours: § 10);
+ * otherwise the report states no cost, and the effort by size alone. `draft`: the findings and
+ * questions awaiting review go in too, marked, for a first look before the review.
  */
-export async function loadReportData(projectId: string, o: { includeCost?: boolean; draft?: boolean } = {}): Promise<ReportData> {
+export async function loadReportData(
+    projectId: string,
+    o: { includeCost?: boolean; includeHours?: boolean; draft?: boolean } = {}
+): Promise<ReportData> {
     const project = await prisma.project.findUniqueOrThrow({
         where: { id: projectId },
         include: { repositories: { orderBy: { createdAt: "asc" } } }
@@ -140,7 +151,7 @@ export async function loadReportData(projectId: string, o: { includeCost?: boole
         explanation: r.explanation,
         recommendation: r.recommendation,
         effort: r.effort,
-        effortHours: r.effortHours,
+        effortHours: o.includeHours ? hoursOf(r) : null,
         evidence: r.evidence as unknown as Evidence[],
         references: r.references as References,
         repository: names.get(r.repositoryId ?? "") ?? (r.aspect === SEAMS ? aspectTitle(SEAMS) : "—"),
@@ -242,6 +253,7 @@ export async function loadReportData(projectId: string, o: { includeCost?: boole
             toReport
         ),
         questions: rows.filter(r => r.kind === "question").map(toReport),
+        hours: !!o.includeHours,
         cost: o.includeCost
             ? {
                   apiKeyUsd: calls.filter(c => c.run.modelAccess === "api_key").reduce((sum, c) => sum + Number(c.costUsd ?? 0), 0),

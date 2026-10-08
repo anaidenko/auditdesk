@@ -4,7 +4,7 @@ import type { ReportData } from "@/engine/report/types";
 import { EMPTY_STACK } from "@/engine/stack";
 import { prisma } from "@/server/db";
 import { createFinding } from "@/server/findings";
-import { awaitingReview, loadReportData, reportFileName } from "@/server/report";
+import { awaitingReview, exportOptions, loadReportData, reportFileName } from "@/server/report";
 import { resetDb } from "@/test/db";
 import { projectWithRepo, sampleFinding } from "@/test/factories";
 
@@ -405,6 +405,29 @@ describe("the cost in the report", () => {
         const { project } = await projectWithRepo();
         expect((await loadReportData(project.id)).cost).toBeNull();
         expect((await loadReportData(project.id, { includeCost: true })).cost).toEqual({ apiKeyUsd: 0, planUsd: 0, unpriced: 0 });
+    });
+});
+
+describe("the hours in the report", () => {
+    it("reads the three boxes from the export's query", () => {
+        expect(exportOptions("http://127.0.0.1/p/report?hours=1&cost=1&draft=1")).toEqual({
+            includeCost: true,
+            includeHours: true,
+            draft: true
+        });
+        expect(exportOptions("http://127.0.0.1/p/report")).toEqual({ includeCost: false, includeHours: false, draft: false });
+    });
+
+    it("carries each finding's hours only when the export asks for them", async () => {
+        const { project, repo } = await projectWithRepo();
+        const f = await createFinding(project.id, null, sampleFinding(repo.id, { effort: "M", effortHours: { low: 2, high: 4 } }));
+        await prisma.finding.update({ where: { id: f.id }, data: { status: "accepted" } });
+        const without = await loadReportData(project.id);
+        expect(without.hours).toBe(false);
+        expect(without.findings[0]).toMatchObject({ effort: "M", effortHours: null });
+        const withHours = await loadReportData(project.id, { includeHours: true });
+        expect(withHours.hours).toBe(true);
+        expect(withHours.findings[0]).toMatchObject({ effort: "M", effortHours: { low: 2, high: 4 } });
     });
 });
 

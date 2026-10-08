@@ -21,4 +21,14 @@ describe("createFinding", () => {
         const made = await Promise.all(Array.from({ length: 10 }, () => createFinding(p.id, null, sampleFinding(r.id))));
         expect(new Set(made.map(m => m.number)).size).toBe(10);
     });
+
+    it("keeps the agent's hours as a range", async () => {
+        const { project: p, repo: r } = await projectWithRepo();
+        const { id } = await createFinding(p.id, null, sampleFinding(r.id, { effort: "M", effortHours: { low: 2, high: 4 } }));
+        expect(await prisma.finding.findUniqueOrThrow({ where: { id } })).toMatchObject({
+            effort: "M",
+            effortHoursLow: 2,
+            effortHoursHigh: 4
+        });
+    });
 });

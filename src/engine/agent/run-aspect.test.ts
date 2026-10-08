@@ -320,6 +320,23 @@ describe("runAspect", () => {
         expect(sink.findings[0].evidence[0].snippet!.length).toBeLessThan(2100);
     });
 
+    it("files the agent's hours, and sizes the finding by them", async () => {
+        const { sink, run } = await setup([tool("report_finding", finding({ effort_hours: { low: 4, high: 8 } })), finish()]);
+        await run();
+        expect(sink.findings[0]).toMatchObject({ effort: "M", effortHours: { low: 4, high: 8 } });
+    });
+
+    it("returns hours that run backwards to the model as an error it can correct", async () => {
+        const { sink, requests, run } = await setup([
+            tool("report_finding", finding({ effort_hours: { low: 8, high: 4 } })),
+            tool("report_finding", finding()),
+            finish()
+        ]);
+        await run();
+        expect(JSON.stringify(requests[1].body.messages)).toMatch(/The low end of the hours is above the high end/);
+        expect(sink.findings).toHaveLength(1);
+    });
+
     it("files a question without a severity, whatever the model sent", async () => {
         const { sink, run } = await setup([
             tool("report_finding", finding({ kind: "question", severity: "high", evidence: [] })),

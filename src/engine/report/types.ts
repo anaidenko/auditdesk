@@ -1,6 +1,6 @@
 import type { FindingReferences } from "../references";
 import type { ToolVersions } from "../scanners/types";
-import type { Evidence, ModelAccess, References, SeverityName } from "../types";
+import type { Evidence, Hours, ModelAccess, References, SeverityName } from "../types";
 
 import type { RepoLinks } from "./links";
 
@@ -16,7 +16,8 @@ export interface ReportFinding {
     explanation: string;
     recommendation: string;
     effort: string | null;
-    effortHours: number | null;
+    /** Null unless the export includes the hours. */
+    effortHours: Hours | null;
     evidence: Evidence[];
     references: References;
     repository: string;
@@ -65,6 +66,8 @@ export interface ReportData {
     questions: ReportFinding[];
     /** Ticked at export, and something awaits review: the findings and questions include it, marked. */
     draft?: boolean;
+    /** Andrii ticked the hours at export: the cards carry them and the summary totals them. */
+    hours: boolean;
     /** Only when Andrii ticks it at export (design § 8): billed dollars and plan dollars apart. */
     cost: { apiKeyUsd: number; planUsd: number; unpriced: number } | null;
     /** The project's AI-built mode: the report gathers ai-built findings only when it is on (design § 10). */

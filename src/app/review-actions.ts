@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 
 import type { FormState } from "@/app/actions";
+import { hoursFrom } from "@/engine/effort";
 import { readPlanUsage, reserveRefusal } from "@/engine/plan-usage";
 import type { SeverityName } from "@/engine/types";
 import { prisma } from "@/server/db";
@@ -53,7 +54,6 @@ export async function excludeAction(id: string, _prev: FormState, fd: FormData):
 }
 
 export async function editAction(id: string, _prev: FormState, fd: FormData): Promise<FormState> {
-    const hours = optional(fd, "effortHours");
     const r = await refusal(() =>
         edit(id, {
             title: text(fd, "title"),
@@ -64,7 +64,7 @@ export async function editAction(id: string, _prev: FormState, fd: FormData): Pr
             explanation: text(fd, "explanation"),
             recommendation: text(fd, "recommendation"),
             effort: optional(fd, "effort") as "S" | "M" | "L" | null,
-            effortHours: hours ? Number(hours) : null,
+            effortHours: hoursFrom(optional(fd, "effortHoursLow"), optional(fd, "effortHoursHigh")),
             fixBeforeSignoff: { before: true, later: false }[text(fd, "signoff")] ?? null,
             note: optional(fd, "note")
         })
