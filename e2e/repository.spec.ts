@@ -13,7 +13,11 @@ test("a repository added without a branch takes its default one, and its branch 
     await expect(branch).toHaveValue("main");
 
     await branch.fill("release/1.2");
-    await page.getByRole("button", { name: "Save branch" }).click();
+    // The action posts in the background: a reload before its answer renders the branch it replaced.
+    await Promise.all([
+        page.waitForResponse(r => r.request().method() === "POST" && !!r.request().headers()["next-action"]),
+        page.getByRole("button", { name: "Save branch" }).click()
+    ]);
     await page.reload();
     await expect(page.getByLabel("Branch to audit")).toHaveValue("release/1.2");
 
