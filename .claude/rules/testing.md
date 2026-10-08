@@ -27,6 +27,15 @@ paths:
 - **End-to-end tests (Playwright)** run the built app on port 3100 with both replays.
 - **After a click that navigates, `await page.waitForURL(…)` before reading `page.url()`:** a
   `<Link>` click returns before the navigation, and the URL is still the old page's.
+- **Locate a card by its label (`F-005`), never by a state the test changes:** a locator
+  re-resolves on every use, so `filter({ has: getByText("unreviewed") }).nth(3)` names another
+  card once the first is rejected.
+- **A UI change that shows or hides an element in a row checks the row after it hides,** in e2e
+  (two boxes' centres) or a screenshot read in full: `opacity: 0` keeps the element's box, so a
+  faded notice pushed "Edit or merge" to a second line, a gap visible in the first screenshot.
+- **A hydration warning about `caret-color: transparent` comes from a Playwright screenshot**
+  (its default `caret: "hide"`) taken while the page hydrated, not from the app; pass
+  `caret: "initial"` before reading the dev log for real mismatches.
 - **A worktree for unit tests:** `scripts/worktree.sh <branch> <dir>` links `node_modules`,
   generates the Prisma client, which a bare `git worktree add` leaves out (type checks then fail
   with implicit `any` everywhere), and points `.env.test.local` at the worktree's own test
