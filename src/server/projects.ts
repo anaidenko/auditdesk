@@ -1,13 +1,30 @@
 import "server-only";
 
 import { type StackProfile, detectStack, stackProfileText } from "@/engine/stack";
-import { deleteProjectClones, withScratchClone } from "@/engine/workspace";
+import { defaultBranch, deleteProjectClones, isBranchName, withScratchClone } from "@/engine/workspace";
 import type { Prisma } from "@/generated/prisma/client";
 import { prisma } from "@/server/db";
 import { ActiveRunError } from "@/server/jobs";
 
 export async function hasActiveRun(projectId: string): Promise<boolean> {
     return (await prisma.run.count({ where: { projectId, status: { in: ["queued", "running"] } } })) > 0;
+}
+
+/** A branch left empty is the repository's default, read from its HEAD; "main" when the source cannot be read now. */
+export async function createRepository(projectId: string, source: string, branch: string) {
+    return prisma.repository.create({ data: { projectId, source, branch: branch || (await defaultBranch(source)) || "main" } });
+}
+
+/**
+ * The branch the project's next runs clone, changed in place so the repository keeps its findings, IDs
+ * and re-checks: the client may have renamed or deleted the branch the audit began on. Refused during
+ * a run, which clones the branch it started with.
+ */
+export async function setRepositoryBranch(repositoryId: string, branch: string): Promise<void> {
+    if (!isBranchName(branch)) throw new Error(`Not a branch name: ${branch}`);
+    const { projectId } = await prisma.repository.findUniqueOrThrow({ where: { id: repositoryId }, select: { projectId: true } });
+    if (await hasActiveRun(projectId)) throw new ActiveRunError();
+    await prisma.repository.update({ where: { id: repositoryId }, data: { branch } });
 }
 
 /** Refused during a run: the runner reads the clones and writes the run's rows until it ends. */

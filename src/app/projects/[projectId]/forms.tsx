@@ -32,7 +32,7 @@ export function AddRepositoryForm({ projectId }: { projectId: string }) {
                 className={`${input} min-w-64 flex-[3]`}
                 aria-label="Repository URL or path"
             />
-            <input name="branch" placeholder="main" className={`${input} min-w-28 flex-1`} aria-label="Branch" />
+            <input name="branch" placeholder="default branch" className={`${input} min-w-28 flex-1`} aria-label="Branch" />
             <button disabled={pending} className={button.secondary}>
                 Add repository
             </button>

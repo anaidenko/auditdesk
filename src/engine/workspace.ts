@@ -1,6 +1,7 @@
 import { existsSync } from "node:fs";
 import { mkdir, mkdtemp, rename, rm } from "node:fs/promises";
 import { isAbsolute, join } from "node:path";
+import { pathToFileURL } from "node:url";
 
 import { expandHome } from "./config";
 import { git } from "./git";
@@ -16,6 +17,8 @@ export function parseSource(input: string): Source {
 }
 
 const BRANCH = /^(?!-)[\w./-]+$/;
+
+export const isBranchName = (name: string) => BRANCH.test(name);
 
 /**
  * A local path is cloned too, not read in place: uncommitted edits would make the recorded SHA
@@ -37,10 +40,23 @@ export async function cloneRepository(o: {
     const tmp = join(projectDir, `${o.repositoryId}.cloning`);
     await mkdir(projectDir, { recursive: true });
     await rm(tmp, { recursive: true, force: true });
-    await git(["clone", "--quiet", "--no-hardlinks", "--", source.kind === "url" ? source.url : source.path, tmp]);
-    try {
-        await git(["checkout", "--quiet", "-B", o.branch, `origin/${o.branch}`], tmp);
-    } catch {
+    // --no-local: a local repository is read through git's transport, as a remote one is, never by
+    // copying its .git, which a client's archive could have crafted (git's advice for CVE-2024-32004).
+    await git([
+        "clone",
+        "--quiet",
+        ...(source.kind === "path" ? ["--no-local"] : []),
+        "--",
+        source.kind === "url" ? source.url : source.path,
+        tmp
+    ]);
+    // A recorded commit is enough: the client may have merged and deleted the branch it was on since.
+    const branchThere = await git(["rev-parse", "--verify", "--quiet", `refs/remotes/origin/${o.branch}`], tmp).then(
+        () => true,
+        () => false
+    );
+    if (branchThere) await git(["checkout", "--quiet", "-B", o.branch, `origin/${o.branch}`], tmp);
+    else if (!o.sha) {
         await rm(tmp, { recursive: true, force: true });
         throw new Error(`Branch "${o.branch}" was not found in ${o.source}`);
     }
@@ -76,7 +92,7 @@ export async function withScratchClone<T>(
     const dir = await mkdtemp(join(projectDir, "detect-"));
     try {
         // A local path ignores --depth; file:// keeps the clone shallow.
-        const from = source.kind === "url" ? source.url : `file://${source.path}`;
+        const from = source.kind === "url" ? source.url : pathToFileURL(source.path).href;
         await git(["clone", "--quiet", "--depth", "1", "--single-branch", "--branch", o.branch, "--", from, dir]).catch((e: Error) => {
             throw new Error(`Could not clone the branch "${o.branch}": ${e.message.trim().split("\n").pop()}`);
         });
@@ -84,6 +100,14 @@ export async function withScratchClone<T>(
     } finally {
         await rm(dir, { recursive: true, force: true });
     }
+}
+
+/** The branch a repository's HEAD names, read without a clone; null when the source cannot be read. */
+export async function defaultBranch(source: string): Promise<string | null> {
+    const s = parseSource(source);
+    const out = await git(["ls-remote", "--symref", "--", s.kind === "url" ? s.url : s.path, "HEAD"]).catch(() => null);
+    const name = out?.match(/^ref: refs\/heads\/(\S+)\tHEAD$/m)?.[1] ?? null;
+    return name && BRANCH.test(name) ? name : null;
 }
 
 export async function deleteProjectClones(workspaceDir: string, projectId: string): Promise<void> {

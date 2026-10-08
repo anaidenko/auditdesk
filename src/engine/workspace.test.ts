@@ -1,13 +1,13 @@
 import { existsSync } from "node:fs";
-import { mkdtemp, readFile, readdir } from "node:fs/promises";
+import { mkdtemp, readFile, readdir, rename } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { makeRepo } from "@/test/git-repo";
 
 import { git } from "./git";
-import { cloneRepository, deleteProjectClones, parseSource, withScratchClone } from "./workspace";
+import { cloneRepository, defaultBranch, deleteProjectClones, parseSource, withScratchClone } from "./workspace";
 
 async function ws() {
     return mkdtemp(join(tmpdir(), "auditdesk-ws-"));
@@ -134,5 +134,64 @@ describe("withScratchClone", () => {
             })
         ).rejects.toThrow("boom");
         expect(await readdir(join(workspaceDir, "p"))).toEqual([]);
+    });
+});
+
+describe("a client's repository as it comes", () => {
+    afterEach(() => vi.unstubAllEnvs());
+
+    // As Andrii's global git config has them: LFS required, through a git-lfs that is not installed.
+    const lfsRequired = () => {
+        vi.stubEnv("GIT_CONFIG_COUNT", "3");
+        vi.stubEnv("GIT_CONFIG_KEY_0", "filter.lfs.required");
+        vi.stubEnv("GIT_CONFIG_VALUE_0", "true");
+        vi.stubEnv("GIT_CONFIG_KEY_1", "filter.lfs.process");
+        vi.stubEnv("GIT_CONFIG_VALUE_1", "git-lfs-not-installed filter-process");
+        vi.stubEnv("GIT_CONFIG_KEY_2", "filter.lfs.smudge");
+        vi.stubEnv("GIT_CONFIG_VALUE_2", "git-lfs-not-installed smudge -- %f");
+    };
+
+    it("clones a repository whose files go through Git LFS, keeping them as committed: the clone runs no filter", async () => {
+        const source = await makeRepo({ ".gitattributes": "*.bin filter=lfs diff=lfs merge=lfs -text\n", "data.bin": "as committed" });
+        lfsRequired();
+        const workspaceDir = await ws();
+        const { clonePath } = await cloneRepository({ source, branch: "main", workspaceDir, projectId: "p", repositoryId: "r" });
+        expect(await readFile(join(clonePath, "data.bin"), "utf8")).toBe("as committed");
+        await withScratchClone({ source, branch: "main", workspaceDir, projectId: "p" }, async dir =>
+            expect(await readFile(join(dir, "data.bin"), "utf8")).toBe("as committed")
+        );
+    });
+
+    it("checks out a recorded commit after the client deleted its branch", async () => {
+        const source = await makeRepo({ "a.txt": "a" }, { branches: { "release/1.2": { "r.txt": "r" } } });
+        const audited = await git(["rev-parse", "release/1.2"], source);
+        await git(["-c", "user.name=T", "-c", "user.email=t@example.com", "merge", "-q", "--ff-only", "release/1.2"], source);
+        await git(["branch", "-q", "-D", "release/1.2"], source);
+        const { sha } = await cloneRepository({
+            source,
+            branch: "release/1.2",
+            sha: audited,
+            workspaceDir: await ws(),
+            projectId: "p",
+            repositoryId: "r"
+        });
+        expect(sha).toBe(audited);
+    });
+
+    it("reads a repository's default branch, and gives null when the source cannot be read", async () => {
+        const source = await makeRepo({ "a.txt": "a" });
+        await git(["branch", "-q", "-m", "main", "master"], source);
+        expect(await defaultBranch(source)).toBe("master");
+        expect(await defaultBranch(join(source, "missing"))).toBeNull();
+    });
+
+    it("reads a local repository whose path holds a per cent sign as that path, not a decoded one", async () => {
+        const made = await makeRepo({ "a.txt": "a" });
+        const source = `${made}-100%41`;
+        await rename(made, source);
+        const seen = await withScratchClone({ source, branch: "main", workspaceDir: await ws(), projectId: "p" }, async dir =>
+            existsSync(join(dir, "a.txt"))
+        );
+        expect(seen).toBe(true);
     });
 });

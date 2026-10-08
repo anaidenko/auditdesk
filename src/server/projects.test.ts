@@ -4,11 +4,20 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { beforeEach, describe, expect, it } from "vitest";
 
+import { git } from "@/engine/git";
 import { prisma } from "@/server/db";
 import { ActiveRunError, enqueueRun } from "@/server/jobs";
-import { confirmDetectedStack, deleteProject, detectRepositoryStack, saveRepositoryNotes } from "@/server/projects";
+import {
+    confirmDetectedStack,
+    createRepository,
+    deleteProject,
+    detectRepositoryStack,
+    saveRepositoryNotes,
+    setRepositoryBranch
+} from "@/server/projects";
 import { resetDb } from "@/test/db";
 import { projectWithRepo } from "@/test/factories";
+import { makeRepo } from "@/test/git-repo";
 import { makeSampleRepo } from "@/test/sample-repo";
 
 beforeEach(resetDb);
@@ -88,5 +97,29 @@ describe("a repository's stack and instructions", () => {
         const r = await prisma.repository.findUniqueOrThrow({ where: { id: repo.id } });
         expect(r.stackText).toMatch(/^Languages: .*\nFrameworks: Express/);
         expect(r.stackConfirmedAt).toBeInstanceOf(Date);
+    });
+});
+
+describe("the repositories of a project", () => {
+    it("takes the repository's own default branch when the branch is left empty", async () => {
+        const project = await prisma.project.create({ data: { name: "Acme" } });
+        const source = await makeRepo({ "a.txt": "a" });
+        await git(["branch", "-q", "-m", "main", "master"], source);
+        expect((await createRepository(project.id, source, "")).branch).toBe("master");
+        expect((await createRepository(project.id, source, "release")).branch).toBe("release");
+    });
+
+    it("falls back to main when the default branch cannot be read", async () => {
+        const project = await prisma.project.create({ data: { name: "Acme" } });
+        expect((await createRepository(project.id, "/nowhere/app", "")).branch).toBe("main");
+    });
+
+    it("changes a repository's branch in place, keeping its findings, but not while a run is queued or running", async () => {
+        const { project, repo } = await projectWithRepo();
+        await setRepositoryBranch(repo.id, "master");
+        expect((await prisma.repository.findUniqueOrThrow({ where: { id: repo.id } })).branch).toBe("master");
+        await expect(setRepositoryBranch(repo.id, "--upload-pack=x")).rejects.toThrow(/Not a branch name/);
+        await enqueueRun(project.id, runOptions);
+        await expect(setRepositoryBranch(repo.id, "main")).rejects.toThrow(/queued or running/);
     });
 });

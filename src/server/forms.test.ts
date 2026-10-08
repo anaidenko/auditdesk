@@ -13,10 +13,10 @@ describe("forms", () => {
         expect(parseProjectForm(fd({ name: "  " }))).toEqual({ ok: false, error: "Name the project." });
     });
 
-    it("reads a repository source and defaults the branch to main", () => {
+    it("reads a repository source and leaves an empty branch to the repository's default", () => {
         expect(parseRepositoryForm(fd({ source: "git@github.com:a/b.git", branch: "" }))).toEqual({
             ok: true,
-            value: { source: "git@github.com:a/b.git", branch: "main" }
+            value: { source: "git@github.com:a/b.git", branch: "" }
         });
     });
 
