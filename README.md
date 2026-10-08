@@ -112,8 +112,8 @@ reading the plan reports to `~/.auditdesk/plan-usage.json`; above 50% a run star
 paid by extra usage stops the agent in any case.
 
 Before a plan run starts, the run form forecasts its share of the 5-hour window: the dollar
-estimate times the share a dollar has taken so far, learnt from every plan run's readings of the
-window and the cost of its calls between them. Other use of the plan in the same window, Claude
+estimate, up to the run's dollar cap, times the share a dollar has taken so far, learnt from every
+plan run's readings of the window and the cost of its calls between them, each job counted apart. Other use of the plan in the same window, Claude
 Code included, counts in that rate, so the forecast leans high. With a reading of the current
 window, the form warns when the run may stop at the reserve partway and offers the box to let it
 go past.

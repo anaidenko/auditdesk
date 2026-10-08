@@ -107,9 +107,10 @@ export interface PlanReadingAt {
 /**
  * The points of the 5-hour window a run used, and the API-equivalent dollars of its calls meanwhile.
  * The readings are split where the window reset (a lower reading, or another reset time) and where
- * another job began. Each part counts from the reading's first change to its last, with the calls
- * priced between them: the plan reports a reading when its whole per cent changes, so the first one
- * of a part falls anywhere within its per cent and would round the share up. Null when no part
+ * another job began. Each part counts from the reading's first change to its last change, with the
+ * calls priced between them: the plan reports a reading when its whole per cent changes, so a part's
+ * first reading falls anywhere within its per cent, and readings after its last change carry
+ * dollars whose points no reading shows. Null when no part
  * changed twice, or a part holds an unpriced call.
  */
 export function windowShare(
@@ -131,8 +132,9 @@ export function windowShare(
     let usd = 0;
     for (const part of parts) {
         const first = part.find(r => r.utilization > part[0].utilization);
-        const last = part.at(-1)!;
-        if (!first || last.utilization <= first.utilization) continue;
+        // The last change, not the last reading: the dollars after it used points no reading shows.
+        const last = part.findLast((r, i) => i > 0 && r.utilization > part[i - 1].utilization);
+        if (!first || !last || last.utilization <= first.utilization) continue;
         const between = calls.filter(c => c.at > first.at && c.at <= last.at);
         if (between.some(c => c.costUsd === null)) return null;
         points += (last.utilization - first.utilization) * 100;

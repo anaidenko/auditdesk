@@ -100,6 +100,12 @@ describe("windowShare", () => {
         expect(share?.points).toBeCloseTo(22);
     });
 
+    it("ends a part at the reading's last change, leaving out the dollars after it, whose points it cannot see", () => {
+        const share = windowShare([reading(1, 0.07), reading(2, 0.08), reading(20, 0.3), reading(25, 0.3)], [call(10, 11), call(24, 0.45)]);
+        expect(share?.usd).toBe(11);
+        expect(share?.points).toBeCloseTo(22);
+    });
+
     it("splits the readings at a lower reading, at another reset time and at another job, and adds the parts", () => {
         const later = new Date(Date.UTC(2026, 9, 8, 17, 20));
         const share = windowShare(
