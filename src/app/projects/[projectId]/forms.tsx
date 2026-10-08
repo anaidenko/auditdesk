@@ -349,6 +349,9 @@ export function RepositoryNotes({
                     </label>
                     <label className={label}>
                         How to run it, its local URL, its database
+                        <span className="mt-0.5 block font-normal tracking-normal normal-case">
+                            Every agent reads it: a URL&apos;s password is masked, but leave other secrets out.
+                        </span>
                         <textarea
                             key={v?.instructions ?? ""}
                             name="instructions"

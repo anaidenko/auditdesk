@@ -8,7 +8,7 @@ import { SEAMS, agentCount, aspectTitle } from "./aspects";
 import { shareFor } from "./budget";
 import { forMode, loadChecklist } from "./checklists";
 import { readSnippet } from "./files";
-import { Masker } from "./masker";
+import { Masker, maskUrlPasswords } from "./masker";
 import { resolveInClone } from "./paths";
 import { type Brief, aspectMessage, briefText, prefixBlocks } from "./prompts";
 import { type EarlierFinding, type RecheckResult, type RecheckStatus, recheck } from "./recheck";
@@ -316,7 +316,9 @@ export async function runAudit(input: AuditInput, deps: AuditDeps): Promise<{ st
                     brief: masker.mask(
                         [
                             briefText(input.brief),
-                            ...views.map(v => v.repo.instructions?.trim() && `How to run ${v.name}: ${v.repo.instructions.trim()}`)
+                            ...views.map(
+                                v => v.repo.instructions?.trim() && maskUrlPasswords(`How to run ${v.name}: ${v.repo.instructions.trim()}`)
+                            )
                         ]
                             .filter(Boolean)
                             .join("\n\n")

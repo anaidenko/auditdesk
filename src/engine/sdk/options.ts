@@ -71,6 +71,9 @@ export function sdkOptions(o: {
         permissionMode: "dontAsk",
         permissionPrompts: "none",
         settingSources: [],
+        // The --settings tier, apart from the file sources above. A compaction would summarise the
+        // agent's history where the API engine stops, through a call the ledger may not record.
+        settings: { autoCompactEnabled: false },
         strictMcpConfig: true,
         plugins: [],
         skills: [],
