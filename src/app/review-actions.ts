@@ -5,6 +5,7 @@ import { redirect } from "next/navigation";
 
 import type { FormState } from "@/app/actions";
 import { hoursFrom } from "@/engine/effort";
+import { findingLabel } from "@/engine/findings";
 import { readPlanUsage, reserveRefusal } from "@/engine/plan-usage";
 import type { SeverityName } from "@/engine/types";
 import { prisma } from "@/server/db";
@@ -14,6 +15,12 @@ import { accept, confirmRecheck, edit, exclude, merge, reject } from "@/server/r
 async function listPath(id: string) {
     const f = await prisma.finding.findUniqueOrThrow({ where: { id }, select: { projectId: true } });
     return `/projects/${f.projectId}/findings`;
+}
+
+/** The finding's list to revalidate, and its label for the notice. */
+async function target(id: string) {
+    const f = await prisma.finding.findUniqueOrThrow({ where: { id }, select: { projectId: true, number: true } });
+    return { path: `/projects/${f.projectId}/findings`, label: findingLabel(f.number) };
 }
 
 const text = (fd: FormData, k: string) => String(fd.get(k) ?? "").trim();
@@ -30,26 +37,33 @@ async function refusal(work: () => Promise<void>, notice?: string): Promise<Form
 }
 
 export async function acceptAction(id: string, _prev: FormState, _fd: FormData): Promise<FormState> {
-    const r = await refusal(() => accept(id), "Accepted: it goes in the report.");
-    revalidatePath(await listPath(id));
+    const { path, label } = await target(id);
+    const r = await refusal(() => accept(id), `${label} accepted: it goes in the report.`);
+    revalidatePath(path);
     return r;
 }
 
 export async function confirmRecheckAction(id: string, status: "fixed" | "open", _prev: FormState, _fd: FormData): Promise<FormState> {
-    const r = await refusal(() => confirmRecheck(id, status), status === "fixed" ? "Verified fixed." : "Marked still open.");
-    revalidatePath(await listPath(id));
+    const { path, label } = await target(id);
+    const r = await refusal(
+        () => confirmRecheck(id, status),
+        status === "fixed" ? `${label} verified fixed.` : `${label} marked still open.`
+    );
+    revalidatePath(path);
     return r;
 }
 
 export async function rejectAction(id: string, _prev: FormState, fd: FormData): Promise<FormState> {
-    const r = await refusal(() => reject(id, text(fd, "reason")), "Rejected: kept with the reason as eval data.");
-    revalidatePath(await listPath(id));
+    const { path, label } = await target(id);
+    const r = await refusal(() => reject(id, text(fd, "reason")), `${label} rejected: kept with the reason as eval data.`);
+    revalidatePath(path);
     return r;
 }
 
 export async function excludeAction(id: string, _prev: FormState, fd: FormData): Promise<FormState> {
-    const r = await refusal(() => exclude(id, text(fd, "reason")), "Excluded: it stays out of the report.");
-    revalidatePath(await listPath(id));
+    const { path, label } = await target(id);
+    const r = await refusal(() => exclude(id, text(fd, "reason")), `${label} excluded: it stays out of the report.`);
+    revalidatePath(path);
     return r;
 }
 

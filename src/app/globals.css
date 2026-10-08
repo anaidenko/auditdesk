@@ -19,7 +19,7 @@
     }
 }
 
-/* A form's notice of what it did: read, then out of the way. */
+/* A form's notice of what it did: read, then out of the way, its place in the stack freed. */
 @theme {
     --animate-notice: notice 5s ease-in forwards;
 
@@ -30,6 +30,15 @@
         }
         100% {
             opacity: 0;
+            display: none;
         }
+    }
+}
+
+/* Tailwind 4 leaves buttons with the default cursor; a pointer says an enabled one is clickable. */
+@layer base {
+    button:not(:disabled),
+    [role="button"]:not(:disabled) {
+        cursor: pointer;
     }
 }

@@ -21,8 +21,9 @@ Local only: it binds 127.0.0.1 and has no login. The design is in [docs/design.m
   back end's routes, auth across both, CORS, validation only on the client, secrets in the bundle.
 - **Stack detection** from manifests and schemas, confirmed or edited by the auditor, suggests
   the conditional aspects; an AI-built mode adds checks for code written largely by AI tools.
-- **Review:** accept, edit, merge, reject or exclude every finding; only accepted or edited ones
-  reach the report and the exports. The Export panel says how many still await review, and its
+- **Review:** accept, edit, merge, reject or exclude every finding, each action confirmed in a
+  toast; only accepted or edited ones reach the report and the exports. Expand all opens every
+  card of the list. The Export panel says how many still await review, and its
   Draft option adds them for a first look before the review: the report, the PDF, the SARIF and
   the issues mark each "not reviewed".
   A scanner finding that an agent filed again is folded into the agent's, and

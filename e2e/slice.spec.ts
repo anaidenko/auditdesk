@@ -53,14 +53,28 @@ test("a run from project to downloaded report", async ({ page }) => {
     await exports.getByLabel(/^Draft/).uncheck();
     await page.keyboard.press("Escape");
     await expect(exports).toBeHidden();
+    await page.getByRole("button", { name: "Expand all" }).click();
+    await expect(page.locator("details:not([open])")).toHaveCount(0);
+    await page.getByRole("button", { name: "Collapse all" }).click();
+    await expect(page.locator("details[open]")).toHaveCount(0);
     const evalFinding = page.locator("details", { hasText: "User input reaches eval" });
     await evalFinding.locator("summary").click();
     await expect(evalFinding.getByTestId("recommendation")).toHaveCSS("white-space", "pre-wrap");
+    await expect(evalFinding.getByRole("button", { name: "Reject" })).toHaveCSS("cursor", "pointer");
+    // A rejection's reason goes when the finding is accepted after it.
+    await evalFinding.getByPlaceholder("Why it is wrong").fill("A test reason");
+    await evalFinding.getByRole("button", { name: "Reject" }).click();
+    await expect(evalFinding).toContainText("Reason: A test reason");
     await evalFinding.getByRole("button", { name: "Accept" }).click();
-    // Said beside the button, which stays disabled while the finding is accepted.
-    await expect(evalFinding.getByRole("status")).toHaveText("Accepted: it goes in the report.");
-    await expect(evalFinding.getByRole("button", { name: "Accepted" })).toBeDisabled();
+    // Said in a toast, so the card's row keeps its place; the button stays disabled while the finding is accepted.
+    await expect(page.locator("#toasts")).toContainText(/F-\d{3} accepted: it goes in the report\./);
+    const accepted = evalFinding.getByRole("button", { name: "Accepted" });
+    await expect(accepted).toBeDisabled();
+    await expect(accepted).toHaveCSS("cursor", "not-allowed");
     await expect(evalFinding).toContainText("accepted");
+    await expect(evalFinding).not.toContainText("Reason:");
+    const row = async (l: typeof accepted) => Math.round((await l.boundingBox())!.y + (await l.boundingBox())!.height / 2);
+    expect(Math.abs((await row(accepted)) - (await row(evalFinding.getByRole("link", { name: "Edit or merge" }))))).toBeLessThan(4);
     await page.getByRole("button", { name: "Export", exact: true }).click();
     await expect(waiting).toHaveText(new RegExp(`^${before - 1} finding`));
 
@@ -442,7 +456,7 @@ test("the review shows the agent's hours, an edit of them resizes the finding, a
     expect(without).not.toContain("3–5 h");
     const withHours = await text(true);
     expect(withHours).toContain("effort M (3–5 h)");
-    expect(withHours).toMatch(/Estimated effort: 3–5 h (to fix before sign-off|for what can wait)\./);
+    expect(withHours).toMatch(/<b>3–5 h<\/b><span>(Fix before sign-off|Can wait)<\/span>/);
 });
 
 test("starting twice queues one run", async ({ page }) => {
