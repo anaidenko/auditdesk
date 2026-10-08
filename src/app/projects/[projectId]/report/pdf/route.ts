@@ -9,7 +9,9 @@ export async function GET(request: Request, { params }: { params: Promise<{ proj
     if (request.headers.get("sec-fetch-site") === "cross-site") return new Response("Cross-site request refused", { status: 403 });
     const { projectId } = await params;
     const data = await loadReportData(projectId, exportOptions(request.url));
-    const pdf = await renderPdf(renderReport(data), { footer: `Code audit: ${data.projectName} · ${data.generatedAt}` });
+    const pdf = await renderPdf(renderReport(data), {
+        footer: `${data.draft ? "Draft code audit" : "Code audit"}: ${data.projectName} · ${data.generatedAt}`
+    });
     const name = reportFileName(data, "pdf");
     await keepReportCopy(projectId, name, pdf);
     return new Response(new Uint8Array(pdf), {

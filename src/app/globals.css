@@ -8,3 +8,13 @@
     background-repeat: no-repeat;
     background-size: 1rem;
 }
+
+/* Under the button that opened it, its implicit anchor, where anchor positioning works; elsewhere the popover stays centred. */
+@supports (position-area: bottom) {
+    .popover-under-invoker {
+        inset: auto;
+        margin: 0.5rem 0 0;
+        position-area: bottom span-left;
+        position-try-fallbacks: flip-inline;
+    }
+}

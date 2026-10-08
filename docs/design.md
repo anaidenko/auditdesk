@@ -22,7 +22,8 @@ on, signed off finding by finding by a human auditor.
   code names. Nothing else leaves the machine.
 - **The client's code is data:** nothing from a repository is installed, built or run, and text
   in it that tries to instruct the model is itself a finding.
-- **A human signs off:** only findings the auditor accepted or edited reach the report.
+- **A human signs off:** only findings the auditor accepted or edited reach the report. A draft,
+  ticked at export, adds those awaiting review for a first look, each marked "not reviewed".
 - **Measured:** every model call is priced by the model that served it, and an eval scores
   recall on fixtures with known defects.
 
@@ -176,6 +177,11 @@ and evidence open on a click, with Expand all, a link to the card, or a search t
 inside them. A printout and the PDF open every card. They show twelve lines of an excerpt and ten
 places of a finding, each with a note of what the HTML adds, and a card runs on across a page
 break with its title, meta line and recommendation kept together.
+
+A draft says so in its title, its file name and a banner on its cover that counts what is not yet
+reviewed; each such finding or question carries "not reviewed" on its card and in the summary, and
+in SARIF its message starts "Not reviewed yet:". The issue exports stay reviewed only: a tracker
+would turn a draft into work.
 
 Each finding links what it is relevant to, never claiming compliance: its OWASP Top 10:2025
 category, ASVS 5.0.0 sections or requirements, its CWE when the agent named one, advisories for

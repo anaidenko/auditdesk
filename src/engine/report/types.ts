@@ -28,6 +28,8 @@ export interface ReportFinding {
     refs?: FindingReferences;
     /** What the latest re-audit found of it (design § 9). */
     recheck?: "unchanged" | "open" | "fixed" | "changed" | "regressed" | null;
+    /** In a draft only: the auditor has not reviewed it yet, and the report says so on its card. */
+    unreviewed?: boolean;
 }
 
 export interface ReportData {
@@ -62,6 +64,8 @@ export interface ReportData {
     toolVersions: ToolVersions | null;
     findings: ReportFinding[];
     questions: ReportFinding[];
+    /** Ticked at export, and something awaits review: the findings and questions include it, marked. */
+    draft?: boolean;
     /** Andrii ticked the hours at export: the cards carry them and the summary totals them. */
     hours: boolean;
     /** Only when Andrii ticks it at export (design § 8): billed dollars and plan dollars apart. */

@@ -163,6 +163,31 @@ describe("renderReport", () => {
         expect(between(renderReport(data()), '<section id="scope"', "</section>")).not.toContain("limited review");
     });
 
+    it("marks a draft on its cover and in its title, and each finding and question not yet reviewed wherever it is listed", () => {
+        const html = renderReport(
+            data({
+                draft: true,
+                findings: [
+                    finding({ label: "F-001", severity: "critical" }),
+                    finding({ label: "F-002", severity: "low", unreviewed: true })
+                ],
+                questions: [finding({ label: "F-003", severity: null, title: "Backups?", unreviewed: true })]
+            })
+        );
+        expect(html).toContain("<title>Draft code audit: Acme</title>");
+        const cover = between(html, '<header class="cover"', "</header>");
+        expect(cover).toContain('<div class="eyebrow">Draft code audit</div>');
+        expect(cover).toContain(
+            '<p class="draft">A draft for a first look: 1 of 2 findings and 1 of 1 open question are not yet reviewed by the auditor, each marked “not reviewed”.</p>'
+        );
+        const pill = '<span class="pill unreviewed">not reviewed</span>';
+        expect(between(html, 'id="F-002"', "</article>")).toContain(pill);
+        expect(between(html, 'id="F-003"', "</article>")).toContain(pill);
+        expect(between(html, 'id="F-001"', "</article>")).not.toContain(pill);
+        expect(between(html, '<section id="summary">', "</section>")).toContain(`Raw SQL ${pill}</span>`);
+        expect(renderReport(data())).not.toMatch(/Draft|not reviewed/);
+    });
+
     it("names no auditor when none is set, rather than someone else's name", () => {
         const html = renderReport(data({ auditor: null }));
         expect(between(html, '<header class="cover"', "</header>")).not.toContain("Auditor");

@@ -116,24 +116,29 @@ async function reviewTally(projectId: string): Promise<NonNullable<ReportData["r
     return tally;
 }
 
-/** What the export form's boxes asked for: `cost=1` and `hours=1`. */
-export function exportOptions(url: string): { includeCost: boolean; includeHours: boolean } {
+/** What the export form's boxes asked for: `cost=1`, `hours=1` and `draft=1`. */
+export function exportOptions(url: string): { includeCost: boolean; includeHours: boolean; draft: boolean } {
     const q = new URL(url).searchParams;
-    return { includeCost: q.get("cost") === "1", includeHours: q.get("hours") === "1" };
+    return { includeCost: q.get("cost") === "1", includeHours: q.get("hours") === "1", draft: q.get("draft") === "1" };
 }
 
 /**
  * `includeCost` and `includeHours`: Andrii ticked them at export (cost: design § 8; hours: § 10);
- * otherwise the report states no cost, and the effort by size alone.
+ * otherwise the report states no cost, and the effort by size alone. `draft`: the findings and
+ * questions awaiting review go in too, marked, for a first look before the review.
  */
-export async function loadReportData(projectId: string, o: { includeCost?: boolean; includeHours?: boolean } = {}): Promise<ReportData> {
+export async function loadReportData(
+    projectId: string,
+    o: { includeCost?: boolean; includeHours?: boolean; draft?: boolean } = {}
+): Promise<ReportData> {
     const project = await prisma.project.findUniqueOrThrow({
         where: { id: projectId },
         include: { repositories: { orderBy: { createdAt: "asc" } } }
     });
     const referenceData = loadReferences();
     const names = reportNames(project.repositories);
-    const rows = await prisma.finding.findMany({ where: { projectId, status: { in: [...REPORTABLE] } }, orderBy: { number: "asc" } });
+    const statuses = o.draft ? [...REPORTABLE, "unreviewed" as const] : [...REPORTABLE];
+    const rows = await prisma.finding.findMany({ where: { projectId, status: { in: statuses } }, orderBy: { number: "asc" } });
     const toReport = (r: (typeof rows)[number]): ReportFinding => ({
         label: findingLabel(r.number),
         severity: r.severity as SeverityName | null,
@@ -153,7 +158,8 @@ export async function loadReportData(projectId: string, o: { includeCost?: boole
         tags: r.tags,
         fixBeforeSignoff: r.fixBeforeSignoff,
         refs: referencesFor(referenceData, r.checklistItem, r.references as References, { question: r.kind === "question" }),
-        recheck: r.recheck
+        recheck: r.recheck,
+        ...(r.status === "unreviewed" && { unreviewed: true })
     });
     // Per repository and aspect, the latest agent that finished, across runs: a re-run adds a second
     // agent to its run, and a run that failed before its agents started has none.
@@ -234,6 +240,7 @@ export async function loadReportData(projectId: string, o: { includeCost?: boole
             seamsPaths: [...pathNames(project.repositories)].map(([id, path]) => ({ path, repository: names.get(id)! }))
         }),
         aiBuilt: project.aiBuilt,
+        draft: rows.some(r => r.status === "unreviewed"),
         aspects,
         itemTitles,
         servedModels: served.map(s => s.servedModel),
@@ -264,7 +271,7 @@ export function reportFileName(d: ReportData, ext: "html" | "pdf" | "sarif" | "c
             .toLowerCase()
             .replace(/[^a-z0-9]+/g, "-")
             .replace(/^-|-$/g, "");
-    return `auditdesk-${slug(d.projectName)}${part ? `-${slug(part)}` : ""}-${d.generatedAt}.${ext}`;
+    return `auditdesk-${slug(d.projectName)}${part ? `-${slug(part)}` : ""}${d.draft ? "-draft" : ""}-${d.generatedAt}.${ext}`;
 }
 
 /** Each download keeps a copy beside the project's clones (design § 5). */

@@ -38,6 +38,17 @@ describe("the report download", () => {
         expect(await (await download("same-origin", "?cost=1")).res.text()).toMatch(/cost of the model calls: \$0\.00/i);
     });
 
+    it("serves a draft with the findings awaiting review only when the download asks for one", async () => {
+        const seed = (projectId: string, repositoryId: string) =>
+            createFinding(projectId, null, sampleFinding(repositoryId, { title: "Raw SQL" }));
+        const final = (await download("same-origin", "", seed)).res;
+        expect(final.headers.get("content-disposition")).not.toContain("draft");
+        expect(await final.text()).not.toContain("Raw SQL");
+        const draft = (await download("same-origin", "?draft=1", seed)).res;
+        expect(draft.headers.get("content-disposition")).toMatch(/filename="auditdesk-acme-draft-\d{4}-\d{2}-\d{2}\.html"/);
+        expect(await draft.text()).toContain("Raw SQL");
+    });
+
     it("gives each finding's hours only when the download asks for them", async () => {
         const seed = async (projectId: string, repositoryId: string) => {
             const { id } = await createFinding(

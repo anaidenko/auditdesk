@@ -57,6 +57,8 @@ ${["critical", "high", "medium", "low", "info", "question"].map(s => `.${s}{colo
 .pill{display:inline-block;font-size:.72rem;font-weight:600;padding:.08rem .5rem;border-radius:999px;background:var(--info-bg);color:var(--info);white-space:nowrap}
 .pill.examined,.pill.done{background:#ecfdf5;color:#047857}.pill.partly,.pill.partial,.pill.limited{background:var(--medium-bg);color:var(--medium)}
 .pill.declined,.pill.failed,.pill.stopped,.pill.regressed{background:var(--critical-bg);color:var(--critical)}
+.pill.unreviewed{background:var(--medium-bg);color:var(--medium)}
+.cover .draft{margin:-.8rem 0 1.8rem;padding:.75rem 1rem;border-radius:10px;background:var(--medium-bg);color:var(--medium);font-weight:600}
 .method,.tech{padding-left:1.1rem}.method a{text-decoration:underline;text-underline-offset:2px}.method li,.tech li{margin:.3rem 0}
 .finding{border:1px solid var(--line);border-left:4px solid var(--info);border-radius:10px;margin:1.1rem 0;background:#fff}
 ${["critical", "high", "medium", "low", "info", "question"].map(s => `.finding.sev-${s}{border-left-color:var(--${s})}`).join("")}
@@ -303,6 +305,20 @@ function costLine(cost: ReportData["cost"]): string {
     return `<li>Cost of the model calls: ${atLeast}${usd(cost.apiKeyUsd)}${unknown}.</li>`;
 }
 
+const unreviewed = (f: ReportFinding) => (f.unreviewed ? ` <span class="pill unreviewed">not reviewed</span>` : "");
+
+/** A draft says on its cover how much of it the auditor has not reviewed yet. */
+function draftLine(d: ReportData, findings: ReportFinding[]): string {
+    if (!d.draft) return "";
+    const n = findings.filter(f => f.unreviewed).length;
+    const q = d.questions.filter(f => f.unreviewed).length;
+    const parts = [
+        ...(n ? [`${n} of ${plural(findings.length, "finding", "findings")}`] : []),
+        ...(q ? [`${q} of ${plural(d.questions.length, "open question", "open questions")}`] : [])
+    ];
+    return `<p class="draft">A draft for a first look: ${parts.join(" and ")} ${n + q === 1 ? "is" : "are"} not yet reviewed by the auditor, each marked “not reviewed”.</p>`;
+}
+
 const RECHECK_PILL: Record<string, string> = {
     regressed: ` <span class="pill regressed">regressed since the last audit</span>`,
     changed: ` <span class="pill limited">code changed since the last audit</span>`
@@ -342,7 +358,7 @@ function finding(f: ReportFinding, manyRepos: boolean): string {
     return `<article id="${e(f.label)}" class="finding sev-${e(severityOf(f))}" data-sev="${e(severityOf(f))}" data-aspect="${e(f.aspect)}" data-repo="${e(f.repository)}" aria-labelledby="${e(f.label)}-title">
 <div class="head">
 <p class="title" id="${e(f.label)}-title">${badge(f)}<span class="fid">${e(f.label)}</span><span>${e(f.title)}</span></p>
-<p class="meta">${e(meta)}${RECHECK_PILL[f.recheck ?? ""] ?? ""}</p>
+<p class="meta">${e(meta)}${RECHECK_PILL[f.recheck ?? ""] ?? ""}${unreviewed(f)}</p>
 <div class="callout"><h4>Recommendation</h4><p class="prose">${e(f.recommendation)}</p></div>
 </div>
 <details class="body"><summary>Details and evidence<span class="vh"> for ${e(f.label)}</span></summary>
@@ -394,13 +410,13 @@ export function renderReport(d: ReportData): string {
     const aside = (f: ReportFinding) => [manyRepos ? f.repository : null, f.aspect, effortText(f)].filter(Boolean).join(" · ");
     const riskList = (list: ReportFinding[], none: string) =>
         list.length
-            ? `<ul class="risks">${list.map(f => `<li>${badge(f)}<a class="fid" href="#${e(f.label)}">${e(f.label)}</a><span>${e(f.title)}</span><span class="aside">${e(aside(f))}</span></li>`).join("")}</ul>`
+            ? `<ul class="risks">${list.map(f => `<li>${badge(f)}<a class="fid" href="#${e(f.label)}">${e(f.label)}</a><span>${e(f.title)}${unreviewed(f)}</span><span class="aside">${e(aside(f))}</span></li>`).join("")}</ul>`
             : `<p class="muted">${e(none)}</p>`;
     const effortLine = effortSummary(fixFirst, canWait, d.hours);
     const legend = sizesLegend(findings, d.questions, d.hours);
     const titleList = (list: ReportFinding[]) =>
         list.length
-            ? `<ul>${list.map(f => `<li>${badge(f)}<a class="fid" href="#${e(f.label)}">${e(f.label)}</a><span>${e(f.title)}</span></li>`).join("")}</ul>`
+            ? `<ul>${list.map(f => `<li>${badge(f)}<a class="fid" href="#${e(f.label)}">${e(f.label)}</a><span>${e(f.title)}${unreviewed(f)}</span></li>`).join("")}</ul>`
             : "";
     // With several repositories the findings run per repository, in the cover's order (design § 10).
     const names = [...new Set([...d.repositories.map(r => r.name), ...findings.map(f => f.repository)])];
@@ -479,15 +495,16 @@ ${d.questions.map(card).join("\n")}</section>`
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>${e(`Code audit: ${d.projectName}`)}</title>
+<title>${e(`${d.draft ? "Draft code audit" : "Code audit"}: ${d.projectName}`)}</title>
 <style>${CSS}</style>
 </head>
 <body>
 <main class="doc">
 <header class="cover">
-<div class="eyebrow">Code audit</div>
+<div class="eyebrow">${d.draft ? "Draft code audit" : "Code audit"}</div>
 <h1>${e(d.projectName)}</h1>
 <p class="lede">${plural(findings.length, "finding", "findings")} and ${plural(d.questions.length, "open question", "open questions")} across ${plural(d.repositories.length, "repository", "repositories")}</p>
+${draftLine(d, findings)}
 <dl class="facts">
 <div><dt>Date</dt><dd>${e(d.generatedAt)}</dd></div>
 ${auditor ? `<div><dt>Auditor</dt><dd>${auditor}</dd></div>` : ""}
