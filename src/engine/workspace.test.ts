@@ -7,7 +7,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { makeRepo } from "@/test/git-repo";
 
 import { git } from "./git";
-import { cloneRepository, defaultBranch, deleteProjectClones, parseSource, withScratchClone } from "./workspace";
+import { cloneRepository, deleteProjectClones, parseSource, readRemote, withScratchClone } from "./workspace";
 
 async function ws() {
     return mkdtemp(join(tmpdir(), "auditdesk-ws-"));
@@ -178,11 +178,14 @@ describe("a client's repository as it comes", () => {
         expect(sha).toBe(audited);
     });
 
-    it("reads a repository's default branch, and gives null when the source cannot be read", async () => {
+    it("reads the branch a source's HEAD names, refuses a source it cannot read in git's words, and a branch it lacks", async () => {
         const source = await makeRepo({ "a.txt": "a" });
         await git(["branch", "-q", "-m", "main", "master"], source);
-        expect(await defaultBranch(source)).toBe("master");
-        expect(await defaultBranch(join(source, "missing"))).toBeNull();
+        expect(await readRemote(source)).toEqual({ head: "master" });
+        expect(await readRemote(source, "master")).toEqual({ head: "master" });
+        await expect(readRemote(source, "develop")).rejects.toThrow(`Branch "develop" was not found in ${source}`);
+        await expect(readRemote(join(source, "missing"))).rejects.toThrow(/^Could not read .*missing: .*not.*a git repository/);
+        await expect(readRemote(source, "--upload-pack=x")).rejects.toThrow(/Not a branch name/);
     });
 
     it("reads a local repository whose path holds a per cent sign as that path, not a decoded one", async () => {

@@ -174,6 +174,22 @@ describe("runner", () => {
         expect((await prisma.repository.findUniqueOrThrow({ where: { id: repo.id } })).commitSha).toBe(audited);
     });
 
+    it("re-runs an aspect on a repository its run never got to clone, once its branch is fixed", async () => {
+        const { project } = await projectWithRepo(await makeSampleRepo());
+        const second = await prisma.repository.create({
+            data: { projectId: project.id, source: await makeSampleRepo(), branch: "develop" }
+        });
+        const runId = await enqueueRun(project.id, runOptions);
+        await processJob((await claimJob())!, await deps());
+        expect((await prisma.run.findUniqueOrThrow({ where: { id: runId } })).status).toBe("failed");
+
+        await prisma.repository.update({ where: { id: second.id }, data: { branch: "main" } });
+        await enqueueRerun(runId, second.id, "security");
+        await processJob((await claimJob())!, await deps());
+        expect(await prisma.agentRun.count({ where: { runId, repositoryId: second.id } })).toBe(1);
+        expect((await prisma.repository.findUniqueOrThrow({ where: { id: second.id } })).clonePath).not.toBeNull();
+    });
+
     it("re-runs an aspect on the run's own repositories, with their share, not on one added to the project since", async () => {
         const { project, repo } = await projectWithRepo(await makeSampleRepo());
         const runId = await enqueueRun(project.id, runOptions);

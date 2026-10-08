@@ -3,7 +3,7 @@ import { notFound } from "next/navigation";
 
 import { ActionForm } from "@/app/ActionForm";
 import { ReportExport } from "@/app/ReportExport";
-import { deleteProject, setBranch, setConsent } from "@/app/actions";
+import { deleteProject, removeRepository, setBranch, setConsent } from "@/app/actions";
 import { Badge, Card, Icon, PageHeader, RunStatus, button, field } from "@/app/ui";
 import { credentialStatus } from "@/engine/credentials";
 import { overReserve, planUsageLine, readPlanUsage } from "@/engine/plan-usage";
@@ -82,6 +82,11 @@ export default async function ProjectPage({ params }: { params: Promise<{ projec
                                             />
                                             <button className={`${button.secondary} ${button.small}`}>Save branch</button>
                                         </ActionForm>
+                                        {r._count.findings === 0 && !active && (
+                                            <ActionForm action={removeRepository.bind(null, project.id, r.id)}>
+                                                <button className={`${button.danger} ${button.small}`}>Remove</button>
+                                            </ActionForm>
+                                        )}
                                         {r.commitSha && <code className="text-xs text-zinc-400">{r.commitSha.slice(0, 10)}</code>}
                                         <RepositoryNotes
                                             projectId={project.id}

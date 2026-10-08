@@ -1,7 +1,7 @@
 import "server-only";
 
 import { type StackProfile, detectStack, stackProfileText } from "@/engine/stack";
-import { defaultBranch, deleteProjectClones, isBranchName, withScratchClone } from "@/engine/workspace";
+import { deleteProjectClones, isBranchName, readRemote, withScratchClone } from "@/engine/workspace";
 import type { Prisma } from "@/generated/prisma/client";
 import { prisma } from "@/server/db";
 import { ActiveRunError } from "@/server/jobs";
@@ -10,9 +10,24 @@ export async function hasActiveRun(projectId: string): Promise<boolean> {
     return (await prisma.run.count({ where: { projectId, status: { in: ["queued", "running"] } } })) > 0;
 }
 
-/** A branch left empty is the repository's default, read from its HEAD; "main" when the source cannot be read now. */
+/**
+ * Added only once git can read the source, and the branch when one is named; a branch left empty
+ * is the one the source's HEAD names ("main" when HEAD names none).
+ */
 export async function createRepository(projectId: string, source: string, branch: string) {
-    return prisma.repository.create({ data: { projectId, source, branch: branch || (await defaultBranch(source)) || "main" } });
+    const { head } = await readRemote(source, branch);
+    return prisma.repository.create({ data: { projectId, source, branch: branch || head || "main" } });
+}
+
+/** A repository added by mistake, or taken away by the client, while it has no findings: findings are the audit's record. */
+export async function deleteRepository(repositoryId: string): Promise<void> {
+    const repo = await prisma.repository.findUniqueOrThrow({
+        where: { id: repositoryId },
+        select: { projectId: true, _count: { select: { findings: true } } }
+    });
+    if (repo._count.findings) throw new Error("This repository has findings, the audit's record: it stays.");
+    if (await hasActiveRun(repo.projectId)) throw new ActiveRunError();
+    await prisma.repository.delete({ where: { id: repositoryId } });
 }
 
 /**

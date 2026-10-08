@@ -229,10 +229,12 @@ export async function loadReportData(
         auditorUrl: webUrl(process.env.AUDITOR_URL),
         methodUrl: webUrl(process.env.AUDIT_METHOD_URL),
         repositories: project.repositories.map(r => {
-            const links = repoLinks(r.source, r.branch, r.commitSha);
+            // The branch the audited commit came from, not one set for the next run.
+            const branch = r.commitBranch ?? r.branch;
+            const links = repoLinks(r.source, branch, r.commitSha);
             return {
                 name: names.get(r.id)!,
-                branch: r.branch,
+                branch,
                 sha: r.commitSha ?? "not cloned",
                 notCovered: (r.stack as StackProfile | null)?.notCovered ?? [],
                 ...(links && { links })

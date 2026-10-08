@@ -105,9 +105,10 @@ export async function processJob(job: Job, deps?: (sink: PrismaSink) => AuditDep
                 model: run.model,
                 effort: run.effort as never,
                 budget: { usd: Number(run.budgetUsd), tokens: run.budgetTokens },
-                // A re-run is of its run's repositories: one added to the project since is not cloned or counted.
+                // A re-run is of the repositories its run was started with, cloned or not: one added to the
+                // project since is not cloned or counted.
                 repositories: run.project.repositories
-                    .filter(r => !job.aspect || !run.commits || r.id in (run.commits as object))
+                    .filter(r => !job.aspect || r.createdAt <= run.createdAt)
                     .map(r => ({
                         id: r.id,
                         source: r.source,

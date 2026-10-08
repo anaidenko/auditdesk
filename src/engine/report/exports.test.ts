@@ -50,7 +50,7 @@ describe("sarif", () => {
         expect(() => sarif(data(), "web")).toThrow(/No repository "web"/);
     });
 
-    it("places a secret found only in history in its file without lines, which may hold other code today, and names its commit", () => {
+    it("places a secret found only in history at its file's first line, naming its line and commit: today's line may hold other code", () => {
         const commit = "c2bdcacd".padEnd(40, "0");
         const log = sarif(
             reportData({
@@ -67,8 +67,11 @@ describe("sarif", () => {
             "app"
         );
         const [result] = log.runs[0].results;
-        expect(result.locations[0].physicalLocation).toEqual({ artifactLocation: { uri: "src/config.ts", uriBaseId: "%SRCROOT%" } });
-        expect(result.message.text).toContain("in git history at c2bdcacd");
+        expect(result.locations[0].physicalLocation).toEqual({
+            artifactLocation: { uri: "src/config.ts", uriBaseId: "%SRCROOT%" },
+            region: { startLine: 1, endLine: 1 }
+        });
+        expect(result.message.text).toContain("Found in git history at c2bdcacd, line 12.");
     });
 
     it("marks a draft's run, and each result the auditor has not reviewed yet, in its message as well as its properties", () => {

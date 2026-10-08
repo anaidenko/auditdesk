@@ -238,6 +238,8 @@ describe("review", () => {
         const before = (await prisma.finding.findUniqueOrThrow({ where: { id: b.id } })).evidence;
         await expect(merge(a.id, b.label, { onlyUnreviewed: true })).rejects.toBeInstanceOf(ReviewedMeanwhileError);
         expect(await status(a.id)).toBe("unreviewed");
+        await reject(b.id, "Not reachable.");
+        await expect(merge(a.id, b.label, { onlyUnreviewed: true })).rejects.toBeInstanceOf(ReviewedMeanwhileError);
         expect((await prisma.finding.findUniqueOrThrow({ where: { id: b.id } })).evidence).toEqual(before);
     });
 

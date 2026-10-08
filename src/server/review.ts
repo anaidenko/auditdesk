@@ -99,6 +99,8 @@ export async function merge(sourceId: string, targetLabel: string, o: { onlyUnre
     const target = await prisma.finding.findUnique({ where: { projectId_number: { projectId: source.projectId, number } } });
     if (!target) throw new Error(`No finding ${targetLabel} in this project.`);
     if (target.id === source.id) throw new Error("A finding cannot be merged into itself.");
+    if (o.onlyUnreviewed && (source.status !== "unreviewed" || target.status !== "unreviewed"))
+        throw new ReviewedMeanwhileError(`${findingLabel(source.number)} or ${targetLabel} was reviewed meanwhile.`);
     if (target.status === "merged") throw new Error(`${targetLabel} was itself merged; merge into the finding it went to.`);
     if (target.status === "rejected" || target.status === "excluded" || target.status === "superseded")
         throw new Error(`${targetLabel} is ${target.status}; merge into a finding that stays in the review.`);

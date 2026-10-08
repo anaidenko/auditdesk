@@ -49,7 +49,12 @@ export default async function RunPage({
         : spent >= Number(run.budgetUsd)
           ? `This run has spent its cap ($${spent.toFixed(2)} of $${Number(run.budgetUsd).toFixed(2)}): start a new run for an aspect.`
           : null;
-    const targets = runTargets(run.project.repositories, run.aspects, run.agents);
+    // The repositories the run was started with: a re-run neither clones nor counts one added since.
+    const targets = runTargets(
+        run.project.repositories.filter(r => r.createdAt <= run.createdAt),
+        run.aspects,
+        run.agents
+    );
     return (
         <div className="space-y-8">
             <PageHeader

@@ -35,6 +35,7 @@ describe("sdkEnv", () => {
                 "CLAUDE_CODE_DISABLE_TERMINAL_TITLE",
                 "CLAUDE_CODE_OAUTH_TOKEN",
                 "CLAUDE_CONFIG_DIR",
+                "DISABLE_AUTO_COMPACT",
                 "DISABLE_ERROR_REPORTING",
                 "DISABLE_TELEMETRY",
                 "ENABLE_CLAUDEAI_MCP_SERVERS",
@@ -55,6 +56,8 @@ describe("sdkEnv", () => {
         expect(e.CLAUDE_CODE_DISABLE_NONSTREAMING_FALLBACK).toBe("1");
         expect(e.CLAUDE_CONFIG_DIR).toBe("/tmp/cfg");
         expect(e.CLAUDE_CODE_MAX_RETRIES).toBe("4");
+        // The binary reads it before any settings tier: compaction stays off whichever tier wins.
+        expect(e.DISABLE_AUTO_COMPACT).toBe("1");
     });
 });
 

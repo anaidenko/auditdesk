@@ -51,10 +51,11 @@ describe("briefText", () => {
     it("masks the password of a URL in the brief and the instructions, which every agent's prompt carries", () => {
         const text = briefText(
             { product: "A shop; staging at https://ci:tok3n@staging.example.com/", concerns: null, outOfScope: null, aiBuilt: false },
-            "npm start; database postgres://app:Pa55w0rd@localhost:5432/app"
+            "npm start; database postgres://app:Pa55w0rd@localhost:5432/app; cache redis://:s3cretpw@localhost:6379"
         );
         expect(text).toContain("postgres://app:[password masked]@localhost:5432/app");
         expect(text).toContain("https://ci:[password masked]@staging.example.com/");
-        expect(text).not.toMatch(/Pa55w0rd|tok3n/);
+        expect(text).toContain("redis://:[password masked]@localhost:6379");
+        expect(text).not.toMatch(/Pa55w0rd|tok3n|s3cretpw/);
     });
 });

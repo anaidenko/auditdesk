@@ -6,17 +6,19 @@ import { beforeEach, describe, expect, it } from "vitest";
 
 import { git } from "@/engine/git";
 import { prisma } from "@/server/db";
+import { createFinding } from "@/server/findings";
 import { ActiveRunError, enqueueRun } from "@/server/jobs";
 import {
     confirmDetectedStack,
     createRepository,
     deleteProject,
+    deleteRepository,
     detectRepositoryStack,
     saveRepositoryNotes,
     setRepositoryBranch
 } from "@/server/projects";
 import { resetDb } from "@/test/db";
-import { projectWithRepo } from "@/test/factories";
+import { projectWithRepo, sampleFinding } from "@/test/factories";
 import { makeRepo } from "@/test/git-repo";
 import { makeSampleRepo } from "@/test/sample-repo";
 
@@ -106,12 +108,29 @@ describe("the repositories of a project", () => {
         const source = await makeRepo({ "a.txt": "a" });
         await git(["branch", "-q", "-m", "main", "master"], source);
         expect((await createRepository(project.id, source, "")).branch).toBe("master");
-        expect((await createRepository(project.id, source, "release")).branch).toBe("release");
+        const withRelease = await makeRepo({ "a.txt": "a" }, { branches: { release: { "r.txt": "r" } } });
+        expect((await createRepository(project.id, withRelease, "release")).branch).toBe("release");
     });
 
-    it("falls back to main when the default branch cannot be read", async () => {
+    it("refuses a source it cannot read, in git's own words, and a branch the source does not have", async () => {
         const project = await prisma.project.create({ data: { name: "Acme" } });
-        expect((await createRepository(project.id, "/nowhere/app", "")).branch).toBe("main");
+        await expect(createRepository(project.id, "/nowhere/app", "")).rejects.toThrow(/^Could not read \/nowhere\/app: .+/);
+        await expect(createRepository(project.id, await makeRepo({ "a.txt": "a" }), "develop")).rejects.toThrow(
+            /Branch "develop" was not found/
+        );
+        expect(await prisma.repository.count({ where: { projectId: project.id } })).toBe(0);
+    });
+
+    it("removes a repository that has no findings, and refuses one that has, or any while a run is queued or running", async () => {
+        const { project, repo } = await projectWithRepo();
+        const spare = await prisma.repository.create({ data: { projectId: project.id, source: "/tmp/spare", branch: "main" } });
+        await createFinding(project.id, null, sampleFinding(repo.id, {}));
+        await expect(deleteRepository(repo.id)).rejects.toThrow(/has findings/);
+        const runId = await enqueueRun(project.id, runOptions);
+        await expect(deleteRepository(spare.id)).rejects.toThrow(/queued or running/);
+        await prisma.run.update({ where: { id: runId }, data: { status: "done" } });
+        await deleteRepository(spare.id);
+        expect(await prisma.repository.findMany({ where: { projectId: project.id }, select: { id: true } })).toEqual([{ id: repo.id }]);
     });
 
     it("changes a repository's branch in place, keeping its findings, but not while a run is queued or running", async () => {

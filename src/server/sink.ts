@@ -247,9 +247,9 @@ export class PrismaSink implements PipelineSink {
         });
     }
 
-    async repositoryCloned(repositoryId: string, sha: string, clonePath: string) {
+    async repositoryCloned(repositoryId: string, sha: string, clonePath: string, branch: string) {
         await prisma.$transaction([
-            prisma.repository.update({ where: { id: repositoryId }, data: { commitSha: sha, clonePath } }),
+            prisma.repository.update({ where: { id: repositoryId }, data: { commitSha: sha, clonePath, commitBranch: branch } }),
             prisma.$executeRaw`UPDATE "Run" SET commits = COALESCE(commits, '{}'::jsonb) || jsonb_build_object(${repositoryId}::text, ${sha}::text) WHERE id = ${this.runId}`
         ]);
     }

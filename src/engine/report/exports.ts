@@ -42,7 +42,7 @@ export interface SarifLog {
             locations: {
                 physicalLocation: {
                     artifactLocation: { uri: string; uriBaseId: "%SRCROOT%" };
-                    region?: { startLine: number; endLine: number };
+                    region: { startLine: number; endLine: number };
                 };
             }[];
             partialFingerprints: Record<string, string>;
@@ -103,21 +103,22 @@ export function sarif(d: ReportData, repository: string): SarifLog {
                 tool: { driver: { name: "Auditdesk", informationUri: "https://github.com/anaidenko/auditdesk", rules } },
                 results: findings.flatMap(byPlace).map(({ f, place }) => {
                     const places = place ? [place] : f.evidence;
-                    const commits = [...new Set(places.flatMap(e => (e.commit ? [e.commit.slice(0, 8)] : [])))];
+                    const history = [...new Set(places.filter(e => e.commit).map(e => `${e.commit!.slice(0, 8)}, line ${e.startLine}`))];
                     return {
                         ruleId: f.checklistItem ?? "other",
                         level: LEVEL[f.severity ?? "info"],
                         message: {
-                            text: `${f.unreviewed ? "Not reviewed yet: " : ""}${f.title.replace(/[.!?]+$/, "")}. ${f.summary}${commits.length ? ` Found in git history at ${commits.join(", ")}.` : ""}`
+                            text: `${f.unreviewed ? "Not reviewed yet: " : ""}${f.title.replace(/[.!?]+$/, "")}. ${f.summary}${history.length ? ` Found in git history at ${history.join("; ")}.` : ""}`
                         },
-                        // A place only in history keeps its file but not its lines, which may hold other code today.
+                        // A place only in history points at its file's first line, as GitHub requires a region; its own
+                        // line, named in the message with the commit, may hold other code today.
                         locations: places.map(e => ({
                             physicalLocation: {
                                 artifactLocation: {
                                     uri: e.file.split("/").map(encodeURIComponent).join("/"),
                                     uriBaseId: "%SRCROOT%" as const
                                 },
-                                ...(e.commit ? {} : { region: { startLine: e.startLine, endLine: e.endLine } })
+                                region: e.commit ? { startLine: 1, endLine: 1 } : { startLine: e.startLine, endLine: e.endLine }
                             }
                         })),
                         partialFingerprints: { "auditdesk/finding": f.label, ...(place ? { "auditdesk/place": place.key! } : {}) },

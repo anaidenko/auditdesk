@@ -12,7 +12,10 @@ export function listProjects() {
 export function getProject(id: string) {
     return prisma.project.findUnique({
         where: { id },
-        include: { repositories: { orderBy: { createdAt: "asc" } }, runs: { orderBy: { createdAt: "desc" } } }
+        include: {
+            repositories: { orderBy: { createdAt: "asc" }, include: { _count: { select: { findings: true } } } },
+            runs: { orderBy: { createdAt: "desc" } }
+        }
     });
 }
 

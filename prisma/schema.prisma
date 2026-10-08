@@ -94,6 +94,9 @@ model Repository {
   source           String
   branch           String
   commitSha        String?
+  /// The branch the last clone was made from: the report names it beside commitSha, whatever the
+  /// branch has been changed to since.
+  commitBranch     String?
   clonePath        String?
   /// The last stack detection's StackProfile.
   stack            Json?

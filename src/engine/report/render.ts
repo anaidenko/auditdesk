@@ -131,6 +131,9 @@ const UNFINISHED: Record<string, string> = {
     stopped: "Not covered: the audit was stopped before this aspect finished."
 };
 
+/** A partial agent that examined nothing, such as one the plan's reserve kept from starting. */
+const NOTHING_EXAMINED = "Not covered: the agent stopped before it had examined any item.";
+
 const STATIC_ONLY: Record<string, string> = {
     performance: "Performance was judged from the code alone: no page was rendered or timed.",
     accessibility:
@@ -490,7 +493,7 @@ ${manyRepos ? `<label>Repository <select name="repo">${option("", "All")}${names
                   return `<li><b>${e(a.title)}</b>${a.coverage.length ? `: ${examined} of ${plural(a.coverage.length, "item", "items")} examined.` : ""} <span class="pill ${e(a.status)}">${e(a.status)}</span>${
                       limited(a) ? ` <span class="pill limited">limited review</span>` : ""
                   }
-${UNFINISHED[a.status] ? `<p>${UNFINISHED[a.status]}</p>` : ""}
+${UNFINISHED[a.status] ? `<p>${a.status === "partial" && examined === 0 ? NOTHING_EXAMINED : UNFINISHED[a.status]}</p>` : ""}
 ${limited(a) ? `<p>The agent looked at fewer than half of its checklist; the items it did not examine are listed below.</p>` : ""}
 ${gaps.length ? `<ul class="gaps">${gaps.map(c => `<li><span class="fid">${e(c.item)}</span> ${e(c.title)} <span class="pill ${e(c.status)}">${e(COVERAGE[c.status] ?? c.status)}</span></li>`).join("")}</ul>` : ""}</li>`;
               })

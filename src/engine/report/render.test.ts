@@ -102,6 +102,15 @@ describe("renderReport", () => {
                         title: "Security",
                         status: "partial",
                         note: "Stopped: the Claude plan's 5-hour usage reached 55%, above the 50% reserve; it resets 8 Oct, 15:20. Re-run this aspect then, or allow it past the reserve.",
+                        coverage: [
+                            { item: "SEC-01", title: "Authentication", status: "examined" },
+                            { item: "SEC-02", title: "Sessions", status: "not_reported" }
+                        ]
+                    },
+                    {
+                        title: "Production readiness",
+                        status: "partial",
+                        note: "Not started. The Claude plan's 5-hour usage is at 62% (seen 8 Oct, 10:01), above the 50% reserve; it resets 8 Oct, 13:00. Re-run this aspect then, or allow it past the reserve.",
                         coverage: []
                     },
                     {
@@ -119,6 +128,7 @@ describe("renderReport", () => {
         expect(html).toContain("Not covered: the agent did not finish this aspect.");
         expect(html).toContain("Not covered: the model declined to review this aspect.");
         expect(html).toContain("Not covered: the audit was stopped before this aspect finished.");
+        expect(html).toContain("Not covered: the agent stopped before it had examined any item.");
         expect(html).not.toMatch(/5-hour|allow it past|ECONNREFUSED|category cyber|server restart/);
     });
 

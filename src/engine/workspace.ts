@@ -4,7 +4,7 @@ import { isAbsolute, join } from "node:path";
 import { pathToFileURL } from "node:url";
 
 import { expandHome } from "./config";
-import { git } from "./git";
+import { git, gitSays } from "./git";
 
 export type Source = { kind: "url"; url: string } | { kind: "path"; path: string };
 
@@ -94,7 +94,7 @@ export async function withScratchClone<T>(
         // A local path ignores --depth; file:// keeps the clone shallow.
         const from = source.kind === "url" ? source.url : pathToFileURL(source.path).href;
         await git(["clone", "--quiet", "--depth", "1", "--single-branch", "--branch", o.branch, "--", from, dir]).catch((e: Error) => {
-            throw new Error(`Could not clone the branch "${o.branch}": ${e.message.trim().split("\n").pop()}`);
+            throw new Error(`Could not clone the branch "${o.branch}": ${gitSays(e)}`);
         });
         return await work(dir);
     } finally {
@@ -102,12 +102,30 @@ export async function withScratchClone<T>(
     }
 }
 
-/** The branch a repository's HEAD names, read without a clone; null when the source cannot be read. */
-export async function defaultBranch(source: string): Promise<string | null> {
+/** "Add repository" waits this long for a source to answer, not git's half hour. */
+const READ_TIMEOUT_MS = 15_000;
+
+/**
+ * What a source shows before it is added: the branch its HEAD names. Throws, in git's own words,
+ * when the source cannot be read, or has no `branch` when one is named: a wrong source or branch
+ * would otherwise fail every run of the project, whose only way out would be a new project.
+ */
+export async function readRemote(source: string, branch = ""): Promise<{ head: string | null }> {
     const s = parseSource(source);
-    const out = await git(["ls-remote", "--symref", "--", s.kind === "url" ? s.url : s.path, "HEAD"]).catch(() => null);
-    const name = out?.match(/^ref: refs\/heads\/(\S+)\tHEAD$/m)?.[1] ?? null;
-    return name && BRANCH.test(name) ? name : null;
+    if (branch && !BRANCH.test(branch)) throw new Error(`Not a branch name: ${branch}`);
+    const out = await git(
+        ["ls-remote", "--symref", "--", s.kind === "url" ? s.url : s.path, "HEAD", ...(branch ? [`refs/heads/${branch}`] : [])],
+        undefined,
+        {
+            timeoutMs: READ_TIMEOUT_MS
+        }
+    ).catch((e: Error & { killed?: boolean }) => {
+        throw new Error(`Could not read ${source}: ${e.killed ? `no answer within ${READ_TIMEOUT_MS / 1000} seconds` : gitSays(e)}`);
+    });
+    if (branch && !out.split("\n").some(l => l.endsWith(`\trefs/heads/${branch}`)))
+        throw new Error(`Branch "${branch}" was not found in ${source}`);
+    const head = out.match(/^ref: refs\/heads\/(\S+)\tHEAD$/m)?.[1] ?? null;
+    return { head: head && BRANCH.test(head) ? head : null };
 }
 
 export async function deleteProjectClones(workspaceDir: string, projectId: string): Promise<void> {
