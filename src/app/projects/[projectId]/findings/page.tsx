@@ -4,7 +4,7 @@ import { notFound } from "next/navigation";
 import { ActionForm } from "@/app/ActionForm";
 import { ReportExport } from "@/app/ReportExport";
 import { acceptAction, confirmRecheckAction, excludeAction, rejectAction } from "@/app/review-actions";
-import { Badge, FindingStatus, Icon, PageHeader, RecheckBadge, SeverityBadge, button, field, input } from "@/app/ui";
+import { Badge, FindingStatus, Icon, PageHeader, RecheckBadge, SeverityBadge, button, field, input, select } from "@/app/ui";
 import { ASPECTS, aspectTitle } from "@/engine/aspects";
 import { prisma } from "@/server/db";
 import { listFindings } from "@/server/review";
@@ -82,13 +82,13 @@ export default async function FindingsPage({
                         aria-label="Search"
                     />
                 </div>
-                <select name="status" defaultValue={status ?? ""} className={`${field} w-64`} aria-label="Status">
+                <select name="status" defaultValue={status ?? ""} className={`${select} w-64`} aria-label="Status">
                     <option value="">all but merged and superseded</option>
                     {STATUSES.map(s => (
                         <option key={s}>{s}</option>
                     ))}
                 </select>
-                <select name="aspect" defaultValue={aspect ?? ""} className={`${field} w-64`} aria-label="Aspect">
+                <select name="aspect" defaultValue={aspect ?? ""} className={`${select} w-64`} aria-label="Aspect">
                     <option value="">every aspect</option>
                     {ASPECTS.map(a => (
                         <option key={a.key} value={a.key}>
@@ -103,16 +103,20 @@ export default async function FindingsPage({
                 {findings.map(f => (
                     <li key={f.id}>
                         <details className="group rounded-xl border border-zinc-200 bg-white shadow-sm open:ring-1 open:ring-indigo-200">
-                            <summary className="flex cursor-pointer list-none items-center gap-3 px-4 py-3 [&::-webkit-details-marker]:hidden">
+                            <summary className="flex cursor-pointer list-none flex-wrap items-center gap-x-3 gap-y-1.5 px-4 py-3 sm:flex-nowrap [&::-webkit-details-marker]:hidden">
                                 <SeverityBadge severity={f.severity} />
                                 <span className="font-mono text-xs text-zinc-500">{f.label}</span>
-                                <span className="min-w-0 flex-1 text-sm font-medium text-zinc-900">{f.title}</span>
+                                <span className="order-last min-w-0 basis-full text-sm font-medium text-zinc-900 sm:order-none sm:flex-1 sm:basis-0">
+                                    {f.title}
+                                </span>
                                 <span className="hidden items-center gap-1.5 md:flex">
                                     <Badge tone="slate">{aspectTitle(f.aspect)}</Badge>
                                     <Badge tone="slate">{f.source}</Badge>
                                 </span>
-                                <RecheckBadge recheck={f.recheck} sha={f.recheckedSha} />
-                                <FindingStatus status={f.status} />
+                                <span className="ml-auto flex items-center gap-3">
+                                    <RecheckBadge recheck={f.recheck} sha={f.recheckedSha} />
+                                    <FindingStatus status={f.status} />
+                                </span>
                                 <svg
                                     aria-hidden
                                     viewBox="0 0 24 24"
@@ -124,7 +128,7 @@ export default async function FindingsPage({
                                     <path d="M6 9l6 6 6-6" />
                                 </svg>
                             </summary>
-                            <div className="grid gap-6 border-t border-zinc-100 px-5 py-5 text-sm md:grid-cols-5">
+                            <div className="grid grid-cols-1 gap-6 border-t border-zinc-100 px-5 py-5 text-sm md:grid-cols-5">
                                 <div className="space-y-4 md:col-span-3">
                                     <Section title="Summary">{f.summary}</Section>
                                     {(f.likelihood || f.impact) && (
@@ -151,7 +155,7 @@ export default async function FindingsPage({
                                     {(f.evidence as { file: string; startLine: number; endLine: number; snippet?: string }[]).map(
                                         (e, i) => (
                                             <div key={i} className="overflow-hidden rounded-lg border border-zinc-800 bg-zinc-950">
-                                                <div className="border-b border-zinc-800 px-3 py-1.5 font-mono text-[11px] text-zinc-400">
+                                                <div className="border-b border-zinc-800 px-3 py-1.5 font-mono text-[11px] break-all text-zinc-400">
                                                     {e.file}:{e.startLine}-{e.endLine}
                                                 </div>
                                                 {e.snippet && (

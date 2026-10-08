@@ -3,7 +3,7 @@ import { notFound } from "next/navigation";
 
 import { ActionForm } from "@/app/ActionForm";
 import { editAction, mergeAction } from "@/app/review-actions";
-import { Card, FindingStatus, PageHeader, SeverityBadge, button, input, label } from "@/app/ui";
+import { Card, FindingStatus, PageHeader, SeverityBadge, button, input, label, select } from "@/app/ui";
 import { findingLabel } from "@/engine/findings";
 import { SEVERITIES } from "@/engine/types";
 import { prisma } from "@/server/db";
@@ -11,6 +11,7 @@ import { prisma } from "@/server/db";
 export const dynamic = "force-dynamic";
 
 const field = `${input} mt-1.5`;
+const choice = `${select} mt-1.5 w-full`;
 
 export default async function FindingPage({ params }: { params: Promise<{ projectId: string; number: string }> }) {
     const { projectId, number } = await params;
@@ -45,7 +46,7 @@ export default async function FindingPage({ params }: { params: Promise<{ projec
                     <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
                         <label className={label}>
                             Severity
-                            <select name="severity" defaultValue={f.severity ?? ""} disabled={question} className={field}>
+                            <select name="severity" defaultValue={f.severity ?? ""} disabled={question} className={choice}>
                                 {SEVERITIES.map(s => (
                                     <option key={s}>{s}</option>
                                 ))}
@@ -53,7 +54,7 @@ export default async function FindingPage({ params }: { params: Promise<{ projec
                         </label>
                         <label className={label}>
                             Effort
-                            <select name="effort" defaultValue={f.effort ?? ""} className={field}>
+                            <select name="effort" defaultValue={f.effort ?? ""} className={choice}>
                                 <option value="">—</option>
                                 <option>S</option>
                                 <option>M</option>
@@ -70,7 +71,7 @@ export default async function FindingPage({ params }: { params: Promise<{ projec
                                 name="signoff"
                                 defaultValue={f.fixBeforeSignoff === null ? "" : f.fixBeforeSignoff ? "before" : "later"}
                                 disabled={question}
-                                className={field}
+                                className={choice}
                             >
                                 <option value="">By severity</option>
                                 <option value="before">Fix before sign-off</option>

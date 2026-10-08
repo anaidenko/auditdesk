@@ -117,6 +117,7 @@ export function RunProgress({ runId }: { runId: string }) {
                             <span className="shrink-0 text-zinc-500 tabular-nums">{clockTime(e.at)}</span>
                             <span
                                 className={cx(
+                                    "min-w-0 wrap-anywhere",
                                     e.level === "error" ? "text-red-400" : e.level === "warn" ? "text-amber-300" : "text-zinc-200"
                                 )}
                             >

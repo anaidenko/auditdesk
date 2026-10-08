@@ -176,67 +176,69 @@ export default async function EvalsPage() {
                             <p className="mt-2 text-xs text-zinc-500">
                                 A hollow point did not finish: the audit was aborted, or an agent ended partial, failed or not started.
                             </p>
-                            <table className="mt-4 w-full text-left text-sm">
-                                <thead className="text-xs text-zinc-500 uppercase">
-                                    <tr>
-                                        <th className="py-2 font-medium">#</th>
-                                        <th className="font-medium">Date, UTC</th>
-                                        <th className="font-medium">Model · effort</th>
-                                        <th className="font-medium">Recall</th>
-                                        <th className="font-medium">Agents alone</th>
-                                        <th className="font-medium">False</th>
-                                        <th className="font-medium">Cost</th>
-                                        <th className="font-medium">Time</th>
-                                        <th className="font-medium">Key</th>
-                                        <th className="font-medium">Auditdesk</th>
-                                        <th className="font-medium">Judge</th>
-                                    </tr>
-                                </thead>
-                                <tbody className="divide-y divide-zinc-100 tabular-nums">
-                                    {numbered.map(({ n, r }) => (
-                                        <tr key={r.file} data-testid="eval-row" className="align-top">
-                                            <td className="py-2 font-medium">{n}</td>
-                                            <td className="whitespace-nowrap">{when(r)}</td>
-                                            <td>
-                                                {series(r)}
-                                                {r.aborted && <div className="text-xs text-red-700">aborted: {r.aborted}</div>}
-                                                {r.incomplete.length > 0 && (
-                                                    <div className="text-xs text-amber-800">{r.incomplete.join(", ")}</div>
-                                                )}
-                                            </td>
-                                            <td>
-                                                {r.found} of {r.total} ({pct(r)}%)
-                                            </td>
-                                            <td>{r.agentsFound}</td>
-                                            <td>{falseCell(r)}</td>
-                                            <td>
-                                                {cost(r.usd, r.unpriced)}
-                                                {r.judgeUsd !== null && (
-                                                    <span className="text-zinc-500"> + judge {cost(r.judgeUsd, r.judgeUnpriced)}</span>
-                                                )}
-                                            </td>
-                                            <td className="whitespace-nowrap">{duration(r.durationSec)}</td>
-                                            <td className="font-mono text-xs">{r.keyDigest?.slice(0, 6) ?? "–"}</td>
-                                            <td className="font-mono text-xs">
-                                                {r.commit?.slice(0, 7) ?? "–"}
-                                                {r.dirty && <div className="font-sans text-zinc-500">with uncommitted changes</div>}
-                                            </td>
-                                            <td className="whitespace-nowrap">
-                                                {r.judged ? (
-                                                    <Link
-                                                        href={`/evals/${encodeURIComponent(r.file)}`}
-                                                        className="text-indigo-700 hover:underline"
-                                                    >
-                                                        {r.checked} of {r.judged} checked, {r.agreed} agreed
-                                                    </Link>
-                                                ) : (
-                                                    "–"
-                                                )}
-                                            </td>
+                            <div className="mt-4 overflow-x-auto">
+                                <table className="w-full text-left text-sm">
+                                    <thead className="text-xs text-zinc-500 uppercase">
+                                        <tr>
+                                            <th className="py-2 font-medium">#</th>
+                                            <th className="font-medium">Date, UTC</th>
+                                            <th className="font-medium">Model · effort</th>
+                                            <th className="font-medium">Recall</th>
+                                            <th className="font-medium">Agents alone</th>
+                                            <th className="font-medium">False</th>
+                                            <th className="font-medium">Cost</th>
+                                            <th className="font-medium">Time</th>
+                                            <th className="font-medium">Key</th>
+                                            <th className="font-medium">Auditdesk</th>
+                                            <th className="font-medium">Judge</th>
                                         </tr>
-                                    ))}
-                                </tbody>
-                            </table>
+                                    </thead>
+                                    <tbody className="divide-y divide-zinc-100 tabular-nums">
+                                        {numbered.map(({ n, r }) => (
+                                            <tr key={r.file} data-testid="eval-row" className="align-top">
+                                                <td className="py-2 font-medium">{n}</td>
+                                                <td className="whitespace-nowrap">{when(r)}</td>
+                                                <td>
+                                                    {series(r)}
+                                                    {r.aborted && <div className="text-xs text-red-700">aborted: {r.aborted}</div>}
+                                                    {r.incomplete.length > 0 && (
+                                                        <div className="text-xs text-amber-800">{r.incomplete.join(", ")}</div>
+                                                    )}
+                                                </td>
+                                                <td>
+                                                    {r.found} of {r.total} ({pct(r)}%)
+                                                </td>
+                                                <td>{r.agentsFound}</td>
+                                                <td>{falseCell(r)}</td>
+                                                <td>
+                                                    {cost(r.usd, r.unpriced)}
+                                                    {r.judgeUsd !== null && (
+                                                        <span className="text-zinc-500"> + judge {cost(r.judgeUsd, r.judgeUnpriced)}</span>
+                                                    )}
+                                                </td>
+                                                <td className="whitespace-nowrap">{duration(r.durationSec)}</td>
+                                                <td className="font-mono text-xs">{r.keyDigest?.slice(0, 6) ?? "–"}</td>
+                                                <td className="font-mono text-xs">
+                                                    {r.commit?.slice(0, 7) ?? "–"}
+                                                    {r.dirty && <div className="font-sans text-zinc-500">with uncommitted changes</div>}
+                                                </td>
+                                                <td className="whitespace-nowrap">
+                                                    {r.judged ? (
+                                                        <Link
+                                                            href={`/evals/${encodeURIComponent(r.file)}`}
+                                                            className="text-indigo-700 hover:underline"
+                                                        >
+                                                            {r.checked} of {r.judged} checked, {r.agreed} agreed
+                                                        </Link>
+                                                    ) : (
+                                                        "–"
+                                                    )}
+                                                </td>
+                                            </tr>
+                                        ))}
+                                    </tbody>
+                                </table>
+                            </div>
                         </>
                     </Card>
                 );
