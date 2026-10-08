@@ -7,6 +7,10 @@
 #   scripts/worktree.sh <branch> <dir>     an existing branch, or a new one from HEAD
 set -eu
 [ $# -eq 2 ] || { echo "usage: scripts/worktree.sh <branch> <dir>" >&2; exit 2; }
+# The physical directory, so that a relative <dir> means the same to git and to `cd "$2"` below:
+# git resolves it from the repository's real location, while a logical cd through a symlinked
+# checkout (resume/repos/auditdesk) would look for it beside the link and fail.
+cd -P .
 root=$(git rev-parse --show-toplevel)
 if git show-ref --verify --quiet "refs/heads/$1"; then git worktree add "$2" "$1"; else git worktree add -b "$1" "$2"; fi
 ln -s "$root/node_modules" "$2/node_modules"
