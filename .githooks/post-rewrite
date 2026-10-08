@@ -1,0 +1,7 @@
+#!/bin/sh
+# A rebase checks out its base first, and post-checkout regenerates the Prisma client for the base's
+# schema; the commits replayed after it fire no checkout, so the client ends a schema behind.
+[ "$1" = rebase ] || exit 0
+echo "post-rewrite: regenerating the Prisma client after the rebase." >&2
+DATABASE_URL="${DATABASE_URL:-$(sed -n 's/^DATABASE_URL=//p' .env.test)}" pnpm exec prisma generate >/dev/null 2>&1 || echo "post-rewrite: prisma generate failed; run it by hand." >&2
+exit 0
