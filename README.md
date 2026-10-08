@@ -67,8 +67,11 @@ Anthropic SDK and the Claude Agent SDK, Playwright for the PDF and end-to-end te
 
 ## Setup
 
-You need Node 22 or later, pnpm 10 (through Corepack), Docker, and for Claude plan access the
-`claude` CLI.
+You need Node 22 or later, pnpm 10 (through Corepack), Docker, git 2.45.1 or later, and for
+Claude plan access the `claude` CLI. An older git is open to CVE-2024-32004 and CVE-2024-32465
+when it clones a crafted repository, and the first `git` on `PATH` is the one that runs
+(`git --version`; on macOS, `brew upgrade git`). Git LFS is not needed: the app runs git with the
+LFS filters off (`src/engine/git.ts`), so a client's LFS file stays the pointer file it committed.
 
 ```bash
 cp .env.example .env.local
