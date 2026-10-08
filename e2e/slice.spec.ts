@@ -28,10 +28,15 @@ test("a run from project to downloaded report", async ({ page }) => {
     await expect(page.getByRole("button", { name: "Re-run this aspect" })).toBeVisible();
 
     await page.getByRole("link", { name: "Review the findings" }).click();
+    // Until Andrii reviews them, the exports leave the findings out, and the page says so.
+    const waiting = page.getByRole("link", { name: /^\d+ findings? (and \d+ questions? )?awaits? review$/ });
+    await expect(waiting).toHaveAttribute("href", /\/findings\?status=unreviewed$/);
+    const before = Number((await waiting.innerText()).match(/^\d+/)![0]);
     const evalFinding = page.locator("details", { hasText: "User input reaches eval" });
     await evalFinding.locator("summary").click();
     await evalFinding.getByRole("button", { name: "Accept" }).click();
     await expect(evalFinding).toContainText("accepted");
+    await expect(waiting).toHaveText(new RegExp(`^${before - 1} finding`));
 
     const label = (await evalFinding.locator("summary").innerText()).match(/F-\d{3}/)![0];
     const report = await page.request.get(page.url().replace(/\/findings.*$/, "/report"));

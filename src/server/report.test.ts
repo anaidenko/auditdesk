@@ -4,7 +4,7 @@ import type { ReportData } from "@/engine/report/types";
 import { EMPTY_STACK } from "@/engine/stack";
 import { prisma } from "@/server/db";
 import { createFinding } from "@/server/findings";
-import { loadReportData, reportFileName } from "@/server/report";
+import { awaitingReview, loadReportData, reportFileName } from "@/server/report";
 import { resetDb } from "@/test/db";
 import { projectWithRepo, sampleFinding } from "@/test/factories";
 
@@ -135,6 +135,24 @@ describe("the report's review tally", () => {
         expect((await loadReportData(project.id)).review).toMatchObject({ filed: 2, merged: 0, unreviewed: 2 });
         await prisma.finding.update({ where: { id: agent.id }, data: { status: "accepted" } });
         expect((await loadReportData(project.id)).review).toMatchObject({ filed: 2, reported: 1, merged: 1, unreviewed: 0 });
+    });
+});
+
+describe("what awaits review", () => {
+    it("counts the unreviewed findings and questions apart, and nothing the review has decided or folded", async () => {
+        const { project, repo } = await projectWithRepo();
+        const statuses = ["accepted", "edited", "merged", "rejected", "excluded", "superseded", "unreviewed", "unreviewed"] as const;
+        for (const status of statuses) {
+            const { id } = await createFinding(project.id, null, sampleFinding(repo.id));
+            await prisma.finding.update({ where: { id }, data: { status } });
+        }
+        for (const status of ["unreviewed", "accepted"] as const) {
+            const { id } = await createFinding(project.id, null, sampleFinding(repo.id, { kind: "question", severity: null }));
+            await prisma.finding.update({ where: { id }, data: { status } });
+        }
+        const other = await projectWithRepo();
+        await createFinding(other.project.id, null, sampleFinding(other.repo.id));
+        expect(await awaitingReview(project.id)).toEqual({ findings: 2, questions: 1 });
     });
 });
 
