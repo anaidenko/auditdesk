@@ -27,6 +27,8 @@ export interface ReportFinding {
     refs?: FindingReferences;
     /** What the latest re-audit found of it (design § 9). */
     recheck?: "unchanged" | "open" | "fixed" | "changed" | "regressed" | null;
+    /** In a draft only: the auditor has not reviewed it yet, and the report says so on its card. */
+    unreviewed?: boolean;
 }
 
 export interface ReportData {
@@ -61,6 +63,8 @@ export interface ReportData {
     toolVersions: ToolVersions | null;
     findings: ReportFinding[];
     questions: ReportFinding[];
+    /** Ticked at export, and something awaits review: the findings and questions include it, marked. */
+    draft?: boolean;
     /** Only when Andrii ticks it at export (design § 8): billed dollars and plan dollars apart. */
     cost: { apiKeyUsd: number; planUsd: number; unpriced: number } | null;
     /** The project's AI-built mode: the report gathers ai-built findings only when it is on (design § 10). */

@@ -45,9 +45,9 @@ export interface SarifLog {
                 };
             }[];
             partialFingerprints: Record<string, string>;
-            properties: { label: string; severity: SeverityName | null; aspect: string; cwe?: string };
+            properties: { label: string; severity: SeverityName | null; aspect: string; cwe?: string; unreviewed?: true };
         }[];
-        properties: { repository: string; branch: string; commit: string };
+        properties: { repository: string; branch: string; commit: string; draft?: true };
     }[];
 }
 
@@ -63,7 +63,8 @@ const bySeverity = (fs: ReportFinding[]) =>
  * one repository, and GitHub rejects a file with two runs of one tool. The rule is the checklist
  * item and the level follows the severity. The label rides along as a fingerprint for other tools;
  * GitHub computes its own from the checked-out source. Questions have no location, so they stay in
- * the report.
+ * the report. A draft marks what the auditor has not reviewed in the message, which is what an alert
+ * shows, as well as in the properties.
  */
 export function sarif(d: ReportData, repository: string): SarifLog {
     const repo = d.repositories.find(r => r.name === repository);
@@ -102,7 +103,7 @@ export function sarif(d: ReportData, repository: string): SarifLog {
                 results: findings.flatMap(byPlace).map(({ f, place }) => ({
                     ruleId: f.checklistItem ?? "other",
                     level: LEVEL[f.severity ?? "info"],
-                    message: { text: `${f.title.replace(/[.!?]+$/, "")}. ${f.summary}` },
+                    message: { text: `${f.unreviewed ? "Not reviewed yet: " : ""}${f.title.replace(/[.!?]+$/, "")}. ${f.summary}` },
                     locations: (place ? [place] : f.evidence).map(e => ({
                         physicalLocation: {
                             artifactLocation: { uri: e.file.split("/").map(encodeURIComponent).join("/"), uriBaseId: "%SRCROOT%" as const },
@@ -114,10 +115,11 @@ export function sarif(d: ReportData, repository: string): SarifLog {
                         label: f.label,
                         severity: f.severity,
                         aspect: f.aspect,
-                        ...(f.references.cwe ? { cwe: f.references.cwe } : {})
+                        ...(f.references.cwe ? { cwe: f.references.cwe } : {}),
+                        ...(f.unreviewed && { unreviewed: true as const })
                     }
                 })),
-                properties: { repository: repo.name, branch: repo.branch, commit: repo.sha }
+                properties: { repository: repo.name, branch: repo.branch, commit: repo.sha, ...(d.draft && { draft: true as const }) }
             }
         ]
     };

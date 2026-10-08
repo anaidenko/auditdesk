@@ -50,6 +50,25 @@ describe("sarif", () => {
         expect(() => sarif(data(), "web")).toThrow(/No repository "web"/);
     });
 
+    it("marks a draft's run, and each result the auditor has not reviewed yet, in its message as well as its properties", () => {
+        const log = sarif(
+            reportData({
+                draft: true,
+                findings: [
+                    reportFinding({ label: "F-001", severity: "critical", title: "Raw SQL", summary: "s" }),
+                    reportFinding({ label: "F-002", severity: "low", title: "Verbose errors", summary: "s", unreviewed: true })
+                ]
+            }),
+            "app"
+        );
+        expect(log.runs[0].properties).toMatchObject({ repository: "app", draft: true });
+        expect(log.runs[0].results.map(r => [r.message.text, r.properties.unreviewed])).toEqual([
+            ["Raw SQL. s", undefined],
+            ["Not reviewed yet: Verbose errors. s", true]
+        ]);
+        expect(sarif(one({}), "app").runs[0].properties).not.toHaveProperty("draft");
+    });
+
     it("maps severity to level, the item to the rule, and evidence to locations under the source root", () => {
         const [app] = sarif(data(), "app").runs;
         expect(app.results[0]).toMatchObject({

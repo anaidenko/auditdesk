@@ -4,8 +4,9 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
+import { createFinding } from "@/server/findings";
 import { resetDb } from "@/test/db";
-import { projectWithRepo } from "@/test/factories";
+import { projectWithRepo, sampleFinding } from "@/test/factories";
 
 import { GET } from "./route";
 
@@ -14,12 +15,16 @@ afterEach(() => {
     delete process.env.WORKSPACE_DIR;
 });
 
-async function download(site: string) {
-    const { project } = await projectWithRepo();
+async function download(site: string, query = "") {
+    const { project, repo } = await projectWithRepo();
+    await createFinding(project.id, null, sampleFinding(repo.id));
     process.env.WORKSPACE_DIR = await mkdtemp(join(tmpdir(), "ws-"));
-    const res = await GET(new Request(`http://127.0.0.1/projects/${project.id}/report/pdf`, { headers: { "sec-fetch-site": site } }), {
-        params: Promise.resolve({ projectId: project.id })
-    });
+    const res = await GET(
+        new Request(`http://127.0.0.1/projects/${project.id}/report/pdf${query}`, { headers: { "sec-fetch-site": site } }),
+        {
+            params: Promise.resolve({ projectId: project.id })
+        }
+    );
     return { res, copies: join(process.env.WORKSPACE_DIR, project.id, "reports") };
 }
 
@@ -35,6 +40,11 @@ describe("the PDF report download", { timeout: 60_000 }, () => {
                 .toString()
         ).toBe("%PDF-");
         expect(readdirSync(copies)).toEqual([expect.stringMatching(/\.pdf$/)]);
+    });
+
+    it("names a draft's PDF as one", async () => {
+        const { res } = await download("same-origin", "?draft=1");
+        expect(res.headers.get("content-disposition")).toMatch(/filename="auditdesk-acme-draft-\d{4}-\d{2}-\d{2}\.pdf"/);
     });
 
     it("refuses a request another site started, and writes no copy", async () => {

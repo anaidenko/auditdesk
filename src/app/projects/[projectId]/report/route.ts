@@ -9,7 +9,8 @@ export async function GET(request: Request, { params }: { params: Promise<{ proj
     // request could not read the report, but it would still write a copy.
     if (request.headers.get("sec-fetch-site") === "cross-site") return new Response("Cross-site request refused", { status: 403 });
     const { projectId } = await params;
-    const data = await loadReportData(projectId, { includeCost: new URL(request.url).searchParams.get("cost") === "1" });
+    const query = new URL(request.url).searchParams;
+    const data = await loadReportData(projectId, { includeCost: query.get("cost") === "1", draft: query.get("draft") === "1" });
     const html = renderReport(data);
     const name = reportFileName(data, "html");
     await keepReportCopy(projectId, name, html);

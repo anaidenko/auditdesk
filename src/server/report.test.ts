@@ -156,6 +156,37 @@ describe("what awaits review", () => {
     });
 });
 
+describe("a draft report", () => {
+    it("adds the findings and questions awaiting review, marked, and leaves out what the review turned away or folded", async () => {
+        const { project, repo } = await projectWithRepo();
+        for (const status of ["accepted", "unreviewed", "rejected", "excluded", "merged", "superseded"] as const) {
+            const { id } = await createFinding(project.id, null, sampleFinding(repo.id, { title: status }));
+            await prisma.finding.update({ where: { id }, data: { status } });
+        }
+        await createFinding(project.id, null, sampleFinding(repo.id, { kind: "question", severity: null, title: "Backups?" }));
+        const final = await loadReportData(project.id);
+        expect([final.draft, final.findings.map(f => f.title), final.questions]).toEqual([false, ["accepted"], []]);
+        const draft = await loadReportData(project.id, { draft: true });
+        expect(draft.draft).toBe(true);
+        expect(draft.findings.map(f => [f.title, f.unreviewed ?? false])).toEqual([
+            ["accepted", false],
+            ["unreviewed", true]
+        ]);
+        expect(draft.questions.map(f => [f.title, f.unreviewed])).toEqual([["Backups?", true]]);
+        expect(reportFileName(draft, "html")).toMatch(/^auditdesk-acme-draft-\d{4}-\d{2}-\d{2}\.html$/);
+        expect(reportFileName(draft, "sarif", "x")).toMatch(/^auditdesk-acme-x-draft-\d{4}-\d{2}-\d{2}\.sarif$/);
+    });
+
+    it("is the final report when nothing awaits review", async () => {
+        const { project, repo } = await projectWithRepo();
+        const { id } = await createFinding(project.id, null, sampleFinding(repo.id));
+        await prisma.finding.update({ where: { id }, data: { status: "accepted" } });
+        const d = await loadReportData(project.id, { draft: true });
+        expect(d.draft).toBe(false);
+        expect(reportFileName(d, "html")).not.toContain("draft");
+    });
+});
+
 describe("the report's scope", () => {
     it("shows each aspect of each repository once, from its latest finished agent", async () => {
         const { project, repo } = await projectWithRepo();

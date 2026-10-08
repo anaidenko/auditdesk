@@ -28,14 +28,28 @@ test("a run from project to downloaded report", async ({ page }) => {
     await expect(page.getByRole("button", { name: "Re-run this aspect" })).toBeVisible();
 
     await page.getByRole("link", { name: "Review the findings" }).click();
-    // Until Andrii reviews them, the exports leave the findings out, and the page says so.
-    const waiting = page.getByRole("link", { name: /^\d+ findings? (and \d+ questions? )?awaits? review$/ });
+    // Until Andrii reviews them, the exports leave the findings out, and the export panel says so.
+    const exports = page.getByRole("dialog", { name: "Export" });
+    await expect(exports).toBeHidden();
+    await page.getByRole("button", { name: "Export", exact: true }).click();
+    const waiting = exports.getByRole("link", { name: /^\d+ findings? (and \d+ questions? )?awaits? review$/ });
     await expect(waiting).toHaveAttribute("href", /\/findings\?status=unreviewed$/);
     const before = Number((await waiting.innerText()).match(/^\d+/)![0]);
+    // A draft carries them for a first look, each marked; the issues stay reviewed only.
+    await exports.getByLabel(/^Draft/).check();
+    const [draft] = await Promise.all([page.waitForEvent("download"), exports.getByRole("button", { name: "HTML report" }).click()]);
+    expect(draft.suggestedFilename()).toMatch(/^auditdesk-sample-draft-\d{4}-\d{2}-\d{2}\.html$/);
+    const draftHtml = readFileSync(await draft.path(), "utf8");
+    expect(draftHtml).toContain("User input reaches eval");
+    expect(draftHtml).toContain('<span class="pill unreviewed">not reviewed</span>');
+    await exports.getByLabel(/^Draft/).uncheck();
+    await page.keyboard.press("Escape");
+    await expect(exports).toBeHidden();
     const evalFinding = page.locator("details", { hasText: "User input reaches eval" });
     await evalFinding.locator("summary").click();
     await evalFinding.getByRole("button", { name: "Accept" }).click();
     await expect(evalFinding).toContainText("accepted");
+    await page.getByRole("button", { name: "Export", exact: true }).click();
     await expect(waiting).toHaveText(new RegExp(`^${before - 1} finding`));
 
     const label = (await evalFinding.locator("summary").innerText()).match(/F-\d{3}/)![0];
@@ -46,7 +60,7 @@ test("a run from project to downloaded report", async ({ page }) => {
     const pdf = await page.request.get(page.url().replace(/\/findings.*$/, "/report/pdf"));
     expect(pdf.headers()["content-type"]).toBe("application/pdf");
     expect((await pdf.body()).subarray(0, 5).toString()).toBe("%PDF-");
-    const [sarif] = await Promise.all([page.waitForEvent("download"), page.getByRole("button", { name: "SARIF" }).click()]);
+    const [sarif] = await Promise.all([page.waitForEvent("download"), exports.getByRole("button", { name: "SARIF" }).click()]);
     expect(sarif.suggestedFilename()).toMatch(/^auditdesk-sample-.+-\d{4}-\d{2}-\d{2}\.sarif$/);
     const log = JSON.parse(readFileSync(await sarif.path(), "utf8"));
     expect(log.runs[0].results.map((r: { properties: { label: string } }) => r.properties.label)).toEqual([label]);
@@ -381,6 +395,7 @@ test("the run shows its spend per serving model, and the report states the cost 
     await accepted.locator("summary").click();
     await accepted.getByRole("button", { name: "Accept" }).click();
     await expect(accepted).toContainText("accepted");
+    await page.getByRole("button", { name: "Export", exact: true }).click();
     const text = async (withCost: boolean) => {
         if (withCost) await page.getByLabel("Include the cost").check();
         else await page.getByLabel("Include the cost").uncheck();
@@ -492,4 +507,9 @@ test("every page fits a narrow window, and a select's arrow keeps the fields' in
     });
     expect(style).toMatchObject({ appearance: "none", image: expect.stringContaining("svg"), position: "calc(100% - 12px) 50%" });
     expect(style.padding).toBeGreaterThanOrEqual(36);
+    // The export panel opens inside a phone's width too.
+    await page.getByRole("button", { name: "Export", exact: true }).click();
+    const panel = (await page.getByRole("dialog", { name: "Export" }).boundingBox())!;
+    expect(panel.x).toBeGreaterThanOrEqual(0);
+    expect(panel.x + panel.width).toBeLessThanOrEqual(390);
 });

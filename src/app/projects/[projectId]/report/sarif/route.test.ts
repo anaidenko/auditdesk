@@ -36,6 +36,18 @@ describe("the SARIF and issue exports", () => {
         expect(log.runs[0].results.map((r: { message: { text: string } }) => r.message.text)).toEqual([expect.stringMatching(/^Raw SQL/)]);
     });
 
+    it("serves a draft's SARIF with the unreviewed marked, while the issues stay reviewed only", async () => {
+        const id = await project();
+        const res = await get(sarif, id, "sarif?draft=1");
+        expect(res.headers.get("content-disposition")).toMatch(/filename="auditdesk-acme-x-draft-\d{4}-\d{2}-\d{2}\.sarif"/);
+        const log = await res.json();
+        expect(log.runs[0].results.map((r: { message: { text: string } }) => r.message.text)).toEqual([
+            expect.stringMatching(/^Raw SQL/),
+            expect.stringMatching(/^Not reviewed yet: Not reviewed yet/)
+        ]);
+        expect(await (await get(issues, id, "issues?draft=1")).text()).not.toContain("Not reviewed yet");
+    });
+
     it("serves one repository's SARIF at a time when the project has several", async () => {
         const id = await project();
         const api = await prisma.repository.create({ data: { projectId: id, source: "/tmp/api", branch: "main" } });
