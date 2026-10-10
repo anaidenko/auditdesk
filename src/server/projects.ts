@@ -92,7 +92,10 @@ export async function detectRepositoryStack(projectId: string, repositoryId: str
 /** The client's consent and, with it, the auditor's own exclusions for each of the project's repositories. */
 export async function saveConsent(projectId: string, v: { consent: boolean; exclusions: Record<string, string | null> }): Promise<void> {
     await prisma.$transaction([
-        prisma.project.update({ where: { id: projectId }, data: { aiConsentAt: v.consent ? new Date() : null } }),
+        // The date is when the client agreed: editing the patterns later does not move it.
+        v.consent
+            ? prisma.project.updateMany({ where: { id: projectId, aiConsentAt: null }, data: { aiConsentAt: new Date() } })
+            : prisma.project.updateMany({ where: { id: projectId }, data: { aiConsentAt: null } }),
         ...Object.entries(v.exclusions).map(([id, aiExclusions]) =>
             prisma.repository.updateMany({ where: { id, projectId }, data: { aiExclusions: aiExclusions?.trim() || null } })
         )

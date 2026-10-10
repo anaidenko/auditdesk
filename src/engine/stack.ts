@@ -1,5 +1,6 @@
 import { readFile, stat } from "node:fs/promises";
 
+import { areaMap } from "./ai-policy";
 import type { AspectKey } from "./aspects";
 import { git } from "./git";
 import { SKIP_DIRS, resolveInClone } from "./paths";
@@ -307,7 +308,9 @@ export async function detectStack(root: string, o: { read?: Reader; excluded?: (
     const manifests: string[] = [];
     const excludedManifests: string[] = [];
     const take = async (rel: string) => {
-        if (o.excluded?.(rel)) {
+        // The real path too: a committed symlink could lead into an excluded directory.
+        const real = o.excluded && !o.excluded(rel) ? ((await resolveInClone(root, rel).catch(() => null))?.rel ?? rel) : rel;
+        if (o.excluded?.(rel) || o.excluded?.(real)) {
             excludedManifests.push(rel);
             return null;
         }
@@ -390,6 +393,7 @@ export async function detectStack(root: string, o: { read?: Reader; excluded?: (
             .map(([name, d]) => [name, { ...d, prod: true }])
     );
 
+    const areas = o.excluded && excludedManifests.length ? areaMap(files, o.excluded) : new Map<string, string>();
     return {
         languages,
         frameworks: labels(FRAMEWORKS, deps),
@@ -405,7 +409,10 @@ export async function detectStack(root: string, o: { read?: Reader; excluded?: (
         aiBuiltSigns: aiBuiltSigns.sort(),
         notCovered,
         manifests: manifests.sort(),
-        ...(excludedManifests.length && { excludedManifests: excludedManifests.sort() })
+        // A directory excluded as a whole is named, not the manifests inside it.
+        ...(excludedManifests.length && {
+            excludedManifests: [...new Set(excludedManifests.map(rel => areas.get(rel) ?? rel))].sort()
+        })
     };
 }
 

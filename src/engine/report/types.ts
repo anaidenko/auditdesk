@@ -54,6 +54,8 @@ export interface ReportData {
         notCovered: string[];
         links?: RepoLinks;
         aiPolicy?: AiPolicySummary | null;
+        /** The aspects whose latest agent ran under another policy than `aiPolicy`, by title. */
+        aiPolicyEarlier?: string[];
     }[];
     /** The findings filed (questions and superseded ones apart), by what the review made of them. */
     review?: { filed: number; reported: number; fixed: number; merged: number; rejected: number; excluded: number; unreviewed: number };

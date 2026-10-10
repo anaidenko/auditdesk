@@ -111,6 +111,7 @@ model Repository {
   aiExclusions       String?
   /// The client's AI policy as the last run read it from its clone, at commitSha: what the report states.
   aiPolicy           Json?
+  aiPolicyAt         DateTime?
   /// The policy read with the last stack detection, on a scratch clone of the branch.
   aiPolicyDetected   Json?
   aiPolicyDetectedAt DateTime?
@@ -135,6 +136,8 @@ model Run {
   toolVersions  Json?
   /// Repository ID to the commit this run audited: a re-run returns to it (design § 9).
   commits       Json?
+  /// Repository ID to the client's AI policy this run read and enforced.
+  aiPolicies    Json?
   error         String?
   createdAt     DateTime      @default(now())
   startedAt     DateTime?

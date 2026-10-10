@@ -189,12 +189,26 @@ const fileCount = (n: number) => (n ? `${n} ${n === 1 ? "file" : "files"}` : "no
 function exclusions(d: ReportData): string {
     const rows = d.repositories.flatMap(r => {
         const p = r.aiPolicy;
-        if (!p?.sources.length) return [];
+        const earlier = r.aiPolicyEarlier?.length
+            ? `These aspects ran under an earlier version of this policy, so it did not hold for them as stated: ${r.aiPolicyEarlier.map(e).join(", ")}.`
+            : "";
+        const warnings = p?.warnings.length
+            ? [`<ul class="method">\n${p.warnings.map(w => `<li>Warning: ${e(w)}</li>`).join("\n")}\n</ul>`]
+            : [];
+        if (!p?.sources.length)
+            return earlier || warnings.length
+                ? [`<p>In ${e(r.name)}, no AI exclusions now.${earlier && ` ${earlier}`}</p>`, ...warnings]
+                : [];
+        const after = [...(earlier ? [`<p>${earlier}</p>`] : []), ...warnings];
         if (p.everything)
             return [
-                `<p>Not reviewed by AI: the client's own settings exclude every file of ${e(r.name)}${p.readsNothing ? ` (a bare Read deny at <code>${e(p.readsNothing)}</code>)` : ""}.</p>`
+                `<p>Not reviewed by AI: the client's AI policy excludes every file of ${e(r.name)}${p.readsNothing ? ` (a bare Read deny at <code>${e(p.readsNothing)}</code>)` : ""}.</p>`,
+                ...after
             ];
         const auditor = p.sources.find(s => s.file === AUDITOR);
+        const by = [p.sources.some(s => s !== auditor) && "the client's own settings", auditor && "the exclusions agreed with the client"]
+            .filter(Boolean)
+            .join(" and ");
         const sources = p.sources.map(s => {
             const patterns = s.patterns
                 .filter(x => x.note !== "outside the repository, not applicable")
@@ -208,10 +222,12 @@ function exclusions(d: ReportData): string {
                   : e(s.tool);
             return `<li><code>${e(s.file)}</code> (${what}), ${fileCount(s.excludedFiles)}: ${patterns}</li>`;
         });
+        const file = (x: string) => (/^and \d+ more$/.test(x) ? e(x) : `<code>${e(x)}</code>`);
         return [
-            `<p>In ${e(r.name)}, ${p.excludedFiles} of ${p.files} files, by the client's own settings${auditor ? " and the exclusions agreed with the client" : ""}:</p>`,
+            `<p>In ${e(r.name)}, ${p.excludedFiles} of ${p.files} files, by ${by}:</p>`,
             `<ul class="method">\n${sources.join("\n")}\n</ul>`,
-            ...(p.excluded.length ? [`<p>Files: ${p.excluded.map(x => `<code>${e(x)}</code>`).join(", ")}.</p>`] : [])
+            ...(p.excluded.length ? [`<p>Files: ${p.excluded.map(file).join(", ")}.</p>`] : []),
+            ...after
         ];
     });
     if (!rows.length) return "";

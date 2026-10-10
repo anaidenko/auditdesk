@@ -24,7 +24,10 @@ export async function makeRepo(
     const root = await mkdtemp(join(tmpdir(), "auditdesk-repo-"));
     await git(["init", "-q", "-b", "main"], root);
     await write(root, files);
-    for (const [path, target] of Object.entries(o.symlinks ?? {})) await symlink(target, join(root, path));
+    for (const [path, target] of Object.entries(o.symlinks ?? {})) {
+        await mkdir(dirname(join(root, path)), { recursive: true });
+        await symlink(target, join(root, path));
+    }
     await git(["add", "-A"], root);
     await git([...ID, "commit", "-q", "-m", "initial"], root);
     for (const [branch, branchFiles] of Object.entries(o.branches ?? {})) {

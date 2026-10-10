@@ -51,7 +51,7 @@ export function policyText(s: AiPolicySummary): string | null {
         .filter(Boolean);
     if (!sources.length) return null;
     return [
-        `The client's own settings exclude ${s.excludedFiles} of the repository's ${s.files} files from any AI tool. The tools refuse to read or search them, and a finding cannot cite them.`,
+        `The client's AI policy (its own settings and any exclusions agreed with it) excludes ${s.excludedFiles} of the repository's ${s.files} files from any AI tool. The tools refuse to read or search them, and a finding cannot cite them.`,
         `Sources:\n${sources.join("\n")}`,
         `Excluded: ${s.excluded.join(", ") || "no file at this commit"}.`,
         'Do not try to read them. The scanners did run on them; their findings there are listed under a neutral title. Mark each checklist item whose code lies in an excluded area "partly", and name the area in your summary.'

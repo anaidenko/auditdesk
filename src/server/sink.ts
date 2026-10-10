@@ -257,7 +257,13 @@ export class PrismaSink implements PipelineSink {
     }
 
     async aiPolicyRead(repositoryId: string, summary: AiPolicySummary) {
-        await prisma.repository.update({ where: { id: repositoryId }, data: { aiPolicy: summary as unknown as Prisma.InputJsonObject } });
+        await prisma.$transaction([
+            prisma.repository.update({
+                where: { id: repositoryId },
+                data: { aiPolicy: summary as unknown as Prisma.InputJsonObject, aiPolicyAt: new Date() }
+            }),
+            prisma.$executeRaw`UPDATE "Run" SET "aiPolicies" = COALESCE("aiPolicies", '{}'::jsonb) || jsonb_build_object(${repositoryId}::text, ${JSON.stringify(summary)}::jsonb) WHERE id = ${this.runId}`
+        ]);
     }
 
     async repositoryCloned(repositoryId: string, sha: string, clonePath: string, branch: string | null) {

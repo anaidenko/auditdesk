@@ -1,5 +1,5 @@
 import ignore, { type Ignore } from "ignore";
-import { readFile } from "node:fs/promises";
+import { readFile, readdir } from "node:fs/promises";
 import { join, posix } from "node:path";
 
 import { ToolError, resolveInClone, walk } from "./paths";
@@ -196,13 +196,19 @@ export async function readAiPolicy(root: string, o: { auditor?: string | null } 
         entries.push(read);
         readsNothing ??= read.readsNothing;
     }
-    for await (const e of walk(root)) {
-        if ("symlink" in e) continue;
+    for (const e of await ignoreFiles(root)) {
         const name = e.rel.slice(e.rel.lastIndexOf("/") + 1);
         const kind = IGNORE_FILES[name];
-        if (!kind) continue;
-        const text = await readText(join(root, e.rel));
-        if (text === null) continue;
+        // A committed symlink is read where it leads, as its tool would, if that stays in the clone.
+        const at = e.symlink
+            ? await resolveInClone(root, e.rel).catch((err: Error) => {
+                  if (/leaves the repository/.test(err.message))
+                      warnings.push(`${e.rel} leaves the repository through a symlink: it was not read.`);
+                  return null;
+              })
+            : { abs: join(root, e.rel) };
+        const text = at && (await readText(at.abs));
+        if (text === null || text === undefined) continue;
         const dir = e.rel.includes("/") ? e.rel.slice(0, e.rel.lastIndexOf("/")) : "";
         const { patterns, test } = readIgnore(text, dir, warnings, e.rel);
         if (!patterns.length) {
@@ -245,6 +251,23 @@ export async function readAiPolicy(root: string, o: { auditor?: string | null } 
 
 const readText = (path: string): Promise<string | null> => readFile(path, "utf8").catch(() => null);
 
+/**
+ * Every ignore file of IGNORE_FILES in the clone, in walk order, symlinks included. Unlike `walk`, it
+ * looks into vendor/, build/ and the like: read_file reads them, so their rules hold there.
+ */
+async function ignoreFiles(root: string, dir = ""): Promise<{ rel: string; symlink: boolean }[]> {
+    const found: { rel: string; symlink: boolean }[] = [];
+    const entries = await readdir(join(root, dir), { withFileTypes: true }).catch(() => []);
+    entries.sort((a, b) => a.name.localeCompare(b.name));
+    for (const e of entries) {
+        const rel = dir ? `${dir}/${e.name}` : e.name;
+        // node_modules holds packages' own files, published by their authors, not the client's rules.
+        if (e.isDirectory() && e.name !== ".git" && e.name !== "node_modules") found.push(...(await ignoreFiles(root, rel)));
+        else if (IGNORE_FILES[e.name] && (e.isFile() || e.isSymbolicLink())) found.push({ rel, symlink: e.isSymbolicLink() });
+    }
+    return found;
+}
+
 /** A path relative to the root as the rules see it, or null for the root itself and paths that leave it. */
 function normalise(rel: string): string | null {
     const path = posix
@@ -269,13 +292,61 @@ export function excludedBy(policy: AiPolicy, ...paths: string[]): PolicySource |
  * directory is refused before the clone says whether it exists, then the real one after symlinks.
  */
 export async function checkReadable(policy: AiPolicy | undefined, root: string, path: string): Promise<{ abs: string; rel: string }> {
-    const refuse = (source: PolicySource) => new ToolError(`${path} is excluded by the client's AI policy (${source.file}).`);
     const asked = policy && excludedBy(policy, path);
-    if (asked) throw refuse(asked);
-    const resolved = await resolveInClone(root, path);
+    if (asked) throw refusal(path, asked);
+    const resolved = await resolveOrRefuse(policy, root, path, rel => excludedBy(policy!, rel));
     const real = policy && excludedBy(policy, resolved.rel);
-    if (real) throw refuse(real);
+    if (real) throw refusal(path, real);
     return resolved;
+}
+
+/**
+ * A directory to list: refused, as a file would be, when the rules exclude it as a whole (any new
+ * file in it, asked or real), whether it exists or not; `whole` is that source, for a directory
+ * whose listing turns out to hold only excluded files.
+ */
+export async function checkListable(
+    policy: AiPolicy | undefined,
+    root: string,
+    dir: string
+): Promise<{ abs: string; rel: string; whole: PolicySource | null }> {
+    const asked = policy ? dirSource(policy, dir) : null;
+    const resolved = await resolveOrRefuse(policy, root, dir, rel => asked ?? dirSource(policy!, rel));
+    return { ...resolved, whole: asked ?? (policy ? dirSource(policy, resolved.rel) : null) };
+}
+
+export const refusal = (path: string, source: PolicySource) =>
+    new ToolError(`${path} is excluded by the client's AI policy (${source.file}).`);
+
+/** The source that would exclude a new file in the directory. */
+export const dirSource = (policy: AiPolicy, dir: string) => policy.match(`${dir.replace(/\/+$/, "")}/${PROBE}`);
+
+/**
+ * resolveInClone, except that a path that does not exist is refused when its real form (its longest
+ * existing ancestor resolved through symlinks, then the rest) is excluded: "no such file" would
+ * otherwise name what an excluded directory holds.
+ */
+async function resolveOrRefuse(
+    policy: AiPolicy | undefined,
+    root: string,
+    path: string,
+    excludes: (real: string) => PolicySource | null
+): Promise<{ abs: string; rel: string }> {
+    try {
+        return await resolveInClone(root, path);
+    } catch (e) {
+        if (!policy || !(e instanceof ToolError) || !e.message.startsWith("No such file")) throw e;
+        const parts = normalise(path)?.split("/") ?? [];
+        for (let i = parts.length - 1; i > 0; i--) {
+            const at = await resolveInClone(root, parts.slice(0, i).join("/")).catch(() => null);
+            if (!at) continue;
+            const real = [...(at.rel === "." ? [] : [at.rel]), ...parts.slice(i)].join("/");
+            const source = excludes(real);
+            if (source) throw refusal(path, source);
+            break;
+        }
+        throw e;
+    }
 }
 
 /**
@@ -338,9 +409,18 @@ export interface AiPolicySummary {
     everything: boolean;
 }
 
+/** What tells one policy from another: its sources and patterns, not the counts, which move with the commit. */
+export function policyKey(s: AiPolicySummary | null | undefined): string {
+    return JSON.stringify((s?.sources ?? []).map(x => [x.file, x.intent ?? false, x.patterns.map(p => p.pattern)]));
+}
+
 export async function summarizePolicy(policy: AiPolicy, root: string): Promise<AiPolicySummary> {
     const rels: string[] = [];
-    for await (const e of walk(root)) rels.push(e.rel);
+    const regular = new Set<string>();
+    for await (const e of walk(root)) {
+        rels.push(e.rel);
+        if (!("symlink" in e)) regular.add(e.rel);
+    }
     const known = new Set(rels);
     const counts = new Map<PolicySource, number>();
     const hit = new Set<string>();
@@ -349,16 +429,27 @@ export async function summarizePolicy(policy: AiPolicy, root: string): Promise<A
         if (by.length) hit.add(rel);
         for (const s of by) counts.set(s, (counts.get(s) ?? 0) + 1);
     }
+    // The auditor types these from a client's words: one that matches nothing is most likely a mistake.
+    const unmatched = (policy.sources.find(s => s.file === AUDITOR)?.patterns ?? [])
+        .filter(p => !p.note && !p.pattern.startsWith("!"))
+        .filter(p => {
+            const ig = matcher().add(p.pattern);
+            return !rels.some(rel => ig.ignores(rel));
+        })
+        .map(
+            p =>
+                `The auditor's pattern "${p.pattern}" matches no file${/\/./.test(p.pattern.replace(/^\//, "")) ? "; a slash before its end anchors it at the repository root" : ""}.`
+        );
     const areas = areasOf(rels, rel => hit.has(rel) || (!known.has(rel) && !!policy.match(rel))).map(a =>
         a.area.endsWith("/") ? `${a.area} (${a.files} ${a.files === 1 ? "file" : "files"})` : a.area
     );
     return {
         sources: policy.sources.map(s => ({ ...s, excludedFiles: counts.get(s) ?? 0 })),
-        warnings: policy.warnings,
+        warnings: [...policy.warnings, ...unmatched],
         readsNothing: policy.readsNothing,
         files: rels.length,
         excludedFiles: hit.size,
         excluded: areas.length > MAX_AREAS ? [...areas.slice(0, MAX_AREAS), `and ${areas.length - MAX_AREAS} more`] : areas,
-        everything: !!policy.readsNothing || (rels.length > 0 && hit.size === rels.length)
+        everything: !!policy.readsNothing || (regular.size > 0 && [...regular].every(rel => hit.has(rel)))
     };
 }

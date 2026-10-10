@@ -819,7 +819,9 @@ describe("the client's AI policy in a run", () => {
         const [agent] = inputs;
         expect(agent.ctx.policy?.match("src/config.js")?.file).toBe(".aiignore");
         expect(agent.ctx.repoMap).toContain("1 excluded by the client's AI policy");
-        expect(prefixText(agent)).toMatch(/# The client's AI policy\n\nThe client's own settings exclude 1 of the repository's \d+ files/);
+        expect(prefixText(agent)).toMatch(
+            /# The client's AI policy\n\nThe client's AI policy \(its own settings and any exclusions agreed with it\) excludes 1 of the repository's \d+ files/
+        );
         expect(prefixText(agent)).toContain("- .aiignore (JetBrains AI Assistant and Junie): src/config.js");
         // The scanners still covered the file; the agent sees their finding there under a neutral title only.
         const leak = sink.findings.find(f => f.source === "scanner" && f.evidence[0].file === "src/config.js")!;
@@ -844,6 +846,21 @@ describe("the client's AI policy in a run", () => {
             "keys/server.key is excluded by the client's AI policy (.claude/settings.json)."
         );
         await expect(read("src/db.js")).resolves.toContain("SELECT");
+    });
+
+    it("says what in the policy could not be read, as a warning of the run", async () => {
+        const sink = new TestSink();
+        const { runAspect } = capturing();
+        await audit(
+            sink,
+            await makeSampleRepo({ ".claude/settings.json": "{ not json" }),
+            await mkdtemp(join(tmpdir(), "ws-")),
+            {},
+            runAspect
+        );
+        expect(sink.events).toContainEqual(
+            expect.stringMatching(/: \.claude\/settings\.json is not valid JSON: its Read rules could not be read\.$/)
+        );
     });
 
     it("detects the stack without reading a manifest the policy excludes", async () => {
@@ -942,7 +959,44 @@ describe("a repository whose policy excludes every file", () => {
             ["r-open", false]
         ]);
         expect(sink.findings.every(f => f.repositoryId !== "r-closed")).toBe(true);
-        expect(sink.events).toContainEqual(expect.stringMatching(/^Skipped Seams between repositories/));
+        expect(sink.events).toContainEqual(
+            `Skipped Seams between repositories: only one repository is left after the client's AI policy refused ${[...pathNames(repositories).values()][0]}.`
+        );
+    });
+
+    it("fails a re-run whose only target is refused, and warns about no repository the re-run does not audit", async () => {
+        const [closed, open] = [await makeSampleRepo(denyAll), await makeSampleRepo()];
+        const repositories = [
+            { id: "r-closed", source: closed, branch: "main" },
+            { id: "r-open", source: open, branch: "main" }
+        ];
+        const ws = await mkdtemp(join(tmpdir(), "ws-"));
+        const { inputs, runAspect } = capturing();
+        await expect(
+            audit(new TestSink(), closed, ws, { repositories, only: { repositoryId: "r-closed", aspect: "security" } }, runAspect)
+        ).rejects.toThrow("The client's AI policy excludes every file of every repository this run audits");
+        const sink = new TestSink();
+        await audit(sink, closed, ws, { repositories, only: { repositoryId: "r-open", aspect: "security" } }, runAspect);
+        expect(inputs.map(i => i.ctx.repositoryId)).toEqual(["r-open"]);
+        expect(sink.events.some(e => e.startsWith("Refused"))).toBe(false);
+    });
+
+    it("fails a re-run of the seams pass that the policy leaves one repository", async () => {
+        const [closed, open] = [await makeSampleRepo(denyAll), await makeSampleRepo()];
+        const repositories = [
+            { id: "r-closed", source: closed, branch: "main" },
+            { id: "r-open", source: open, branch: "main" }
+        ];
+        const { runAspect } = capturing();
+        await expect(
+            audit(
+                new TestSink(),
+                closed,
+                await mkdtemp(join(tmpdir(), "ws-")),
+                { repositories, aspects: ["security", "seams"], only: { repositoryId: "r-closed", aspect: "seams" } },
+                runAspect
+            )
+        ).rejects.toThrow(/^The seams pass needs two repositories, and the client's AI policy refused /);
     });
 
     it("fails the run when it is the only repository", async () => {
@@ -951,7 +1005,7 @@ describe("a repository whose policy excludes every file", () => {
         await expect(
             audit(sink, await makeSampleRepo({ ".aiignore": "*\n" }), await mkdtemp(join(tmpdir(), "ws-")), {}, runAspect)
         ).rejects.toThrow(
-            "The client's AI policy excludes every file of every repository in this run; ask the client which files the review may read."
+            "The client's AI policy excludes every file of every repository this run audits; ask the client which files the review may read."
         );
         expect(inputs).toEqual([]);
     });

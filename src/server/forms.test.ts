@@ -24,7 +24,8 @@ describe("forms", () => {
         form.set("exclusions-r2", "   ");
         expect(parseConsentForm(form, ["r1", "r2", "r3"])).toEqual({
             ok: true,
-            value: { consent: true, exclusions: { r1: "payments/**\n*.sql", r2: null, r3: null } }
+            // r3 is not on the form (added in another tab since): its patterns are left as they are.
+            value: { consent: true, exclusions: { r1: "payments/**\n*.sql", r2: null } }
         });
         form.set("exclusions-r2", "x".repeat(4001));
         expect(parseConsentForm(form, ["r1", "r2"])).toEqual({ ok: false, error: "Keep each field under 4,000 characters." });

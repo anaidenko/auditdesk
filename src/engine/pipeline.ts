@@ -144,7 +144,9 @@ export async function runAudit(input: AuditInput, deps: AuditDeps): Promise<{ st
     const masks: { value: string; rule: string }[] = [];
     // Every repository's policy, refused ones too: a seams finding of an earlier run may cite any of them.
     const policies = new Map<string, AiPolicy>();
+    /** The path names of the repositories the run audits that their policy refused. */
     const refused: string[] = [];
+    let targets = 0;
     for (const repo of input.repositories) {
         if (await sink.stopRequested()) return { stopped: true };
         const target = !input.only || seamsOnly || input.only.repositoryId === repo.id;
@@ -163,11 +165,14 @@ export async function runAudit(input: AuditInput, deps: AuditDeps): Promise<{ st
         if (target) {
             await sink.repositoryCloned(repo.id, sha, clonePath, repo.sha ? null : repo.branch);
             await sink.aiPolicyRead(repo.id, summary);
+            for (const w of summary.warnings) await sink.progress(`${names.get(repo.id)}: ${w}`, "warn");
+            targets++;
         }
         // A policy that leaves no file to read refuses the repository (design § 6 Q2): no scanner,
-        // map or agent; gitleaks alone, so its secrets stay out of the brief.
-        if (summary.everything) {
-            refused.push(repo.id);
+        // map or agent; gitleaks alone, so its secrets stay out of the brief. Said only of a
+        // repository the run audits.
+        if (summary.everything && target) {
+            refused.push(names.get(repo.id)!);
             const why = summary.readsNothing
                 ? `a bare Read deny at ${summary.readsNothing}`
                 : `its patterns cover all ${summary.files} files`;
@@ -195,9 +200,13 @@ export async function runAudit(input: AuditInput, deps: AuditDeps): Promise<{ st
         masks.push(...(await leakMasks(clonePath, scan.leaks)));
         scanned.push({ repo, sha, clonePath, scan, policy, summary });
     }
-    if (refused.length === input.repositories.length)
+    if (refused.length && refused.length === targets)
         throw new Error(
-            "The client's AI policy excludes every file of every repository in this run; ask the client which files the review may read."
+            "The client's AI policy excludes every file of every repository this run audits; ask the client which files the review may read."
+        );
+    if (seamsOnly && targets - refused.length < 2)
+        throw new Error(
+            `The seams pass needs two repositories, and the client's AI policy refused ${refused.join(", ")}; ask the client which files the review may read.`
         );
     /** A seams finding's path: its repository's name, then a path that repository's policy may exclude. */
     const seamsExcluded = (file: string) =>
@@ -363,7 +372,13 @@ export async function runAudit(input: AuditInput, deps: AuditDeps): Promise<{ st
 
     // The seams pass: one agent reads every repository at once, after their own aspects (design § 6).
     if (seams && (!input.only || input.only.aspect === SEAMS)) {
-        if (views.length < 2) await sink.progress(`Skipped ${aspectTitle(SEAMS)}: the project has one repository.`, "warn");
+        if (views.length < 2)
+            await sink.progress(
+                refused.length
+                    ? `Skipped ${aspectTitle(SEAMS)}: only one repository is left after the client's AI policy refused ${refused.join(", ")}.`
+                    : `Skipped ${aspectTitle(SEAMS)}: the project has one repository.`,
+                "warn"
+            );
         else {
             if (await sink.stopRequested()) return { stopped: true };
             const section = (text: (v: (typeof views)[number]) => string) => views.map(v => `## ${v.name}\n\n${text(v)}`).join("\n\n");

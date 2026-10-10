@@ -67,6 +67,11 @@ describe("the client's consent and AI policy", () => {
         });
         expect(saved.aiConsentAt).toBeInstanceOf(Date);
         expect(saved.repositories.map(r => r.aiExclusions)).toEqual(["payments/**", null]);
+        const recorded = saved.aiConsentAt;
+        await saveConsent(project.id, { consent: true, exclusions: { [repo.id]: "payments/\nreports/" } });
+        const again = await prisma.project.findUniqueOrThrow({ where: { id: project.id }, include: { repositories: true } });
+        expect(again.aiConsentAt).toEqual(recorded);
+        expect(again.repositories.find(r => r.id === other.id)?.aiExclusions).toBeNull();
         await saveConsent(project.id, { consent: false, exclusions: { [repo.id]: "payments/**" } });
         expect((await prisma.project.findUniqueOrThrow({ where: { id: project.id } })).aiConsentAt).toBeNull();
     });

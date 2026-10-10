@@ -233,12 +233,27 @@ describe("detectStack", () => {
         });
         expect(read).toEqual(["package.json"]);
         expect(s.manifests).toEqual(["package.json"]);
-        expect(s.excludedManifests).toEqual(["payments/package.json", "prisma/schema.prisma"]);
+        expect(s.excludedManifests).toEqual(["payments/", "prisma/schema.prisma"]);
         expect(s.frameworks).toEqual(["Next.js 16"]);
         expect(stackProfileText(s)).toMatch(
-            /\nManifests excluded by the client's AI policy, not read: payments\/package\.json, prisma\/schema\.prisma$/
+            /\nManifests excluded by the client's AI policy, not read: payments\/, prisma\/schema\.prisma$/
         );
         expect(stackProfileText(await detectStack(root))).not.toContain("excluded");
+    });
+
+    it("names a directory excluded as a whole rather than the manifests in it, and follows a manifest's symlink before reading it", async () => {
+        const root = await makeRepo(
+            {
+                "package.json": pkg({ next: "16.0.0" }),
+                "private/package.json": pkg({ stripe: "18.0.0" }),
+                "private/schema.prisma": 'datasource db {\n  provider = "mysql"\n}\n',
+                "private/notes.md": ""
+            },
+            { symlinks: { "prisma/schema.prisma": "../private/schema.prisma" } }
+        );
+        const s = await detectStack(root, { excluded: rel => rel.startsWith("private/") });
+        expect(s.excludedManifests).toEqual(["prisma/schema.prisma", "private/"]);
+        expect(s.databases).toEqual([]);
     });
 
     it("never reads a file outside the manifests it lists", async () => {

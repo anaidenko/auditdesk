@@ -2,7 +2,7 @@ import { readFile, stat } from "node:fs/promises";
 import { join } from "node:path";
 import { Script, createContext } from "node:vm";
 
-import { type AiPolicy, areaMap, exclusionTest } from "./ai-policy";
+import { type AiPolicy, type PolicySource, areaMap, checkListable, exclusionTest, refusal } from "./ai-policy";
 import { ToolError, globToRegExp, resolveInClone, walk } from "./paths";
 
 export const LIMITS = {
@@ -40,10 +40,16 @@ export async function listFiles(
     o: { dir?: string; glob?: string; limit?: number; prefix?: string; policy?: AiPolicy } = {}
 ): Promise<string> {
     let base = "";
+    let whole: PolicySource | null = null;
     if (o.dir && o.dir !== ".") {
-        const { abs, rel } = await resolveInClone(root, o.dir);
-        if (!(await stat(abs)).isDirectory()) throw new ToolError(`${rel} is a file; use read_file.`);
-        base = rel;
+        const at = await checkListable(o.policy, root, o.dir);
+        if (!(await stat(at.abs)).isDirectory()) {
+            const file = o.policy?.match(o.dir) ?? o.policy?.match(at.rel);
+            if (file) throw refusal(o.dir, file);
+            throw new ToolError(`${at.rel} is a file; use read_file.`);
+        }
+        base = at.rel;
+        whole = at.whole;
     }
     const matches = globMatcher(o.glob, o.prefix);
     const limit = o.limit ?? LIMITS.listEntries;
@@ -51,6 +57,8 @@ export async function listFiles(
     for await (const entry of walk(join(root, base))) entries.push({ ...entry, rel: base ? `${base}/${entry.rel}` : entry.rel });
     const rels = entries.map(e => e.rel);
     const areas = o.policy ? areaMap(rels, exclusionTest(o.policy, rels), base) : new Map<string, string>();
+    // A directory excluded as a whole answers as one that does not exist would.
+    if (whole && rels.every(rel => areas.has(rel))) throw refusal(o.dir!, whole);
     const inArea = new Map<string, number>();
     for (const area of areas.values()) inArea.set(area, (inArea.get(area) ?? 0) + 1);
     const lines: string[] = [];
@@ -58,8 +66,9 @@ export async function listFiles(
     let more = 0;
     for (const entry of entries) {
         const { rel } = entry;
-        if (!matches(rel)) continue;
         const area = areas.get(rel);
+        // A directory area shows whatever the glob: a glob naming a file in it must not tell whether it exists.
+        if (!area?.endsWith("/") && !matches(rel)) continue;
         if (area && shown.has(area)) continue;
         if (area) shown.add(area);
         if (lines.length >= limit) {
@@ -143,11 +152,13 @@ export async function grepFiles(
     let excluded = 0;
     let more = 0;
     for await (const entry of walk(root)) {
-        if ("symlink" in entry || !matches(entry.rel)) continue;
+        if ("symlink" in entry) continue;
+        // Counted before the glob: a count by glob would tell which names an excluded directory holds.
         if (o.policy?.match(entry.rel)) {
             excluded++;
             continue;
         }
+        if (!matches(entry.rel)) continue;
         if (entry.size > LIMITS.grepFileBytes) {
             tooBig++;
             continue;

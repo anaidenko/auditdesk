@@ -70,7 +70,10 @@ export function parseConsentForm(
     fd: FormData,
     repositoryIds: string[]
 ): Parsed<{ consent: boolean; exclusions: Record<string, string | null> }> {
-    const exclusions = Object.fromEntries(repositoryIds.map(id => [id, note(fd, `exclusions-${id}`)]));
+    // Only the fields on the form: a repository added since the page loaded keeps its patterns.
+    const exclusions = Object.fromEntries(
+        repositoryIds.filter(id => fd.has(`exclusions-${id}`)).map(id => [id, note(fd, `exclusions-${id}`)])
+    );
     return tooLong(...Object.values(exclusions))
         ? { ok: false, error: TOO_LONG }
         : { ok: true, value: { consent: fd.get("consent") === "on", exclusions } };

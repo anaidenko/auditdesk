@@ -15,6 +15,7 @@ import { getProject } from "@/server/queries";
 
 import { AiPolicyPanel } from "./AiPolicy";
 import { ModelAccessCard } from "./ModelAccess";
+import { policyView } from "./ai-policy-view";
 import { AddRepositoryForm, BriefForm, ConsentForm, RepositoryNotes, StartRunForm } from "./forms";
 
 export const dynamic = "force-dynamic";
@@ -111,9 +112,20 @@ export default async function ProjectPage({ params }: { params: Promise<{ projec
                                             instructions={r.instructions}
                                         />
                                         <AiPolicyPanel
-                                            detected={r.aiPolicyDetected as AiPolicySummary | null}
-                                            detectedAt={r.aiPolicyDetectedAt?.toISOString().slice(0, 10) ?? null}
-                                            audited={r.aiPolicy as AiPolicySummary | null}
+                                            view={policyView({
+                                                detected:
+                                                    r.aiPolicyDetected && r.aiPolicyDetectedAt
+                                                        ? {
+                                                              policy: r.aiPolicyDetected as unknown as AiPolicySummary,
+                                                              at: r.aiPolicyDetectedAt
+                                                          }
+                                                        : null,
+                                                audited:
+                                                    r.aiPolicy && r.aiPolicyAt
+                                                        ? { policy: r.aiPolicy as unknown as AiPolicySummary, at: r.aiPolicyAt }
+                                                        : null,
+                                                auditor: r.aiExclusions
+                                            })}
                                             auditedSha={r.commitSha}
                                         />
                                     </li>

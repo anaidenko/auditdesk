@@ -269,7 +269,13 @@ const prefixed = (prefix: string, out: string) =>
     prefix
         ? out
               .split("\n")
-              .map(l => (/^(…|\(|No files\.|No matches)/.test(l) || /^\d+\| /.test(l) ? l : `${prefix}${l}`))
+              .map(l =>
+                  l.startsWith("(")
+                      ? `(${prefix.slice(0, -1)}: ${l.slice(1)}`
+                      : /^(…|No files\.|No matches)/.test(l) || /^\d+\| /.test(l)
+                        ? l
+                        : `${prefix}${l}`
+              )
               .join("\n")
         : out;
 
@@ -305,11 +311,11 @@ async function across(
             prefixed(r.prefix, await named(r, () => tool(r.clonePath, dir ? r.rel : undefined, glob || undefined, r.prefix, r.policy)))
         )
     );
-    const found = outs.filter(o => !/^(No files\.|No matches)/.test(o));
-    if (found.length) return found.join("\n");
-    // Nothing found anywhere: one "No matches." with every repository's notes after it.
-    const [first, ...rest] = outs;
-    return [first, ...rest.flatMap(o => o.split("\n").slice(1))].join("\n");
+    const empty = (o: string) => /^(No files\.|No matches)/.test(o);
+    const found = outs.filter(o => !empty(o));
+    // An empty answer's notes stay: a search that skipped excluded files is not complete.
+    const notes = outs.filter(empty).flatMap(o => o.split("\n").slice(1));
+    return [...(found.length ? found : [outs.find(empty)!.split("\n")[0]]), ...notes].join("\n");
 }
 
 /** The API engine's declaration: strict tools on the SDK's tool runner. */

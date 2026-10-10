@@ -434,8 +434,9 @@ export function ConsentForm({
                 <label key={r.id} className={label}>
                     Excluded by the client in <span className="font-mono normal-case">{r.name}</span>
                     <span className="mt-0.5 block font-normal tracking-normal normal-case">
-                        One gitignore pattern per line, such as <code>payments/**</code>: added to the repository&apos;s own rules, no agent
-                        reads these files, and the report lists them.
+                        One gitignore pattern per line: <code>payments/</code> at any depth, <code>/src/payments/</code> from the root only.
+                        Added to the repository&apos;s own rules; no agent reads these files, and the report lists them. Detect the stack
+                        again to see what they match.
                     </span>
                     <textarea
                         name={`exclusions-${r.id}`}

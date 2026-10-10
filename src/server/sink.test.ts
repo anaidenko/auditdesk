@@ -359,8 +359,8 @@ describe("PrismaSink", () => {
         ]);
     });
 
-    it("records the client's AI policy a run read at its commit", async () => {
-        const { sink, repo } = await setup();
+    it("records the client's AI policy a run read at its commit, on the repository and the run", async () => {
+        const { sink, repo, run } = await setup();
         const summary = {
             sources: [
                 {
@@ -378,7 +378,11 @@ describe("PrismaSink", () => {
             everything: false
         };
         await sink.aiPolicyRead(repo.id, summary);
-        expect((await prisma.repository.findUniqueOrThrow({ where: { id: repo.id } })).aiPolicy).toEqual(summary);
+        expect(await prisma.repository.findUniqueOrThrow({ where: { id: repo.id } })).toMatchObject({
+            aiPolicy: summary,
+            aiPolicyAt: expect.any(Date)
+        });
+        expect((await prisma.run.findUniqueOrThrow({ where: { id: run.id } })).aiPolicies).toEqual({ [repo.id]: summary });
     });
 
     it("records a detected stack on the repository and leaves a confirmed profile as Andrii wrote it", async () => {

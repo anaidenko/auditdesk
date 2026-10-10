@@ -2,7 +2,7 @@ import { mkdir, writeFile } from "node:fs/promises";
 import { basename, join } from "node:path";
 import "server-only";
 
-import type { AiPolicySummary } from "@/engine/ai-policy";
+import { type AiPolicySummary, policyKey } from "@/engine/ai-policy";
 import { ASPECTS, SEAMS, aspectTitle } from "@/engine/aspects";
 import { loadChecklist } from "@/engine/checklists";
 import { workspaceDir } from "@/engine/config";
@@ -183,6 +183,20 @@ export async function loadReportData(
         const [ry, ay] = order(y);
         return rx - ry || ax - ay;
     });
+    // Each run records the policy it enforced; an aspect whose latest agent ran under another one is named.
+    const enforced = new Map(
+        (
+            await prisma.run.findMany({
+                where: { id: { in: [...new Set(latestAgents.map(a => a.runId))] } },
+                select: { id: true, aiPolicies: true }
+            })
+        ).map(r => [r.id, (r.aiPolicies as Record<string, AiPolicySummary> | null) ?? {}])
+    );
+    const earlier = (repositoryId: string, stated: AiPolicySummary | null) =>
+        latestAgents
+            .filter(a => a.aspect === SEAMS || a.repositoryId === repositoryId)
+            .filter(a => policyKey(enforced.get(a.runId)?.[repositoryId]) !== policyKey(stated))
+            .map(a => aspectTitle(a.aspect));
     const scanned = await prisma.run.findFirst({
         where: { projectId, toolVersions: { not: Prisma.DbNull } },
         orderBy: { createdAt: "desc" },
@@ -239,6 +253,7 @@ export async function loadReportData(
                 sha: r.commitSha ?? "not cloned",
                 notCovered: (r.stack as StackProfile | null)?.notCovered ?? [],
                 aiPolicy: r.aiPolicy as AiPolicySummary | null,
+                aiPolicyEarlier: earlier(r.id, r.aiPolicy as AiPolicySummary | null),
                 ...(links && { links })
             };
         }),

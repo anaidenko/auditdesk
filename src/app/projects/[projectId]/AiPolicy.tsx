@@ -1,28 +1,20 @@
 import { Badge } from "@/app/ui";
-import type { AiPolicySummary } from "@/engine/ai-policy";
+
+import type { policyView } from "./ai-policy-view";
 
 const files = (n: number) => `${n} ${n === 1 ? "file" : "files"}`;
 
 /**
- * The client's own exclusions from AI tools, as read with the last stack detection (or, before
- * one, by the last run): each source, its patterns and the files it excludes. A run enforces the
- * policy it reads from its own clone.
+ * The client's own exclusions from AI tools, as last read (policyView): each source, its patterns
+ * and the files it excludes. A run enforces the policy it reads from its own clone.
  */
-export function AiPolicyPanel({
-    detected,
-    detectedAt,
-    audited,
-    auditedSha
-}: {
-    detected: AiPolicySummary | null;
-    detectedAt: string | null;
-    audited: AiPolicySummary | null;
-    auditedSha: string | null;
-}) {
-    const policy = detected ?? audited;
-    const where = detected
-        ? `Read with the stack detection of ${detectedAt}, on a clone of the branch.`
-        : `Read by the last run, at ${auditedSha?.slice(0, 10)}.`;
+export function AiPolicyPanel({ view, auditedSha }: { view: ReturnType<typeof policyView>; auditedSha: string | null }) {
+    const policy = view?.policy ?? null;
+    const day = view?.at.toISOString().slice(0, 10);
+    const where =
+        view?.from === "detection"
+            ? `Read with the stack detection of ${day}, on a clone of the branch.`
+            : `Read by the last run, on ${day}, at ${auditedSha?.slice(0, 10)}.`;
     return (
         <details className="group w-full" data-testid="ai-policy">
             <summary className="flex cursor-pointer list-none items-center gap-2 text-xs font-medium text-indigo-700 [&::-webkit-details-marker]:hidden">
@@ -36,6 +28,7 @@ export function AiPolicyPanel({
                 ) : (
                     <Badge tone="slate">none found</Badge>
                 )}
+                {view?.stale && <Badge tone="amber">your patterns changed: detect again</Badge>}
                 {!!policy?.warnings.length && (
                     <Badge tone="amber">{policy.warnings.length === 1 ? "1 warning" : `${policy.warnings.length} warnings`}</Badge>
                 )}

@@ -310,7 +310,10 @@ describe("the client's AI policy in an agent's tools", () => {
         );
         expect(await run("list_files", { dir: "web", glob: "" })).toContain("web/certs/ (excluded: 2 files)");
         expect(await run("grep", { pattern: CANARY, glob: "" })).toBe(
-            "No matches.\n(9 files excluded by the client's AI policy were not searched)"
+            "No matches.\n(web: 9 files excluded by the client's AI policy were not searched)"
+        );
+        expect(await run("grep", { pattern: "own key", glob: "" })).toBe(
+            "api/certs/server.key:1: api's own key\n(web: 9 files excluded by the client's AI policy were not searched)"
         );
         expect(await run("scanner_results", { aspect: "security" })).toBe(
             "web: F-001 [high] SEC-01 certs/server.key:1 a scanner result in an excluded file"

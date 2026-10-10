@@ -199,6 +199,23 @@ describe("readAiPolicy: other tools' ignore files", () => {
         expect(p.match("packages/api/a.key")).toBeNull();
     });
 
+    it("reads an ignore file committed as a symlink to a file in the clone, and warns about one that leaves it", async () => {
+        const root = await tree({ ".gitignore": "private/\n", "private/data.txt": "" });
+        await symlink(".gitignore", join(root, ".cursorignore"));
+        const outside = await tree({ rules: "*\n" });
+        await symlink(join(outside, "rules"), join(root, ".aiignore"));
+        const p = await readAiPolicy(root);
+        expect(p.sources.map(s => [s.file, s.patterns])).toEqual([[".cursorignore", [{ line: 1, pattern: "private/" }]]]);
+        expect(p.match("private/data.txt")?.file).toBe(".cursorignore");
+        expect(p.warnings).toEqual([".aiignore leaves the repository through a symlink: it was not read."]);
+    });
+
+    it("finds ignore files in the folders the file tools skip in listings, since read_file still reads them", async () => {
+        const p = await readAiPolicy(await tree({ "vendor/lib/.aiexclude": "secret.txt\n", "build/.cursorignore": "x\n" }));
+        expect(p.sources.map(s => s.file)).toEqual(["build/.cursorignore", "vendor/lib/.aiexclude"]);
+        expect(p.match("vendor/lib/secret.txt")).not.toBeNull();
+    });
+
     it("honours a .claudeignore as the team's intent, which no tool enforces", async () => {
         const p = await readAiPolicy(await tree({ ".claudeignore": "drafts/\n" }));
         expect(p.sources).toEqual([
@@ -266,6 +283,10 @@ describe("excludedBy and checkReadable", () => {
         );
         await expect(checkReadable(p, root, "key.pem")).rejects.toThrow(/key\.pem is excluded by the client's AI policy/);
         await expect(checkReadable(p, root, "tls/missing.key")).rejects.toThrow(/excluded by the client's AI policy/);
+        await expect(checkReadable(p, root, "certs/missing.key")).rejects.toThrow(
+            "certs/missing.key is excluded by the client's AI policy"
+        );
+        await expect(checkReadable(p, root, "src/missing.ts")).rejects.toThrow("No such file or directory: src/missing.ts");
         expect((await checkReadable(p, root, "src/a.ts")).rel).toBe("src/a.ts");
         await expect(checkReadable(undefined, root, "certs/server.key")).resolves.toMatchObject({ rel: "tls/server.key" });
     });
@@ -314,6 +335,21 @@ describe("summarizePolicy", () => {
         expect((await summarizePolicy(await readAiPolicy(all), all)).everything).toBe(true);
         const none = await tree({ "src/a.ts": "" });
         expect(await summarizePolicy(await readAiPolicy(none), none)).toMatchObject({ everything: false, excludedFiles: 0, sources: [] });
+    });
+
+    it("warns about an auditor's pattern that matches no file, such as one anchored at the root by its slash", async () => {
+        const root = await tree({ "src/payments/stripe.ts": "", "src/a.ts": "" });
+        const s = await summarizePolicy(await readAiPolicy(root, { auditor: "payments/**\n**/payments/**\n" }), root);
+        expect(s.warnings).toEqual([
+            'The auditor\'s pattern "payments/**" matches no file; a slash before its end anchors it at the repository root.'
+        ]);
+        expect(s.excludedFiles).toBe(1);
+    });
+
+    it("counts only regular files toward excluding everything: a symlink is no file left to read", async () => {
+        const root = await tree({ ".aiignore": "*\n!link\n", "src/a.ts": "" });
+        await symlink("src/a.ts", join(root, "link"));
+        expect((await summarizePolicy(await readAiPolicy(root), root)).everything).toBe(true);
     });
 
     it("lists at most 100 areas, then how many more", async () => {

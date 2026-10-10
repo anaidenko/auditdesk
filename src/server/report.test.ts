@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { aspectTitle } from "@/engine/aspects";
 import type { ReportData } from "@/engine/report/types";
 import { EMPTY_STACK } from "@/engine/stack";
 import { prisma } from "@/server/db";
@@ -112,6 +113,30 @@ describe("the report's AI exclusions", () => {
         });
         await prisma.repository.update({ where: { id: repo.id }, data: { aiPolicy: read(2), aiPolicyDetected: read(5) } });
         expect((await loadReportData(project.id)).repositories[0].aiPolicy).toEqual(read(2));
+    });
+
+    it("names the aspects whose latest agent ran under a policy other than the one it states", async () => {
+        const { project, repo } = await projectWithRepo();
+        const policy = (pattern: string, excludedFiles: number) => ({
+            sources: [{ file: "the auditor's exclusions", tool: "the auditor", patterns: [{ line: 1, pattern }], excludedFiles }],
+            warnings: [],
+            readsNothing: null,
+            files: 10,
+            excludedFiles,
+            excluded: [],
+            everything: false
+        });
+        const first = await run(project.id, "done", null, new Date("2026-10-01"));
+        const second = await run(project.id, "done", null, new Date("2026-10-02"));
+        const third = await run(project.id, "done", null, new Date("2026-10-03"));
+        await prisma.run.update({ where: { id: second.id }, data: { aiPolicies: { [repo.id]: policy("payments/", 1) } } });
+        await prisma.run.update({ where: { id: third.id }, data: { aiPolicies: { [repo.id]: policy("payments/", 2) } } });
+        await agent(first.id, repo.id, "done", new Date("2026-10-01"), "architecture");
+        await agent(second.id, repo.id, "done", new Date("2026-10-02"), "security");
+        await agent(third.id, repo.id, "done", new Date("2026-10-03"), "quality");
+        await prisma.repository.update({ where: { id: repo.id }, data: { aiPolicy: policy("payments/", 2) } });
+        // The counts move with the commit; only the sources and patterns tell one policy from another.
+        expect((await loadReportData(project.id)).repositories[0].aiPolicyEarlier).toEqual([aspectTitle("architecture")]);
     });
 });
 

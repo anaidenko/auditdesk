@@ -70,9 +70,54 @@ describe("renderReport", () => {
         expect(scope).toContain("The scanners still covered these files; their findings there are in this report.");
         expect(scope).not.toContain("In api,");
         expect(scope).toContain(
-            "Not reviewed by AI: the client's own settings exclude every file of vault (a bare Read deny at <code>.claude/settings.json:3</code>)."
+            "Not reviewed by AI: the client's AI policy excludes every file of vault (a bare Read deny at <code>.claude/settings.json:3</code>)."
         );
         expect(renderReport(data())).not.toContain("Excluded from the AI review");
+    });
+
+    it("names the aspects that ran under another policy, the warnings, and who excluded what", () => {
+        const auditorOnly = {
+            ...policy,
+            sources: [policy.sources[3]],
+            excluded: ["payments/ (3 files)", "and 4 more"],
+            warnings: ['The auditor\'s pattern "x/**" matches no file.']
+        };
+        const scope = renderReport(
+            data({
+                repositories: [
+                    {
+                        name: "app",
+                        branch: "main",
+                        sha: "0123456789abcdef",
+                        notCovered: [],
+                        aiPolicy: auditorOnly,
+                        aiPolicyEarlier: ["Architecture", "Data model and database"]
+                    }
+                ]
+            })
+        );
+        expect(scope).toContain("In app, 6 of 120 files, by the exclusions agreed with the client:");
+        expect(scope).toContain("Files: <code>payments/ (3 files)</code>, and 4 more.");
+        expect(scope).toContain("<li>Warning: The auditor&#39;s pattern &quot;x/**&quot; matches no file.</li>");
+        expect(scope).toContain(
+            "These aspects ran under an earlier version of this policy, so it did not hold for them as stated: Architecture, Data model and database."
+        );
+        const none = renderReport(
+            data({
+                repositories: [
+                    { name: "app", branch: "main", sha: "0123456789abcdef", notCovered: [], aiPolicy: null, aiPolicyEarlier: ["Security"] }
+                ]
+            })
+        );
+        expect(none).toContain("In app, no AI exclusions now. These aspects ran under an earlier version of this policy");
+        const refusedByAuditor = renderReport(
+            data({
+                repositories: [
+                    { name: "app", branch: "main", sha: "0123456789abcdef", notCovered: [], aiPolicy: { ...auditorOnly, everything: true } }
+                ]
+            })
+        );
+        expect(refusedByAuditor).toContain("Not reviewed by AI: the client's AI policy excludes every file of app.");
     });
 
     it("compares a re-audit with the last one: what was fixed, what is unchanged, open, back or new", () => {

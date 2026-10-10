@@ -476,7 +476,7 @@ describe("runAspectSdk", { timeout: 60_000 }, () => {
         const bodies = h.fake.requests.map(r => JSON.stringify(r.body)).join("");
         expect(bodies).not.toContain(HOSTILE_KEY);
         expect(bodies).toContain("keys/server.key is excluded by the client's AI policy (.claude/settings.json).");
-        expect(bodies).toContain("certs/ (excluded: 1 file)");
+        expect(bodies).toContain("keys is excluded by the client's AI policy (.claude/settings.json).");
     });
 
     it("the control: with the clone as cwd and project settings loaded, its hook runs and its CLAUDE.md reaches the prompt", async () => {
