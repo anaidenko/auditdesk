@@ -127,6 +127,16 @@ describe("readAiPolicy: Claude Code's Read rules", () => {
         expect(q.match("vault2")).toBeNull();
     });
 
+    it("reads no settings file that a symlink takes out of the clone", async () => {
+        const outside = await tree({ "settings.json": settings(["Read(other-client/**)"]) });
+        const root = await tree({});
+        await mkdir(join(root, ".claude"));
+        await symlink(join(outside, "settings.json"), join(root, ".claude/settings.json"));
+        const p = await readAiPolicy(root);
+        expect(p.sources).toEqual([]);
+        expect(p.warnings).toEqual([".claude/settings.json leaves the repository through a symlink: it was not read."]);
+    });
+
     it("matches without regard to case, as the clone's file system opens TLS/ for tls/", async () => {
         const p = await readAiPolicy(await tree({ ".claude/settings.json": settings(["Read(./tls/**)"]) }));
         expect(p.match("TLS/server.key")).not.toBeNull();

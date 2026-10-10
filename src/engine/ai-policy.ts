@@ -184,8 +184,13 @@ export async function readAiPolicy(root: string, o: { auditor?: string | null } 
     const entries: { source: PolicySource; test: Test }[] = [];
     let readsNothing: string | null = null;
     for (const file of SETTINGS) {
-        const text = await readText(root, file);
-        if (text === null) continue;
+        // Through resolveInClone: a committed symlink could point at another client's settings.
+        const at = await resolveInClone(root, file).catch((e: Error) => {
+            if (/leaves the repository/.test(e.message)) warnings.push(`${file} leaves the repository through a symlink: it was not read.`);
+            return null;
+        });
+        const text = at && (await readText(at.abs));
+        if (!text) continue;
         const read = readSettings(file, text, warnings);
         if (!read) continue;
         entries.push(read);
@@ -196,7 +201,7 @@ export async function readAiPolicy(root: string, o: { auditor?: string | null } 
         const name = e.rel.slice(e.rel.lastIndexOf("/") + 1);
         const kind = IGNORE_FILES[name];
         if (!kind) continue;
-        const text = await readText(root, e.rel);
+        const text = await readText(join(root, e.rel));
         if (text === null) continue;
         const dir = e.rel.includes("/") ? e.rel.slice(0, e.rel.lastIndexOf("/")) : "";
         const { patterns, test } = readIgnore(text, dir, warnings, e.rel);
@@ -238,13 +243,7 @@ export async function readAiPolicy(root: string, o: { auditor?: string | null } 
     };
 }
 
-async function readText(root: string, rel: string): Promise<string | null> {
-    try {
-        return await readFile(join(root, rel), "utf8");
-    } catch {
-        return null;
-    }
-}
+const readText = (path: string): Promise<string | null> => readFile(path, "utf8").catch(() => null);
 
 /** A path relative to the root as the rules see it, or null for the root itself and paths that leave it. */
 function normalise(rel: string): string | null {

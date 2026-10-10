@@ -7,6 +7,7 @@ import { deleteProject, removeRepository, setBranch } from "@/app/actions";
 import { Card, Icon, PageHeader, RunStatus, button, field } from "@/app/ui";
 import type { AiPolicySummary } from "@/engine/ai-policy";
 import { credentialStatus } from "@/engine/credentials";
+import { pathNames } from "@/engine/pipeline";
 import { PLAN_RESERVE, clock, overReserve, planUsageLine, readPlanUsage } from "@/engine/plan-usage";
 import { type StackProfile, stackProfileText, suggestionsFor } from "@/engine/stack";
 import { agentCostStats, planShareRate } from "@/server/estimate";
@@ -38,6 +39,7 @@ export default async function ProjectPage({ params }: { params: Promise<{ projec
               }
             : null;
     const stackOf = (r: { stack: unknown }) => (r.stack ? (r.stack as StackProfile) : null);
+    const names = pathNames(project.repositories);
     // A suggestion ticks an aspect only when its detection is newer than the last run, so an aspect
     // Andrii left out of that run is not ticked again by the run's own detection.
     const lastRun = project.runs[0];
@@ -152,7 +154,11 @@ export default async function ProjectPage({ params }: { params: Promise<{ projec
                         <ConsentForm
                             projectId={project.id}
                             consentAt={project.aiConsentAt?.toISOString().slice(0, 10) ?? null}
-                            repositories={project.repositories.map(r => ({ id: r.id, source: r.source, aiExclusions: r.aiExclusions }))}
+                            repositories={project.repositories.map(r => ({
+                                id: r.id,
+                                name: names.get(r.id)!,
+                                aiExclusions: r.aiExclusions
+                            }))}
                         />
                     </Card>
                 </div>

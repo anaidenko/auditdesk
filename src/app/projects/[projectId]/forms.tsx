@@ -401,7 +401,8 @@ export function ConsentForm({
 }: {
     projectId: string;
     consentAt: string | null;
-    repositories: { id: string; source: string; aiExclusions: string | null }[];
+    /** `name`: the repository's short name, as the agents' paths start with it. */
+    repositories: { id: string; name: string; aiExclusions: string | null }[];
 }) {
     const [state, save, saving] = useActionState<FormState, FormData>(setConsent.bind(null, projectId), { error: null });
     return (
@@ -431,7 +432,7 @@ export function ConsentForm({
             </div>
             {repositories.map(r => (
                 <label key={r.id} className={label}>
-                    Excluded by the client in <span className="font-mono normal-case">{r.source}</span>
+                    Excluded by the client in <span className="font-mono normal-case">{r.name}</span>
                     <span className="mt-0.5 block font-normal tracking-normal normal-case">
                         One gitignore pattern per line, such as <code>payments/**</code>: added to the repository&apos;s own rules, no agent
                         reads these files, and the report lists them.
