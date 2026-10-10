@@ -92,6 +92,7 @@ Security is always on; the others are ticked per audit.
 | Aspect | Covers |
 |---|---|
 | Security | authentication, sessions, authorization on every route, injection, XSS, CSRF and CORS, SSRF, uploads, validation, secrets, headers, rate limits, logging of secrets, crypto |
+| Mobile app | a Capacitor, Cordova, React Native or Expo app: secrets and tokens at rest, leaks from the device, transport, the WebView and its bridge, deep links, Android components and permissions, iOS configuration, authentication on the device, secrets in the bundle, updates, third-party SDKs and consent, the release build, offline sync; native code is read for its bridge surface only, and the report says so |
 | Dependencies and supply chain | vulnerable packages that ship, lock files, versions, abandoned packages, install scripts, registries |
 | Architecture and structure | layering, coupling, error handling, configuration, state, long work, contracts, use of the framework |
 | Data model and database | constraints, indexes, N+1, transactions and concurrency, migrations, connections, data lifecycle |
@@ -196,7 +197,8 @@ draft's issue as unconfirmed rather than as work.
 
 Each finding links what it is relevant to, never claiming compliance: its OWASP Top 10:2025
 category, ASVS 5.0.0 sections or requirements, its CWE when the agent named one, advisories for
-dependencies, OWASP Cheat Sheets, WCAG 2.2 success criteria for accessibility and, for
+dependencies, OWASP Cheat Sheets, WCAG 2.2 success criteria for accessibility, OWASP MASVS 2.1.0
+controls for a mobile app and, for
 authentication, NIST SP 800-63B. The mapping is data in
 `references/`, read from the sources and dated.
 
@@ -209,6 +211,10 @@ An eval runs the engine directly, without the server, on fixtures cloned at pinn
   defect; each key entry carries an anchor its first line must hold, other places the same
   defect shows, and the true issues that were not planted, so a correct finding on them is not
   counted as false.
+- **The mobile fixture,** two small apps (Expo, and Ionic with Capacitor) in one repository with
+  one key; each folder is audited as a repository of its own, as a client's app would be, and the
+  key's paths start with the folder. Its README warns that it is deliberately vulnerable; no audit
+  reads it.
 - **OWASP Juice Shop** at a pinned release, for comparison. Its answers are removed before the
   run: the fixes, the tutorials, the translated hints, the specs and the code that scores a
   solve; every challenge is renamed to an opaque token, and the prep fails if a name survives or

@@ -1,0 +1,370 @@
+# The answer key of the mobile fixture (auditdesk-mobile-fixture): two apps, each audited as a
+# repository of its own (evals/fixtures.yaml, dirs), so every path starts with its folder. Line
+# numbers refer to the commit pinned in evals/fixtures.yaml; each location's anchor is a text its
+# first line holds. Matching follows the own fixture's key (own-fixture.yaml, its header).
+fixture: mobile
+entries:
+  # Larder: Expo SDK 52 and React Native.
+  - id: MOBX-01
+    aspect: mobile
+    checklistItem: MOB-03
+    kind: finding
+    severity: medium
+    title: App Transport Security is off for every connection, so product photos load over plain HTTP
+    alsoItems:
+      - SEC-11
+    file: expo-app/app.json
+    startLine: 15
+    endLine: 15
+    anchor: '"NSAllowsArbitraryLoads": true'
+    also:
+      - file: expo-app/src/config.ts
+        startLine: 6
+        endLine: 6
+        anchor: export const IMAGE_BASE = "http://
+  - id: MOBX-02
+    aspect: mobile
+    checklistItem: MOB-06
+    kind: finding
+    severity: medium
+    title: Android permissions for contacts, the microphone and SMS that no code uses
+    file: expo-app/app.json
+    startLine: 22
+    endLine: 22
+    anchor: '"READ_CONTACTS", "RECORD_AUDIO", "READ_SMS"'
+  - id: MOBX-03
+    aspect: mobile
+    checklistItem: MOB-09
+    kind: finding
+    severity: critical
+    title: The card-payment provider's server key ships in the app bundle, and the app charges cards with it
+    alsoItems:
+      - SEC-10
+    file: expo-app/src/config.ts
+    startLine: 9
+    endLine: 9
+    anchor: export const PAYWISE_KEY = process.env.EXPO_PUBLIC_PAYWISE_SERVER_KEY
+    also:
+      - file: expo-app/.env
+        startLine: 2
+        endLine: 2
+        anchor: EXPO_PUBLIC_PAYWISE_SERVER_KEY=
+      - file: expo-app/src/lib/payments.ts
+        startLine: 13
+        endLine: 13
+        anchor: Bearer ${PAYWISE_KEY}
+      - file: expo-app/app/checkout.tsx
+        startLine: 37
+        endLine: 38
+        anchor: const charge = await chargeCard(
+  - id: MOBX-04
+    aspect: mobile
+    checklistItem: MOB-01
+    kind: finding
+    severity: medium
+    title: Access and refresh tokens are kept in AsyncStorage instead of the Keychain or Keystore
+    alsoItems:
+      - SEC-02
+    file: expo-app/src/lib/session.ts
+    startLine: 18
+    endLine: 18
+    anchor: await AsyncStorage.setItem(KEY, JSON.stringify(session));
+  - id: MOBX-05
+    aspect: mobile
+    checklistItem: MOB-02
+    kind: finding
+    severity: medium
+    title: Every API request is logged with its Authorization header and body, in release builds too
+    alsoItems:
+      - SEC-13
+    file: expo-app/src/lib/api.ts
+    startLine: 19
+    endLine: 19
+    anchor: console.log("[api]"
+  - id: MOBX-06
+    aspect: mobile
+    checklistItem: MOB-05
+    kind: finding
+    severity: high
+    title: One-tap sign-in tokens travel through a custom scheme any app can claim, and any link signs the user in
+    alsoItems:
+      - SEC-01
+      - SEC-02
+    file: expo-app/src/lib/links.ts
+    startLine: 16
+    endLine: 22
+    anchor: if (hostname === "signin"
+    also:
+      - file: expo-app/app.json
+        startLine: 6
+        endLine: 6
+        anchor: '"scheme": "larder"'
+  - id: MOBX-07
+    aspect: mobile
+    checklistItem: MOB-04
+    kind: finding
+    severity: high
+    title: The help WebView opens any URL a link gives it, hands that page the access token and follows its navigation messages
+    alsoItems:
+      - SEC-15
+      - SEC-05
+      - SEC-02
+      - MOB-05
+    file: expo-app/app/help.tsx
+    startLine: 20
+    endLine: 25
+    anchor: 'source={{ uri: url ?? HELP_HOME }}'
+    also:
+      - file: expo-app/src/lib/links.ts
+        startLine: 32
+        endLine: 33
+        anchor: if (hostname === "help"
+  - id: MOBX-08
+    aspect: mobile
+    checklistItem: MOB-08
+    kind: finding
+    severity: medium
+    title: The app lock is a yes/no answer in JavaScript, and opens without a prompt when no biometrics are enrolled
+    alsoItems:
+      - SEC-01
+    file: expo-app/src/lib/biometrics.ts
+    startLine: 5
+    endLine: 11
+    anchor: const enrolled = await LocalAuthentication.isEnrolledAsync();
+    also:
+      - file: expo-app/app/unlock.tsx
+        startLine: 11
+        endLine: 11
+        anchor: if (await unlockWithBiometrics())
+  - id: MOBX-09
+    aspect: mobile
+    checklistItem: MOB-11
+    kind: finding
+    severity: medium
+    title: Every analytics event sends the customer's email and precise location to a third party, without consent
+    alsoItems:
+      - MOB-02
+      - SEC-13
+    file: expo-app/src/lib/analytics.ts
+    startLine: 9
+    endLine: 16
+    anchor: Location.Accuracy.Highest
+  - id: MOBX-10
+    aspect: mobile
+    checklistItem: MOB-13
+    kind: finding
+    severity: medium
+    title: Orders queued offline outlive a sign-out and are sent under the next customer's account
+    alsoItems:
+      - MOB-01
+    file: expo-app/src/lib/outbox.ts
+    startLine: 26
+    endLine: 36
+    anchor: export async function flush()
+  # Fieldbook: Ionic React 8 and Capacitor 6.
+  - id: MOBC-01
+    aspect: mobile
+    checklistItem: MOB-03
+    kind: finding
+    severity: high
+    title: The shipped configuration loads the app from a development server over plain HTTP
+    alsoItems:
+      - MOB-12
+      - SEC-11
+    file: capacitor-app/capacitor.config.ts
+    startLine: 9
+    endLine: 10
+    anchor: 'url: "http://192.168.1.20:5173"'
+  - id: MOBC-02
+    aspect: mobile
+    checklistItem: MOB-04
+    kind: finding
+    severity: high
+    title: Any page may load in the app's WebView, and help articles from other sites open there with the native bridge
+    alsoItems:
+      - SEC-05
+      - SEC-15
+    file: capacitor-app/capacitor.config.ts
+    startLine: 11
+    endLine: 11
+    anchor: 'allowNavigation: ["*"]'
+    also:
+      - file: capacitor-app/src/pages/Help.tsx
+        startLine: 24
+        endLine: 24
+        anchor: window.location.href = article.url
+  - id: MOBC-03
+    aspect: mobile
+    checklistItem: MOB-02
+    kind: finding
+    severity: medium
+    title: The bridge logs its calls in release builds, the stored token among them
+    alsoItems:
+      - SEC-13
+    file: capacitor-app/capacitor.config.ts
+    startLine: 7
+    endLine: 7
+    anchor: 'loggingBehavior: "production"'
+  - id: MOBC-04
+    aspect: mobile
+    checklistItem: MOB-01
+    kind: finding
+    severity: medium
+    title: The session token is kept in Preferences, which Android also backs up
+    alsoItems:
+      - MOB-02
+      - SEC-02
+    file: capacitor-app/src/services/auth.ts
+    startLine: 13
+    endLine: 13
+    anchor: "await Preferences.set({ key: TOKEN, value: token });"
+    also:
+      - file: capacitor-app/android/app/src/main/AndroidManifest.xml
+        startLine: 5
+        endLine: 5
+        anchor: android:allowBackup="true"
+  - id: MOBC-05
+    aspect: mobile
+    checklistItem: MOB-06
+    kind: finding
+    severity: high
+    title: An exported broadcast receiver lets any app set the signed-in technician's token
+    alsoItems:
+      - MOB-04
+    file: capacitor-app/android/app/src/main/AndroidManifest.xml
+    startLine: 33
+    endLine: 34
+    anchor: android:name=".JobSyncReceiver"
+    also:
+      - file: capacitor-app/android/app/src/main/java/com/fieldbook/app/JobSyncReceiver.java
+        startLine: 14
+        endLine: 15
+        anchor: intent.getStringExtra("token")
+  - id: MOBC-06
+    aspect: mobile
+    checklistItem: MOB-07
+    kind: finding
+    severity: low
+    title: Always-on location, contacts and background modes the app never uses, with descriptions that do not say why
+    file: capacitor-app/ios/App/App/Info.plist
+    startLine: 34
+    endLine: 43
+    anchor: <key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
+  - id: MOBC-07
+    aspect: mobile
+    checklistItem: MOB-05
+    kind: finding
+    severity: medium
+    title: A job link completes the job as soon as it opens, with no check and no confirmation
+    file: capacitor-app/src/App.tsx
+    startLine: 20
+    endLine: 20
+    anchor: if (link.searchParams.get("action") === "complete")
+    also:
+      - file: capacitor-app/android/app/src/main/AndroidManifest.xml
+        startLine: 28
+        endLine: 28
+        anchor: <data android:scheme="fieldbook" />
+  - id: MOBC-08
+    aspect: mobile
+    checklistItem: MOB-12
+    kind: finding
+    severity: high
+    title: Seven taps on the version sign anyone in as the support technician, in release builds, with its password in the code
+    alsoItems:
+      - SEC-10
+      - SEC-01
+    file: capacitor-app/src/pages/Settings.tsx
+    startLine: 39
+    endLine: 43
+    anchor: "{supportTools && ("
+    also:
+      - file: capacitor-app/src/pages/Settings.tsx
+        startLine: 20
+        endLine: 20
+        anchor: const supportTools = taps >= 7;
+  - id: MOBC-09
+    aspect: mobile
+    checklistItem: MOB-13
+    kind: finding
+    severity: medium
+    title: An offline report replaces the whole job when it is sent, and outlives a sign-out
+    alsoItems:
+      - MOB-01
+    file: capacitor-app/src/services/queue.ts
+    startLine: 29
+    endLine: 29
+    anchor: '{ method: "PUT", body: q.job }'
+  - id: MOBC-10
+    aspect: mobile
+    checklistItem: MOB-08
+    kind: finding
+    severity: medium
+    title: The unlock PIN is stored as plain text and checked on the device, with no limit on attempts
+    alsoItems:
+      - MOB-01
+      - SEC-01
+    file: capacitor-app/src/services/pin.ts
+    startLine: 6
+    endLine: 12
+    anchor: 'export async function setPin(pin: string)'
+    also:
+      - file: capacitor-app/src/pages/Lock.tsx
+        startLine: 13
+        endLine: 14
+        anchor: if (await checkPin(pin))
+known:
+  # An absence with nothing to point at: no forced-update path in either app.
+  - checklistItem: MOB-10
+    title: No forced-update path in either app
+  - checklistItem: MOB-07
+    title: No privacy manifest declaring the required-reason APIs (AsyncStorage)
+    file: expo-app/app.json
+  - checklistItem: MOB-07
+    title: No privacy manifest declaring the required-reason APIs (UserDefaults through Preferences)
+    file: capacitor-app/ios/App/App/Info.plist
+  - checklistItem: MOB-03
+    title: No certificate pinning in Larder's API client; the brief names no risk that calls for it
+    file: expo-app/src/lib/api.ts
+  - checklistItem: MOB-03
+    title: No certificate pinning in Larder's configuration
+    file: expo-app/app.json
+  - checklistItem: MOB-03
+    title: No certificate pinning in Fieldbook's API client
+    file: capacitor-app/src/services/api.ts
+  - checklistItem: MOB-03
+    title: No certificate pinning in Fieldbook's configuration
+    file: capacitor-app/capacitor.config.ts
+  - checklistItem: MOB-02
+    title: The saved card is not hidden from the app switcher's snapshot
+    file: expo-app/app/checkout.tsx
+  - checklistItem: MOB-02
+    title: The gate code is not hidden from the app switcher's snapshot
+    file: capacitor-app/src/pages/JobDetail.tsx
+  - checklistItem: MOB-02
+    title: No FLAG_SECURE on the activity that shows the gate code
+    file: capacitor-app/android/app/src/main/java/com/fieldbook/app/MainActivity.java
+  - checklistItem: MOB-12
+    title: R8 is off for the Android release build (the Capacitor template's default)
+    file: capacitor-app/android/app/build.gradle
+  - checklistItem: MOB-06
+    title: minSdkVersion 22, the Capacitor 6 template's default
+    file: capacitor-app/android/variables.gradle
+  - checklistItem: MOB-13
+    title: An order queued offline is placed without its payment
+    file: expo-app/app/checkout.tsx
+  - checklistItem: MOB-08
+    title: The app lock shows only on resume, not on a cold start, and Back leaves it
+    file: capacitor-app/src/App.tsx
+  - checklistItem: MOB-08
+    title: Larder never locks again when it returns from the background
+    file: expo-app/app/_layout.tsx
+  - checklistItem: MOB-01
+    title: Queued reports keep customers' addresses and gate codes in plain Preferences
+    file: capacitor-app/src/services/queue.ts
+  - checklistItem: SEC-11
+    title: No Content-Security-Policy in Fieldbook's index.html
+    file: capacitor-app/index.html
+  - checklistItem: MOB-04
+    title: No Content-Security-Policy for the WebView in Fieldbook's index.html
+    file: capacitor-app/index.html

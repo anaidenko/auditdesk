@@ -1,6 +1,6 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { readFileSync } from "node:fs";
-import { mkdtemp, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
@@ -10,6 +10,7 @@ import { git } from "@/engine/git";
 import { type Recording, message, replayFetch } from "@/engine/replay";
 import { REPLAY_RULESETS, replayRunner } from "@/engine/scanners/replay";
 import { finding, finish, text, tool } from "@/test/agent-messages";
+import { makeRepo } from "@/test/git-repo";
 import { makeSampleRepo } from "@/test/sample-repo";
 
 import type { AnswerKey } from "./fixtures";
@@ -234,12 +235,108 @@ describe("runEval", () => {
     });
 });
 
+describe("a fixture of several apps", () => {
+    const at = (id: string, file: string, line: number, anchor: string) => ({
+        id,
+        aspect: "security",
+        checklistItem: "SEC-04",
+        kind: "finding" as const,
+        severity: "high" as const,
+        title: id,
+        file,
+        startLine: line,
+        endLine: line,
+        anchor
+    });
+    const KEY2: AnswerKey = {
+        fixture: "apps",
+        entries: [
+            at("A-05", "api/src/server.js", 5, "db.query"),
+            at("A-07", "api/src/server.js", 7, "eval("),
+            at("W-05", "web/src/server.js", 5, "db.query"),
+            at("W-07", "web/src/server.js", 7, "eval(")
+        ],
+        known: []
+    };
+
+    async function appsRun(runAspect: AspectRunner, dirs = ["api", "web"]) {
+        const text = await readFile(join(await makeSampleRepo(), "src/server.js"), "utf8");
+        const source = await makeRepo({ "README.md": "Two apps.\n", "api/src/server.js": text, "web/src/server.js": text });
+        const sha = (await git(["rev-parse", "HEAD"], source)).trim();
+        return runEval(
+            { ...OPTIONS, fixture: "apps", model: "claude-opus-5-5" },
+            {
+                runAspect,
+                scanners: replayRunner("src/test/fixtures/scanners"),
+                fetchRulesets: async () => REPLAY_RULESETS,
+                workspaceDir: await mkdtemp(join(tmpdir(), "eval-ws-")),
+                resultsDir: await mkdtemp(join(tmpdir(), "eval-results-")),
+                fixtures: [{ name: "apps", url: source, sha, dirs, aspects: ["security"] }],
+                loadKey: () => KEY2,
+                now: () => new Date("2026-10-11T09:00:00Z")
+            }
+        );
+    }
+
+    it("audits each folder as a repository of its own, and grades its findings by their paths in the fixture", async () => {
+        const { fetch } = replayFetch({
+            Security: [
+                tool("report_finding", finding({ evidence: [{ file: "src/server.js", start_line: 5, end_line: 5 }] })),
+                finish(),
+                finish(),
+                finish([]),
+                finish([])
+            ]
+        });
+        const run = await appsRun(apiAspectRunner(new Anthropic({ apiKey: "test", fetch, maxRetries: 0 })));
+        // The api agent finds A-05; the replayed Semgrep finds line 7 in each app; nothing finds W-05.
+        expect(run.result.grade.missed).toEqual(["W-05"]);
+        expect(run.result.grade.found).toBe(3);
+        expect(run.result.agents.map(a => [a.aspect, a.status])).toEqual([
+            ["security (api)", "done"],
+            ["security (web)", "done"]
+        ]);
+        expect(run.result.findings.every(f => f.evidence.every(e => /^(api|web)\//.test(e.file)))).toBe(true);
+    });
+
+    it("names a folder's skipped agent by its aspect and folder, with the reason it was skipped", async () => {
+        const spendAll: AspectRunner = async o => {
+            await o.ctx.sink.recordCall({
+                agentRunId: o.ctx.agentRunId,
+                requestedModel: o.model,
+                servedModel: o.model,
+                fallback: false,
+                usage: { input: 1, output: 1, cacheRead: 0, cacheWrite5m: 0, cacheWrite1h: 0 },
+                costUsd: 100,
+                stopReason: "end_turn",
+                refusalCategory: null
+            });
+            return { status: "done", note: null, summary: null, coverage: [] };
+        };
+        const run = await appsRun(spendAll);
+        expect(run.result.agents.map(a => [a.aspect, a.status])).toEqual([
+            ["security (api)", "done"],
+            ["security (web)", "not started"]
+        ]);
+        expect(run.result.agents[1].note).toMatch(/^Skipped Security: the run's budget is spent/);
+    });
+
+    it("refuses a folder outside the fixture, and one the fixture does not have", async () => {
+        const never: AspectRunner = async () => {
+            throw new Error("no agent should start");
+        };
+        await expect(appsRun(never, ["../api"])).rejects.toThrow(/plain relative path/);
+        await expect(appsRun(never, ["mobile"])).rejects.toThrow(/no folder mobile/);
+    });
+});
+
 describe("evalAspects", () => {
-    it("reads all as every aspect but the seams pass, since a fixture is one repository", () => {
+    it("reads all as every aspect but the seams pass, since a fixture's folders are audited apart", () => {
         const all = evalAspects({ name: "own", url: "u", sha: "x", aspects: "all" });
         expect(all).not.toContain("seams");
         expect(all).toEqual([
             "security",
+            "mobile",
             "dependencies",
             "architecture",
             "data",

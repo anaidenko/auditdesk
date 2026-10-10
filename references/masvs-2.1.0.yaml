@@ -1,0 +1,121 @@
+# OWASP MASVS v2.1.0 (the latest release on github.com/OWASP/masvs, published 2024-01-18): its 24
+# controls, each statement read from the control's page on mas.owasp.org on 2026-10-11.
+# Mobile app items cite them (mapping.yaml); MASWE weaknesses are left out of v1.
+version: 2.1.0
+controls:
+  - {
+      id: MASVS-STORAGE-1,
+      statement: "The app securely stores sensitive data.",
+      url: "https://mas.owasp.org/MASVS/controls/MASVS-STORAGE-1/"
+    }
+  - {
+      id: MASVS-STORAGE-2,
+      statement: "The app prevents leakage of sensitive data.",
+      url: "https://mas.owasp.org/MASVS/controls/MASVS-STORAGE-2/"
+    }
+  - {
+      id: MASVS-CRYPTO-1,
+      statement: "The app employs current strong cryptography and uses it according to industry best practices.",
+      url: "https://mas.owasp.org/MASVS/controls/MASVS-CRYPTO-1/"
+    }
+  - {
+      id: MASVS-CRYPTO-2,
+      statement: "The app performs key management according to industry best practices.",
+      url: "https://mas.owasp.org/MASVS/controls/MASVS-CRYPTO-2/"
+    }
+  - {
+      id: MASVS-AUTH-1,
+      statement: "The app uses secure authentication and authorization protocols and follows the relevant best practices.",
+      url: "https://mas.owasp.org/MASVS/controls/MASVS-AUTH-1/"
+    }
+  - {
+      id: MASVS-AUTH-2,
+      statement: "The app performs local authentication securely according to the platform best practices.",
+      url: "https://mas.owasp.org/MASVS/controls/MASVS-AUTH-2/"
+    }
+  - {
+      id: MASVS-AUTH-3,
+      statement: "The app secures sensitive operations with additional authentication.",
+      url: "https://mas.owasp.org/MASVS/controls/MASVS-AUTH-3/"
+    }
+  - {
+      id: MASVS-NETWORK-1,
+      statement: "The app secures all network traffic according to the current best practices.",
+      url: "https://mas.owasp.org/MASVS/controls/MASVS-NETWORK-1/"
+    }
+  - {
+      id: MASVS-NETWORK-2,
+      statement: "The app performs identity pinning for all remote endpoints under the developer's control.",
+      url: "https://mas.owasp.org/MASVS/controls/MASVS-NETWORK-2/"
+    }
+  - {
+      id: MASVS-PLATFORM-1,
+      statement: "The app uses IPC mechanisms securely.",
+      url: "https://mas.owasp.org/MASVS/controls/MASVS-PLATFORM-1/"
+    }
+  - { id: MASVS-PLATFORM-2, statement: "The app uses WebViews securely.", url: "https://mas.owasp.org/MASVS/controls/MASVS-PLATFORM-2/" }
+  - {
+      id: MASVS-PLATFORM-3,
+      statement: "The app uses the user interface securely.",
+      url: "https://mas.owasp.org/MASVS/controls/MASVS-PLATFORM-3/"
+    }
+  - {
+      id: MASVS-CODE-1,
+      statement: "The app requires an up-to-date platform version.",
+      url: "https://mas.owasp.org/MASVS/controls/MASVS-CODE-1/"
+    }
+  - {
+      id: MASVS-CODE-2,
+      statement: "The app has a mechanism for enforcing app updates.",
+      url: "https://mas.owasp.org/MASVS/controls/MASVS-CODE-2/"
+    }
+  - {
+      id: MASVS-CODE-3,
+      statement: "The app only uses software components without known vulnerabilities.",
+      url: "https://mas.owasp.org/MASVS/controls/MASVS-CODE-3/"
+    }
+  - {
+      id: MASVS-CODE-4,
+      statement: "The app validates and sanitizes all untrusted inputs.",
+      url: "https://mas.owasp.org/MASVS/controls/MASVS-CODE-4/"
+    }
+  - {
+      id: MASVS-RESILIENCE-1,
+      statement: "The app validates the integrity of the platform.",
+      url: "https://mas.owasp.org/MASVS/controls/MASVS-RESILIENCE-1/"
+    }
+  - {
+      id: MASVS-RESILIENCE-2,
+      statement: "The app implements anti-tampering mechanisms.",
+      url: "https://mas.owasp.org/MASVS/controls/MASVS-RESILIENCE-2/"
+    }
+  - {
+      id: MASVS-RESILIENCE-3,
+      statement: "The app implements anti-static analysis mechanisms.",
+      url: "https://mas.owasp.org/MASVS/controls/MASVS-RESILIENCE-3/"
+    }
+  - {
+      id: MASVS-RESILIENCE-4,
+      statement: "The app implements anti-dynamic analysis techniques.",
+      url: "https://mas.owasp.org/MASVS/controls/MASVS-RESILIENCE-4/"
+    }
+  - {
+      id: MASVS-PRIVACY-1,
+      statement: "The app minimizes access to sensitive data and resources.",
+      url: "https://mas.owasp.org/MASVS/controls/MASVS-PRIVACY-1/"
+    }
+  - {
+      id: MASVS-PRIVACY-2,
+      statement: "The app prevents identification of the user.",
+      url: "https://mas.owasp.org/MASVS/controls/MASVS-PRIVACY-2/"
+    }
+  - {
+      id: MASVS-PRIVACY-3,
+      statement: "The app is transparent about data collection and usage.",
+      url: "https://mas.owasp.org/MASVS/controls/MASVS-PRIVACY-3/"
+    }
+  - {
+      id: MASVS-PRIVACY-4,
+      statement: "The app offers user control over their data.",
+      url: "https://mas.owasp.org/MASVS/controls/MASVS-PRIVACY-4/"
+    }

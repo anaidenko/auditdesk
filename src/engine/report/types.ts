@@ -44,6 +44,7 @@ export interface ReportData {
     methodUrl?: string | null;
     /**
      * Names are unique within a report; `notCovered` lists languages the audit could not analyse;
+     * `bridgeRead` when a Mobile app agent finished on it, which reads native code's bridge surface;
      * `links` only for a repository cloned from a known web host; `aiPolicy`, the client's AI policy
      * the last run read at `sha`.
      */
@@ -52,6 +53,7 @@ export interface ReportData {
         branch: string;
         sha: string;
         notCovered: string[];
+        bridgeRead?: boolean;
         links?: RepoLinks;
         aiPolicy?: AiPolicySummary | null;
         /** The aspects whose latest agent ran under another policy than `aiPolicy`, by title. */

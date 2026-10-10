@@ -4,6 +4,13 @@
  */
 export const ASPECTS = [
     { key: "security", prefix: "SEC", title: "Security", conditional: false },
+    {
+        key: "mobile",
+        prefix: "MOB",
+        title: "Mobile app",
+        conditional: true,
+        when: "the repository is a mobile app built with Capacitor, Cordova, React Native or Expo"
+    },
     { key: "dependencies", prefix: "DEP", title: "Dependencies and supply chain", conditional: false },
     { key: "architecture", prefix: "ARC", title: "Architecture and structure", conditional: false },
     { key: "data", prefix: "DAT", title: "Data model and database", conditional: false },

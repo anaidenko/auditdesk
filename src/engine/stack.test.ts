@@ -65,6 +65,53 @@ describe("detectStack", () => {
         expect(suggestAspects(s)).toEqual(["llm"]);
     });
 
+    it.each([
+        ["Capacitor", { "@ionic/react": "^8.0.0", "@capacitor/core": "6.1.0", "react": "18.3.1", "react-dom": "18.3.1" }],
+        ["Cordova", { "cordova": "12.0.0", "cordova-plugin-camera": "7.0.0" }],
+        ["React Native", { "react-native": "0.76.5", "react": "18.3.1" }],
+        ["Expo", { "expo": "~52.0.0", "react-native": "0.76.5", "react": "18.3.1" }]
+    ])("suggests the mobile aspect for an app built with %s", async (_, deps) => {
+        const root = await makeRepo({ "package.json": pkg(deps), "src/App.tsx": "export default 1;\n" });
+        expect(suggestAspects(await detectStack(root))).toContain("mobile");
+    });
+
+    it("takes Cordova's platforms for a Cordova app, wherever the manifest lists them", async () => {
+        const root = await makeRepo({
+            "package.json": pkg({ "cordova-plugin-inappbrowser": "6.0.0" }, { "cordova-android": "^13.0.0", "cordova-ios": "^7.1.0" }),
+            "www/js/index.js": "\n"
+        });
+        const s = await detectStack(root);
+        expect(s.userInterface).toEqual(["Cordova Android 13", "Cordova iOS 7"]);
+        expect(suggestAspects(s)).toEqual(["mobile", "accessibility"]);
+    });
+
+    it("does not suggest the mobile aspect for Ionic without a native runtime, a dev-only runtime or a purely native app", async () => {
+        const ionic = await makeRepo({
+            "package.json": pkg({ "@ionic/react": "^8.0.0", "react": "18.3.1", "react-dom": "18.3.1" }),
+            "a.tsx": "\n"
+        });
+        const dev = await makeRepo({ "package.json": pkg({ react: "18.3.1" }, { "@capacitor/core": "6.1.0" }), "a.ts": "\n" });
+        const swift = await makeRepo({ "Package.swift": "// swift-tools-version:5.9\n", "Sources/App/App.swift": "import SwiftUI\n" });
+        for (const root of [ionic, dev, swift]) expect(suggestAspects(await detectStack(root))).not.toContain("mobile");
+    });
+
+    it("reads a profile saved before the user interface was detected: a shipped mobile runtime suggests the aspect, a dev-only one does not", () => {
+        const { userInterface: _, ...old } = { ...EMPTY_STACK, frameworks: ["Capacitor 6"] };
+        expect(suggestAspects(old as typeof EMPTY_STACK)).toContain("mobile");
+        const dev = { ...old, frameworks: ["Capacitor 6 (dev only)"] } as typeof EMPTY_STACK;
+        expect(suggestAspects(dev)).not.toContain("mobile");
+    });
+
+    it("lists Objective-C in a native project as not covered", async () => {
+        const root = await makeRepo({
+            "package.json": pkg({ "react-native": "0.76.5" }),
+            "App.tsx": "export default 1;\n",
+            "ios/App/AppDelegate.mm": "#import <React/RCTBundleURLProvider.h>\n",
+            "ios/App/RNSecureBridge.m": "#import <React/RCTBridgeModule.h>\n"
+        });
+        expect((await detectStack(root)).notCovered).toContain("Objective-C (2 files; the native android/ or ios/ project)");
+    });
+
     it("suggests API design for a server framework, naming what serves the API", async () => {
         const root = await makeRepo({ "package.json": pkg({ express: "^4.19.2", pg: "^8.11.0" }), "src/server.js": "\n" });
         const s = await detectStack(root);
@@ -155,9 +202,9 @@ describe("detectStack", () => {
         expect((await detectStack(gql)).httpApi).toEqual(["Apollo Server 5"]);
     });
 
-    it("suggests Accessibility for a mobile app, and neither aspect for what only devDependencies list", async () => {
+    it("suggests Mobile app and Accessibility for a mobile app, and neither aspect for what only devDependencies list", async () => {
         const mobile = await makeRepo({ "package.json": pkg({ "react-native": "0.79.0" }), "App.tsx": "\n" });
-        expect(suggestAspects(await detectStack(mobile))).toEqual(["accessibility"]);
+        expect(suggestAspects(await detectStack(mobile))).toEqual(["mobile", "accessibility"]);
         const library = await makeRepo({ "package.json": pkg({}, { react: "19.3.0", express: "^4.19.2" }), "index.ts": "\n" });
         expect(suggestAspects(await detectStack(library))).toEqual([]);
     });
@@ -379,6 +426,11 @@ describe("suggestionsFor", () => {
         };
         expect(suggestionsFor([front, null, back])).toEqual({
             aspects: ["api", "accessibility", "llm", "tenancy", "seams"],
+            aiBuiltSigns: [".cursorrules", "CLAUDE.md"]
+        });
+        const app = { ...EMPTY_STACK, frameworks: ["Expo 52", "React Native 0"], userInterface: ["Expo 52"] };
+        expect(suggestionsFor([app, back])).toEqual({
+            aspects: ["mobile", "api", "accessibility", "tenancy", "seams"],
             aiBuiltSigns: [".cursorrules", "CLAUDE.md"]
         });
     });

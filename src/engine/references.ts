@@ -19,6 +19,7 @@ export interface FindingReferences {
     advisories: Ref[];
     nist: Ref | null;
     wcag: Ref[];
+    masvs: Ref[];
 }
 
 interface ItemRefs {
@@ -30,12 +31,15 @@ interface ItemRefs {
     nist?: boolean;
     /** WCAG 2.2 success criteria, such as "1.1.1", for Accessibility items. */
     wcag?: string[];
+    /** MASVS 2.1.0 controls, such as "MASVS-STORAGE-1", for Mobile app items. */
+    masvs?: string[];
 }
 
 export interface ReferenceData {
     top10: { id: string; title: string; url: string; cwe: number[] }[];
     asvs: { id: string; title: string; file: string }[];
     wcag: { id: string; title: string; level: string; anchor: string }[];
+    masvs: { id: string; statement: string; url: string }[];
     mapping: { cheatsheets: Record<string, string>; items: Record<string, ItemRefs> };
 }
 
@@ -45,6 +49,7 @@ export function loadReferences(dir = "references"): ReferenceData {
         top10: (read("top10-2025.yaml") as { categories: ReferenceData["top10"] }).categories,
         asvs: (read("asvs-5.0.0.yaml") as { sections: ReferenceData["asvs"] }).sections,
         wcag: (read("wcag-2.2.yaml") as { criteria: ReferenceData["wcag"] }).criteria,
+        masvs: (read("masvs-2.1.0.yaml") as { controls: ReferenceData["masvs"] }).controls,
         mapping: read("mapping.yaml") as ReferenceData["mapping"]
     };
 }
@@ -119,6 +124,10 @@ export function referencesFor(
         wcag: (m.wcag ?? []).flatMap(id => {
             const c = data.wcag.find(x => x.id === id);
             return c ? [{ label: `WCAG 2.2 SC ${c.id} ${c.title} (Level ${c.level})`, url: `${WCAG_22}#${c.anchor}` }] : [];
+        }),
+        masvs: (m.masvs ?? []).flatMap(id => {
+            const c = data.masvs.find(x => x.id === id);
+            return c ? [{ label: `MASVS v2.1.0 ${c.id}: ${c.statement.replace(/\.$/, "")}`, url: c.url }] : [];
         })
     };
 }

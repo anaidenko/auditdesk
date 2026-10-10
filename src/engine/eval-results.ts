@@ -89,7 +89,7 @@ export function parseEvalResult(md: string, file: string): EvalRow | null {
         dirty: !!auditdesk?.[2],
         keyDigest: auditdesk?.[3] ?? null,
         aborted: head.match(/^- \*\*Aborted:\*\* (.*)$/m)?.[1] ?? null,
-        incomplete: [...section(md, "Agents").matchAll(/^\| (\S+) \| (partial|stopped|failed|not started) \|/gm)].map(
+        incomplete: [...section(md, "Agents").matchAll(/^\| (.+?) \| (partial|stopped|failed|not started) \|/gm)].map(
             m => `${m[1]}: ${m[2]}`
         )
     };
