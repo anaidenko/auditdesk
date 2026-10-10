@@ -9,6 +9,7 @@ import { PLAN_RESERVE, percent, readPlanUsage, reserveRefusal } from "@/engine/p
 import { prisma } from "@/server/db";
 import {
     parseBriefForm,
+    parseConsentForm,
     parseModelAccess,
     parseProjectForm,
     parseRepositoryForm,
@@ -22,6 +23,7 @@ import {
     deleteRepository,
     detectRepositoryStack,
     deleteProject as removeProject,
+    saveConsent,
     saveRepositoryNotes,
     setRepositoryBranch
 } from "@/server/projects";
@@ -125,9 +127,16 @@ export async function saveNotes(
     return { error: null };
 }
 
-export async function setConsent(projectId: string, fd: FormData): Promise<void> {
-    await prisma.project.update({ where: { id: projectId }, data: { aiConsentAt: fd.get("consent") === "on" ? new Date() : null } });
+export async function setConsent(projectId: string, _prev: FormState, fd: FormData): Promise<FormState> {
+    const repositories = await prisma.repository.findMany({ where: { projectId }, select: { id: true } });
+    const parsed = parseConsentForm(
+        fd,
+        repositories.map(r => r.id)
+    );
+    if (!parsed.ok) return { error: parsed.error };
+    await saveConsent(projectId, parsed.value);
     revalidatePath(`/projects/${projectId}`);
+    return { error: null };
 }
 
 export async function setModelAccess(projectId: string, fd: FormData): Promise<void> {

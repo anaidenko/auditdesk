@@ -8,13 +8,15 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { message } from "@/engine/replay";
 import { CHECKLIST, finding, finish, text, tool } from "@/test/agent-messages";
 import { makeRepo } from "@/test/git-repo";
-import { makeHostileRepo } from "@/test/hostile-repo";
+import { HOSTILE_KEY, makeHostileRepo } from "@/test/hostile-repo";
+import { CANARY, makePolicyRepo } from "@/test/policy-repo";
 import { SAMPLE_KEY } from "@/test/sample-repo";
 import { type SdkHarness, sdkHarness } from "@/test/sdk";
 
 import type { Effort } from "../agent/request";
 import { NUDGE, REOPEN } from "../agent/run-aspect";
 import type { AgentContext } from "../agent/tools";
+import { type AiPolicy, readAiPolicy } from "../ai-policy";
 import { Masker } from "../masker";
 import { MemorySink } from "../memory-sink";
 import { readPlanUsage, recordPlanUsage } from "../plan-usage";
@@ -52,6 +54,7 @@ async function setup(
         model?: string;
         effort?: Effort;
         roots?: AgentContext["roots"];
+        policy?: AiPolicy;
     } = {}
 ) {
     const h = await sdkHarness(responses, { reply: o.reply, keepModel: o.keepModel, headers: o.headers });
@@ -70,6 +73,7 @@ async function setup(
         repoMap: "map",
         sink,
         ...(o.roots ? { roots: o.roots } : {}),
+        ...(o.policy && { policy: o.policy }),
         state: { finished: null, reported: [], fatal: null }
     };
     const run = () =>
@@ -234,6 +238,26 @@ describe("runAspectSdk", { timeout: 60_000 }, () => {
         });
         await run();
         expect(body(h, 1)).not.toContain(SAMPLE_KEY);
+    });
+
+    it("keeps every file the client's AI policy excludes from the model: reads, searches and evidence there are refused", async () => {
+        const clone = await makePolicyRepo();
+        const { h, sink, run } = await setup(
+            [
+                tool("read_file", { path: "certs/server.key", start_line: 1, end_line: 5 }),
+                tool("grep", { pattern: "PRIVATE KEY|PASSWORD", glob: "" }),
+                tool("report_finding", finding({ evidence: [{ file: "keys/public.pem", start_line: 1, end_line: 1 }] })),
+                finish()
+            ],
+            { clone, policy: await readAiPolicy(clone) }
+        );
+        expect((await run()).status).toBe("done");
+        const bodies = h.fake.requests.map(r => JSON.stringify(r.body));
+        expect(bodies.join("")).not.toContain(CANARY);
+        expect(bodies.join("")).toContain("certs/server.key is excluded by the client's AI policy (.claude/settings.json).");
+        expect(bodies.join("")).toContain("(9 files excluded by the client's AI policy were not searched)");
+        expect(bodies.join("")).toContain("keys/public.pem is excluded by the client's AI policy (.claude/settings.json).");
+        expect(sink.findings).toEqual([]);
     });
 
     it("asks once more when the model ends without finish_aspect, then reports partial", async () => {
@@ -436,6 +460,23 @@ describe("runAspectSdk", { timeout: 60_000 }, () => {
         // read_file returns CLAUDE.md as data: the canary may appear once, in that tool result, and nowhere before it.
         expect(body(h, 0)).not.toContain("CANARY");
         expect(h.fake.requests.every(r => (r.body as { tools: unknown[] }).tools.length === 7)).toBe(true);
+    });
+
+    it("refuses a committed symlink into a directory the client's AI policy excludes", async () => {
+        const clone = await makeHostileRepo(join(await mkdtemp(join(tmpdir(), "auditdesk-marker-")), "ran"));
+        const { h, run } = await setup(
+            [
+                tool("read_file", { path: "keys/server.key", start_line: 1, end_line: 1 }),
+                tool("list_files", { dir: "keys", glob: "" }),
+                finish()
+            ],
+            { clone, policy: await readAiPolicy(clone) }
+        );
+        expect((await run()).status).toBe("done");
+        const bodies = h.fake.requests.map(r => JSON.stringify(r.body)).join("");
+        expect(bodies).not.toContain(HOSTILE_KEY);
+        expect(bodies).toContain("keys/server.key is excluded by the client's AI policy (.claude/settings.json).");
+        expect(bodies).toContain("keys is excluded by the client's AI policy (.claude/settings.json).");
     });
 
     it("the control: with the clone as cwd and project settings loaded, its hook runs and its CLAUDE.md reaches the prompt", async () => {

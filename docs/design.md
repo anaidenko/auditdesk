@@ -22,6 +22,15 @@ on, signed off finding by finding by a human auditor.
   code names. Nothing else leaves the machine.
 - **The client's code is data:** nothing from a repository is installed, built or run, and text
   in it that tries to instruct the model is itself a finding.
+- **The client's own exclusions hold:** a file the repository keeps from AI tools (Claude Code's
+  `Read` denies, the ignore files of Cursor, Gemini, JetBrains, Windsurf and Aider, a
+  `.claudeignore` as intent) or the auditor excluded at the client's request never reaches the
+  model: the tools refuse to read, search or cite it, on the path asked and on the path it
+  resolves to, the map and the stack profile take nothing from it, and a scanner finding in it is
+  indexed under a neutral title. The model sees its name, so it can say what it did not examine;
+  the report lists the sources, the patterns and the files. Rules follow Claude Code where it
+  differs from git: `Read(secrets/**)` matches that directory at any depth, and a negation never
+  reaches a `/`-anchored rule.
 - **A human signs off:** only findings the auditor accepted or edited reach the report. A draft,
   ticked at export, adds those awaiting review for a first look, each marked "not reviewed".
 - **Measured:** every model call is priced by the model that served it, and an eval scores

@@ -3,7 +3,9 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 
 import { makeRepo } from "@/test/git-repo";
+import { CANARY, EXCLUDED, makePolicyRepo } from "@/test/policy-repo";
 
+import { readAiPolicy } from "../ai-policy";
 import { parseChecklist } from "../checklists";
 import { Masker } from "../masker";
 import { MemorySink } from "../memory-sink";
@@ -174,5 +176,147 @@ describe("a cross-repository agent's tools", () => {
         expect(f.repositoryId).toBeNull();
         expect(f.evidence.map(e => e.file)).toEqual(["web/src/api.ts", "api/src/routes.ts"]);
         expect(f.evidence[1].snippet).toBe('app.get("/api/users/:id", handler);');
+    });
+});
+
+const scannerFinding = (file: string, title: string) => ({
+    repositoryId: "r",
+    agentRunId: null,
+    aspect: "security",
+    kind: "finding" as const,
+    checklistItem: "SEC-01",
+    title,
+    severity: "high" as const,
+    likelihood: null,
+    impact: null,
+    summary: "s",
+    explanation: "e",
+    recommendation: "r",
+    effort: "S" as const,
+    effortHours: null,
+    references: {},
+    tags: [],
+    source: "scanner" as const,
+    fingerprint: `f-${file}`,
+    evidence: [{ file, startLine: 1, endLine: 1 }]
+});
+
+const evidenceIn = (file: string, endLine = 1) => ({
+    kind: "finding",
+    checklist_item: "SEC-01",
+    title: "t",
+    severity: "high",
+    likelihood: "l",
+    impact: "i",
+    summary: "s",
+    explanation: "e",
+    recommendation: "r",
+    effort_hours: { low: 1, high: 2 },
+    evidence: [{ file, start_line: 1, end_line: endLine }],
+    cwe: "",
+    tags: []
+});
+
+describe("the client's AI policy in an agent's tools", () => {
+    async function withPolicy() {
+        const repo = await makePolicyRepo();
+        await symlink(join(repo, "certs"), join(repo, "certs-link"));
+        const sink = new MemorySink();
+        await sink.createFinding(scannerFinding(".env", `Generic API key ${CANARY}`));
+        await sink.createFinding(scannerFinding("src/db.js", "SQL built from the query string"));
+        const c: AgentContext = {
+            ...ctx,
+            clonePath: repo,
+            sink,
+            policy: await readAiPolicy(repo),
+            state: { finished: null, reported: [], fatal: null }
+        };
+        const run = (name: string, args: object) =>
+            toolSpecs(c)
+                .find(t => t.name === name)!
+                .run(args as never);
+        return { run, sink };
+    }
+
+    it("refuses to read every excluded file, through a symlink too, naming the source and nothing of the file", async () => {
+        const { run } = await withPolicy();
+        for (const path of [...EXCLUDED, "certs-link/server.key", "./certs/server.key", "src/../keys/public.pem", "certs/missing.key"])
+            await expect(run("read_file", { path, start_line: 1, end_line: 5 })).rejects.toThrow(
+                `${path} is excluded by the client's AI policy (.claude/settings.json).`
+            );
+        expect(await run("read_file", { path: "vault/README.md", start_line: 1, end_line: 1 })).toContain("# Vault");
+    });
+
+    it("refuses an excluded file as evidence before reading it, so neither a snippet nor its line count reaches the model", async () => {
+        const { run, sink } = await withPolicy();
+        for (const path of ["certs/server.key", "certs-link/server.crt"])
+            await expect(run("report_finding", evidenceIn(path, 99))).rejects.toThrow(
+                new RegExp(`^${path.replace(/[.]/g, "\\.")} is excluded by the client's AI policy \\(\\.claude/settings\\.json\\)\\.$`)
+            );
+        expect(sink.findings).toHaveLength(2);
+        expect(await run("report_finding", evidenceIn("src/db.js"))).toBe("Filed F-003.");
+    });
+
+    it("lists excluded files by name, a wholly excluded directory as a count, and searches none of them", async () => {
+        const { run } = await withPolicy();
+        const list = await run("list_files", { dir: ".", glob: "" });
+        expect(list).toContain("certs/ (excluded: 2 files)");
+        expect(list).toContain(".env (excluded)");
+        expect(list).not.toContain("server.key");
+        expect(await run("grep", { pattern: CANARY, glob: "" })).toBe(
+            "No matches.\n(9 files excluded by the client's AI policy were not searched)"
+        );
+    });
+
+    it("gives a scanner result in an excluded file a neutral title in scanner_results", async () => {
+        const { run } = await withPolicy();
+        const out = await run("scanner_results", { aspect: "security" });
+        expect(out).toBe(
+            [
+                "F-001 [high] SEC-01 .env:1 a scanner result in an excluded file",
+                "F-002 [high] SEC-01 src/db.js:1 SQL built from the query string"
+            ].join("\n")
+        );
+    });
+
+    it("applies each repository's own policy to a cross-repository agent, under its name", async () => {
+        const web = await makePolicyRepo();
+        const api = await makeRepo({ "certs/server.key": "api's own key\n", "src/a.ts": "export {};\n" });
+        const sink = new MemorySink();
+        await sink.createFinding({ ...scannerFinding("certs/server.key", `Private key ${CANARY}`), repositoryId: "r-web" });
+        const c: AgentContext = {
+            ...ctx,
+            clonePath: web,
+            repositoryId: "r-web",
+            aspect: "seams",
+            checklist: parseChecklist("seams", "# Seams\n\n## SEA-01 Contract\n"),
+            sink,
+            roots: [
+                { name: "web", clonePath: web, repositoryId: "r-web", policy: await readAiPolicy(web) },
+                { name: "api", clonePath: api, repositoryId: "r-api", policy: await readAiPolicy(api) }
+            ],
+            state: { finished: null, reported: [], fatal: null }
+        };
+        const run = (name: string, args: object) =>
+            toolSpecs(c)
+                .find(t => t.name === name)!
+                .run(args as never);
+        await expect(run("read_file", { path: "web/certs/server.key", start_line: 1, end_line: 1 })).rejects.toThrow(
+            /^web\/certs\/server\.key is excluded by the client's AI policy \(\.claude\/settings\.json\)\.$/
+        );
+        expect(await run("read_file", { path: "api/certs/server.key", start_line: 1, end_line: 1 })).toContain("api's own key");
+        await expect(run("report_finding", { ...evidenceIn("web/.env"), checklist_item: "SEA-01" })).rejects.toThrow(
+            /^web\/\.env is excluded/
+        );
+        expect(await run("list_files", { dir: "web", glob: "" })).toContain("web/certs/ (excluded: 2 files)");
+        expect(await run("grep", { pattern: CANARY, glob: "" })).toBe(
+            "No matches.\n(web: 9 files excluded by the client's AI policy were not searched)"
+        );
+        expect(await run("grep", { pattern: "own key", glob: "" })).toBe(
+            "api/certs/server.key:1: api's own key\n(web: 9 files excluded by the client's AI policy were not searched)"
+        );
+        expect(await run("scanner_results", { aspect: "security" })).toBe(
+            "web: F-001 [high] SEC-01 certs/server.key:1 a scanner result in an excluded file"
+        );
     });
 });

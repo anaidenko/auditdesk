@@ -88,6 +88,28 @@ describe("runner", () => {
         expect(messages[0]).toMatch(/largely AI-built/);
     });
 
+    it("holds the agents to the client's AI policy and the auditor's own patterns, and records the policy", async () => {
+        const { project, repo } = await projectWithRepo(await makeSampleRepo({ ".aiignore": "src/config.js\n" }));
+        await prisma.repository.update({ where: { id: repo.id }, data: { aiExclusions: "src/server.js\n" } });
+        await enqueueRun(project.id, runOptions);
+        const base = await deps();
+        const excluded: boolean[] = [];
+        await processJob((await claimJob())!, sink => ({
+            ...base(sink),
+            runAspect: async o => {
+                excluded.push(!!o.ctx.policy?.match("src/server.js"), !!o.ctx.policy?.match("src/config.js"));
+                return { status: "done", note: null, summary: "ok", coverage: [] };
+            }
+        }));
+        expect(excluded).toEqual([true, true]);
+        const policy = (await prisma.repository.findUniqueOrThrow({ where: { id: repo.id } })).aiPolicy as {
+            sources: { file: string }[];
+            excludedFiles: number;
+        };
+        expect(policy.sources.map(s => s.file)).toEqual([".aiignore", "the auditor's exclusions"]);
+        expect(policy.excludedFiles).toBe(2);
+    });
+
     it("gives every agent of a run the model and effort chosen for it", async () => {
         const { project } = await projectWithRepo(await makeSampleRepo());
         await enqueueRun(project.id, { ...runOptions, model: "claude-opus-5-5", effort: "high", aspects: ["security", "quality"] });

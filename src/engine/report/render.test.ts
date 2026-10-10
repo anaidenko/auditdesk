@@ -2,9 +2,124 @@ import { describe, expect, it } from "vitest";
 
 import { reportData as data, reportFinding as finding } from "@/test/report-data";
 
+import type { AiPolicySummary } from "../ai-policy";
+
 import { renderReport } from "./render";
 
+const policy: AiPolicySummary = {
+    sources: [
+        {
+            file: ".claude/settings.json",
+            tool: "Claude Code",
+            patterns: [
+                { line: 7, pattern: "Read(./certs/**)" },
+                { line: 8, pattern: "Read(~/.ssh/**)", note: "outside the repository, not applicable" }
+            ],
+            excludedFiles: 2
+        },
+        { file: "packages/api/.cursorignore", tool: "Cursor", nested: true, patterns: [{ line: 1, pattern: "*.p12" }], excludedFiles: 1 },
+        { file: ".claudeignore", tool: "no tool (intent)", intent: true, patterns: [{ line: 1, pattern: "drafts/<x>" }], excludedFiles: 0 },
+        { file: "the auditor's exclusions", tool: "the auditor", patterns: [{ line: 1, pattern: "payments/**" }], excludedFiles: 3 }
+    ],
+    warnings: [],
+    readsNothing: null,
+    files: 120,
+    excludedFiles: 6,
+    excluded: ["certs/ (2 files)", "packages/api/store.p12", "payments/ (3 files)"],
+    everything: false
+};
+
 describe("renderReport", () => {
+    it("lists in Scope and method what the client's AI policy kept from the AI review, with each source and its patterns", () => {
+        const html = renderReport(
+            data({
+                repositories: [
+                    { name: "app", branch: "main", sha: "0123456789abcdef", notCovered: [], aiPolicy: policy },
+                    {
+                        name: "api",
+                        branch: "main",
+                        sha: "fedcba9876543210",
+                        notCovered: [],
+                        aiPolicy: { ...policy, sources: [], excludedFiles: 0, excluded: [] }
+                    },
+                    {
+                        name: "vault",
+                        branch: "main",
+                        sha: "aaaaaaaaaaaaaaaa",
+                        notCovered: [],
+                        aiPolicy: { ...policy, sources: [policy.sources[0]], readsNothing: ".claude/settings.json:3", everything: true }
+                    }
+                ]
+            })
+        );
+        const scope = html.slice(html.indexOf('<section id="scope">'), html.indexOf('<section id="findings">'));
+        expect(scope).toContain("<h3>Excluded from the AI review</h3>");
+        expect(scope).toContain("In app, 6 of 120 files, by the client's own settings and the exclusions agreed with the client:");
+        expect(scope).toContain("<li><code>.claude/settings.json</code> (Claude Code), 2 files: <code>Read(./certs/**)</code></li>");
+        expect(scope).not.toContain("~/.ssh");
+        expect(scope).toContain(
+            "<li><code>packages/api/.cursorignore</code> (Cursor; a nested file, which Cursor reads only at the root), 1 file: <code>*.p12</code></li>"
+        );
+        expect(scope).toContain(
+            "<li><code>.claudeignore</code> (intent, not enforced by any tool), no file: <code>drafts/&lt;x&gt;</code></li>"
+        );
+        expect(scope).toContain("<li>Agreed with the client, 3 files: <code>payments/**</code></li>");
+        expect(scope).toContain(
+            "Files: <code>certs/ (2 files)</code>, <code>packages/api/store.p12</code>, <code>payments/ (3 files)</code>."
+        );
+        expect(scope).toContain("The scanners still covered these files; their findings there are in this report.");
+        expect(scope).not.toContain("In api,");
+        expect(scope).toContain(
+            "Not reviewed by AI: the client's AI policy excludes every file of vault (a bare Read deny at <code>.claude/settings.json:3</code>)."
+        );
+        expect(renderReport(data())).not.toContain("Excluded from the AI review");
+    });
+
+    it("names the aspects that ran under another policy, the warnings, and who excluded what", () => {
+        const auditorOnly = {
+            ...policy,
+            sources: [policy.sources[3]],
+            excluded: ["payments/ (3 files)", "and 4 more"],
+            warnings: ['The auditor\'s pattern "x/**" matches no file.']
+        };
+        const scope = renderReport(
+            data({
+                repositories: [
+                    {
+                        name: "app",
+                        branch: "main",
+                        sha: "0123456789abcdef",
+                        notCovered: [],
+                        aiPolicy: auditorOnly,
+                        aiPolicyEarlier: ["Architecture", "Data model and database"]
+                    }
+                ]
+            })
+        );
+        expect(scope).toContain("In app, 6 of 120 files, by the exclusions agreed with the client:");
+        expect(scope).toContain("Files: <code>payments/ (3 files)</code>, and 4 more.");
+        expect(scope).toContain("<li>Warning: The auditor&#39;s pattern &quot;x/**&quot; matches no file.</li>");
+        expect(scope).toContain(
+            "These aspects ran under an earlier version of this policy, so it did not hold for them as stated: Architecture, Data model and database."
+        );
+        const none = renderReport(
+            data({
+                repositories: [
+                    { name: "app", branch: "main", sha: "0123456789abcdef", notCovered: [], aiPolicy: null, aiPolicyEarlier: ["Security"] }
+                ]
+            })
+        );
+        expect(none).toContain("In app, no AI exclusions now. These aspects ran under an earlier version of this policy");
+        const refusedByAuditor = renderReport(
+            data({
+                repositories: [
+                    { name: "app", branch: "main", sha: "0123456789abcdef", notCovered: [], aiPolicy: { ...auditorOnly, everything: true } }
+                ]
+            })
+        );
+        expect(refusedByAuditor).toContain("Not reviewed by AI: the client's AI policy excludes every file of app.");
+    });
+
     it("compares a re-audit with the last one: what was fixed, what is unchanged, open, back or new", () => {
         const html = renderReport(
             data({

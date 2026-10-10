@@ -168,6 +168,7 @@ class EvalSink extends MemorySink implements PipelineSink {
     versions: ToolVersions | null = null;
     async repositoryCloned() {}
     async stackDetected() {}
+    async aiPolicyRead() {}
     async toolVersions(v: ToolVersions) {
         this.versions = v;
     }

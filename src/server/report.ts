@@ -2,6 +2,7 @@ import { mkdir, writeFile } from "node:fs/promises";
 import { basename, join } from "node:path";
 import "server-only";
 
+import { type AiPolicySummary, policyKey } from "@/engine/ai-policy";
 import { ASPECTS, SEAMS, aspectTitle } from "@/engine/aspects";
 import { loadChecklist } from "@/engine/checklists";
 import { workspaceDir } from "@/engine/config";
@@ -182,6 +183,20 @@ export async function loadReportData(
         const [ry, ay] = order(y);
         return rx - ry || ax - ay;
     });
+    // Each run records the policy it enforced; an aspect whose latest agent ran under another one is named.
+    const enforced = new Map(
+        (
+            await prisma.run.findMany({
+                where: { id: { in: [...new Set(latestAgents.map(a => a.runId))] } },
+                select: { id: true, aiPolicies: true }
+            })
+        ).map(r => [r.id, (r.aiPolicies as Record<string, AiPolicySummary> | null) ?? {}])
+    );
+    const earlier = (repositoryId: string, stated: AiPolicySummary | null) =>
+        latestAgents
+            .filter(a => a.aspect === SEAMS || a.repositoryId === repositoryId)
+            .filter(a => policyKey(enforced.get(a.runId)?.[repositoryId]) !== policyKey(stated))
+            .map(a => aspectTitle(a.aspect));
     // A mobile app's native bridge was read when its Mobile app agent examined something there.
     const bridgeRead = (repositoryId: string, stack: StackProfile | null) =>
         !!stack &&
@@ -247,6 +262,8 @@ export async function loadReportData(
                 branch,
                 sha: r.commitSha ?? "not cloned",
                 notCovered: (r.stack as StackProfile | null)?.notCovered ?? [],
+                aiPolicy: r.aiPolicy as AiPolicySummary | null,
+                aiPolicyEarlier: earlier(r.id, r.aiPolicy as AiPolicySummary | null),
                 ...(bridgeRead(r.id, r.stack as StackProfile | null) && { bridgeRead: true }),
                 ...(links && { links })
             };

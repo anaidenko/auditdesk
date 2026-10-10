@@ -99,6 +99,8 @@ export interface IndexFilter {
     aspect?: string;
     source?: "scanner" | "agent";
     cites?: string;
+    /** A path the client's AI policy excludes: a finding there is listed under a neutral title. */
+    excluded?: (file: string) => boolean;
 }
 
 /** How a run reaches Claude: the Agent SDK on the auditor's plan, or the Messages API on a key. */

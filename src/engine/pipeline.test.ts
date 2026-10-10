@@ -6,9 +6,12 @@ import { describe, expect, it } from "vitest";
 
 import { message, replayFetch } from "@/engine/replay";
 import { finding, tool } from "@/test/agent-messages";
+import { makeHostileRepo } from "@/test/hostile-repo";
 import { SAMPLE_KEY, makeSampleRepo } from "@/test/sample-repo";
 
 import { type AspectInput, type AspectRunner, apiAspectRunner } from "./agent/run-aspect";
+import { toolSpecs } from "./agent/tools";
+import type { AiPolicySummary } from "./ai-policy";
 import { git } from "./git";
 import { MemorySink } from "./memory-sink";
 import { type AuditDeps, type AuditInput, type PipelineSink, pathNames, runAudit } from "./pipeline";
@@ -20,7 +23,14 @@ import type { StackProfile } from "./stack";
 class TestSink extends MemorySink implements PipelineSink {
     agents: { id: string; aspect: string; status?: string }[] = [];
     stacks: { repositoryId: string; profile: StackProfile }[] = [];
-    async repositoryCloned() {}
+    policies: { repositoryId: string; summary: AiPolicySummary }[] = [];
+    cloned: string[] = [];
+    async repositoryCloned(repositoryId: string) {
+        this.cloned.push(repositoryId);
+    }
+    async aiPolicyRead(repositoryId: string, summary: AiPolicySummary) {
+        this.policies.push({ repositoryId, summary });
+    }
     async stackDetected(repositoryId: string, profile: StackProfile) {
         this.stacks.push({ repositoryId, profile });
     }
@@ -792,5 +802,211 @@ describe("the cached prefix", () => {
         expect(inputs[0].ctx.roots).toHaveLength(2);
         expect(sink.findings).toEqual([]);
         expect(sink.events.some(e => e.startsWith("Scanners filed"))).toBe(false);
+    });
+});
+
+describe("the client's AI policy in a run", () => {
+    it("reads each repository's policy after the clone, records it, and holds the agents to it", async () => {
+        const sink = new TestSink();
+        const { inputs, runAspect } = capturing();
+        await audit(sink, await makeSampleRepo({ ".aiignore": "src/config.js\n" }), await mkdtemp(join(tmpdir(), "ws-")), {}, runAspect);
+        expect(sink.policies).toEqual([
+            {
+                repositoryId: "r",
+                summary: expect.objectContaining({ excludedFiles: 1, excluded: ["src/config.js"], everything: false })
+            }
+        ]);
+        const [agent] = inputs;
+        expect(agent.ctx.policy?.match("src/config.js")?.file).toBe(".aiignore");
+        expect(agent.ctx.repoMap).toContain("1 excluded by the client's AI policy");
+        expect(prefixText(agent)).toMatch(
+            /# The client's AI policy\n\nThe client's AI policy \(its own settings and any exclusions agreed with it\) excludes 1 of the repository's \d+ files/
+        );
+        expect(prefixText(agent)).toContain("- .aiignore (JetBrains AI Assistant and Junie): src/config.js");
+        // The scanners still covered the file; the agent sees their finding there under a neutral title only.
+        const leak = sink.findings.find(f => f.source === "scanner" && f.evidence[0].file === "src/config.js")!;
+        expect(leak).toBeDefined();
+        expect(agent.firstMessage).toContain(
+            `${leak.label} [${leak.severity}] SEC-10 src/config.js:2 a scanner result in an excluded file`
+        );
+        expect(agent.firstMessage).not.toContain(leak.title);
+    });
+
+    it("keeps a committed symlink through the clone, and refuses it when it leads into an excluded directory", async () => {
+        const sink = new TestSink();
+        const { inputs, runAspect } = capturing();
+        const source = await makeHostileRepo(join(await mkdtemp(join(tmpdir(), "marker-")), "ran"));
+        await audit(sink, source, await mkdtemp(join(tmpdir(), "ws-")), {}, runAspect);
+        const { ctx } = inputs[0];
+        const read = (path: string) =>
+            toolSpecs(ctx)
+                .find(t => t.name === "read_file")!
+                .run({ path, start_line: 1, end_line: 1 } as never);
+        await expect(read("keys/server.key")).rejects.toThrow(
+            "keys/server.key is excluded by the client's AI policy (.claude/settings.json)."
+        );
+        await expect(read("src/db.js")).resolves.toContain("SELECT");
+    });
+
+    it("says what in the policy could not be read, as a warning of the run", async () => {
+        const sink = new TestSink();
+        const { runAspect } = capturing();
+        await audit(
+            sink,
+            await makeSampleRepo({ ".claude/settings.json": "{ not json" }),
+            await mkdtemp(join(tmpdir(), "ws-")),
+            {},
+            runAspect
+        );
+        expect(sink.events).toContainEqual(
+            expect.stringMatching(/: \.claude\/settings\.json is not valid JSON: its Read rules could not be read\.$/)
+        );
+    });
+
+    it("detects the stack without reading a manifest the policy excludes", async () => {
+        const sink = new TestSink();
+        const { inputs, runAspect } = capturing();
+        await audit(sink, await makeSampleRepo({ ".cursorignore": "package.json\n" }), await mkdtemp(join(tmpdir(), "ws-")), {}, runAspect);
+        expect(sink.stacks[0].profile.excludedManifests).toEqual(["package.json"]);
+        expect(sink.stacks[0].profile.manifests).not.toContain("package.json");
+        expect(prefixText(inputs[0])).toContain("Manifests excluded by the client's AI policy, not read: package.json");
+    });
+
+    it("adds the auditor's own patterns to the policy", async () => {
+        const sink = new TestSink();
+        const { inputs, runAspect } = capturing();
+        const source = await makeSampleRepo();
+        await audit(
+            sink,
+            source,
+            await mkdtemp(join(tmpdir(), "ws-")),
+            { repositories: [{ id: "r", source, branch: "main", aiExclusions: "src/server.js\n" }] },
+            runAspect
+        );
+        expect(inputs[0].ctx.policy?.match("src/server.js")?.file).toBe("the auditor's exclusions");
+        expect(sink.policies[0].summary.sources.map(s => s.tool)).toEqual(["the auditor"]);
+    });
+
+    it("applies each repository's own policy in the seams pass, and to the findings that cite it from another repository", async () => {
+        const sink = new TestSink();
+        const [web, api] = [await makeSampleRepo({ ".aiignore": "src/server.js\n" }), await makeSampleRepo()];
+        const repositories = [
+            { id: "r-web", source: web, branch: "main" },
+            { id: "r-api", source: api, branch: "main" }
+        ];
+        const [webName, apiName] = [...pathNames(repositories).values()];
+        await sink.createFinding({
+            ...finding(),
+            repositoryId: null,
+            agentRunId: null,
+            aspect: "seams",
+            kind: "finding",
+            checklistItem: "SEA-01",
+            title: "`db.query(req.query.id)` reaches the API",
+            severity: "high",
+            likelihood: null,
+            impact: null,
+            effort: "S",
+            effortHours: null,
+            references: {},
+            tags: [],
+            source: "agent",
+            fingerprint: "seams-1",
+            evidence: [
+                { file: `${webName}/src/server.js`, startLine: 5, endLine: 5 },
+                { file: `${apiName}/src/server.js`, startLine: 5, endLine: 5 }
+            ]
+        } as never);
+        const { inputs, runAspect } = capturing();
+        await audit(sink, web, await mkdtemp(join(tmpdir(), "ws-")), { repositories, aspects: ["security", "seams"] }, runAspect);
+        const [webAgent, apiAgent, seams] = inputs;
+        expect(webAgent.ctx.policy?.match("src/server.js")).not.toBeNull();
+        expect(apiAgent.ctx.policy?.match("src/server.js")).toBeNull();
+        expect(seams.ctx.roots?.map(r => [r.name, !!r.policy?.match("src/server.js")])).toEqual([
+            [webName, true],
+            [apiName, false]
+        ]);
+        expect(apiAgent.firstMessage).toContain("Across repositories: F-001 [high] SEA-01");
+        expect(apiAgent.firstMessage).toContain("a finding in an excluded file");
+        expect(apiAgent.firstMessage).not.toContain("db.query(req.query.id)");
+        expect(seams.firstMessage).not.toContain("db.query(req.query.id)");
+        expect(seams.firstMessage).toMatch(
+            new RegExp(`^${webName}: F-\\d+ \\[\\w+\\] \\S+ src/server\\.js:7 a scanner result in an excluded file$`, "m")
+        );
+        expect(seams.firstMessage).toMatch(new RegExp(`^${apiName}: F-\\d+ \\[\\w+\\] \\S+ src/server\\.js:7 (?!a scanner result)`, "m"));
+        expect(prefixText(seams)).toContain(`# The client's AI policy\n\n## ${webName}`);
+    });
+});
+
+describe("a repository whose policy excludes every file", () => {
+    const denyAll = { ".claude/settings.json": JSON.stringify({ permissions: { deny: ["Read"] } }) };
+
+    it("is refused by the run, which says why and audits the others", async () => {
+        const sink = new TestSink();
+        const [closed, open] = [await makeSampleRepo(denyAll), await makeSampleRepo()];
+        const repositories = [
+            { id: "r-closed", source: closed, branch: "main" },
+            { id: "r-open", source: open, branch: "main" }
+        ];
+        const { inputs, runAspect } = capturing();
+        await audit(sink, closed, await mkdtemp(join(tmpdir(), "ws-")), { repositories, aspects: ["security", "seams"] }, runAspect);
+        expect(inputs.map(i => [i.ctx.aspect, i.ctx.repositoryId])).toEqual([["security", "r-open"]]);
+        expect(sink.events).toContainEqual(
+            `Refused ${[...pathNames(repositories).values()][0]}: the client's AI policy excludes every file (a bare Read deny at .claude/settings.json:1). Ask the client which files the review may read.`
+        );
+        expect(sink.policies.map(p => [p.repositoryId, p.summary.everything])).toEqual([
+            ["r-closed", true],
+            ["r-open", false]
+        ]);
+        expect(sink.findings.every(f => f.repositoryId !== "r-closed")).toBe(true);
+        expect(sink.events).toContainEqual(
+            `Skipped Seams between repositories: only one repository is left after the client's AI policy refused ${[...pathNames(repositories).values()][0]}.`
+        );
+    });
+
+    it("fails a re-run whose only target is refused, and warns about no repository the re-run does not audit", async () => {
+        const [closed, open] = [await makeSampleRepo(denyAll), await makeSampleRepo()];
+        const repositories = [
+            { id: "r-closed", source: closed, branch: "main" },
+            { id: "r-open", source: open, branch: "main" }
+        ];
+        const ws = await mkdtemp(join(tmpdir(), "ws-"));
+        const { inputs, runAspect } = capturing();
+        await expect(
+            audit(new TestSink(), closed, ws, { repositories, only: { repositoryId: "r-closed", aspect: "security" } }, runAspect)
+        ).rejects.toThrow("The client's AI policy excludes every file of every repository this run audits");
+        const sink = new TestSink();
+        await audit(sink, closed, ws, { repositories, only: { repositoryId: "r-open", aspect: "security" } }, runAspect);
+        expect(inputs.map(i => i.ctx.repositoryId)).toEqual(["r-open"]);
+        expect(sink.events.some(e => e.startsWith("Refused"))).toBe(false);
+    });
+
+    it("fails a re-run of the seams pass that the policy leaves one repository", async () => {
+        const [closed, open] = [await makeSampleRepo(denyAll), await makeSampleRepo()];
+        const repositories = [
+            { id: "r-closed", source: closed, branch: "main" },
+            { id: "r-open", source: open, branch: "main" }
+        ];
+        const { runAspect } = capturing();
+        await expect(
+            audit(
+                new TestSink(),
+                closed,
+                await mkdtemp(join(tmpdir(), "ws-")),
+                { repositories, aspects: ["security", "seams"], only: { repositoryId: "r-closed", aspect: "seams" } },
+                runAspect
+            )
+        ).rejects.toThrow(/^The seams pass needs two repositories, and the client's AI policy refused /);
+    });
+
+    it("fails the run when it is the only repository", async () => {
+        const sink = new TestSink();
+        const { inputs, runAspect } = capturing();
+        await expect(
+            audit(sink, await makeSampleRepo({ ".aiignore": "*\n" }), await mkdtemp(join(tmpdir(), "ws-")), {}, runAspect)
+        ).rejects.toThrow(
+            "The client's AI policy excludes every file of every repository this run audits; ask the client which files the review may read."
+        );
+        expect(inputs).toEqual([]);
     });
 });

@@ -264,6 +264,45 @@ describe("detectStack", () => {
         expect(suggestAiBuilt(s)).toBe(true);
     });
 
+    it("reads no manifest the client's AI policy excludes, and names it in the profile", async () => {
+        const root = await makeRepo({
+            "package.json": pkg({ next: "16.0.0" }),
+            "payments/package.json": pkg({ stripe: "18.0.0", express: "5.0.0" }),
+            "prisma/schema.prisma": 'datasource db {\n  provider = "postgresql"\n}\n'
+        });
+        const read: string[] = [];
+        const s = await detectStack(root, {
+            read: async rel => {
+                read.push(rel);
+                return readFile(`${root}/${rel}`, "utf8");
+            },
+            excluded: rel => rel.startsWith("payments/") || rel.endsWith(".prisma")
+        });
+        expect(read).toEqual(["package.json"]);
+        expect(s.manifests).toEqual(["package.json"]);
+        expect(s.excludedManifests).toEqual(["payments/", "prisma/schema.prisma"]);
+        expect(s.frameworks).toEqual(["Next.js 16"]);
+        expect(stackProfileText(s)).toMatch(
+            /\nManifests excluded by the client's AI policy, not read: payments\/, prisma\/schema\.prisma$/
+        );
+        expect(stackProfileText(await detectStack(root))).not.toContain("excluded");
+    });
+
+    it("names a directory excluded as a whole rather than the manifests in it, and follows a manifest's symlink before reading it", async () => {
+        const root = await makeRepo(
+            {
+                "package.json": pkg({ next: "16.0.0" }),
+                "private/package.json": pkg({ stripe: "18.0.0" }),
+                "private/schema.prisma": 'datasource db {\n  provider = "mysql"\n}\n',
+                "private/notes.md": ""
+            },
+            { symlinks: { "prisma/schema.prisma": "../private/schema.prisma" } }
+        );
+        const s = await detectStack(root, { excluded: rel => rel.startsWith("private/") });
+        expect(s.excludedManifests).toEqual(["prisma/schema.prisma", "private/"]);
+        expect(s.databases).toEqual([]);
+    });
+
     it("never reads a file outside the manifests it lists", async () => {
         const root = await makeRepo({
             "package.json": pkg({ next: "16.0.0" }),

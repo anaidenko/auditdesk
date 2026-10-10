@@ -1,3 +1,4 @@
+import type { AiPolicySummary } from "../ai-policy";
 import type { FindingReferences } from "../references";
 import type { ToolVersions } from "../scanners/types";
 import type { Evidence, Hours, ModelAccess, References, SeverityName } from "../types";
@@ -44,9 +45,20 @@ export interface ReportData {
     /**
      * Names are unique within a report; `notCovered` lists languages the audit could not analyse;
      * `bridgeRead` when a Mobile app agent finished on it, which reads native code's bridge surface;
-     * `links` only for a repository cloned from a known web host.
+     * `links` only for a repository cloned from a known web host; `aiPolicy`, the client's AI policy
+     * the last run read at `sha`.
      */
-    repositories: { name: string; branch: string; sha: string; notCovered: string[]; bridgeRead?: boolean; links?: RepoLinks }[];
+    repositories: {
+        name: string;
+        branch: string;
+        sha: string;
+        notCovered: string[];
+        bridgeRead?: boolean;
+        links?: RepoLinks;
+        aiPolicy?: AiPolicySummary | null;
+        /** The aspects whose latest agent ran under another policy than `aiPolicy`, by title. */
+        aiPolicyEarlier?: string[];
+    }[];
     /** The findings filed (questions and superseded ones apart), by what the review made of them. */
     review?: { filed: number; reported: number; fixed: number; merged: number; rejected: number; excluded: number; unreviewed: number };
     /** The name a seams finding's path starts with, per repository; present when there are seams findings. */

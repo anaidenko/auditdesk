@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 
@@ -13,14 +13,21 @@ async function write(root: string, files: Record<string, string>) {
     }
 }
 
-/** A throwaway git repository with one commit on `main`, optional branches and uncommitted edits. */
+/**
+ * A throwaway git repository with one commit on `main`, optional branches and uncommitted edits.
+ * `symlinks` maps a path to its target, committed as a symlink.
+ */
 export async function makeRepo(
     files: Record<string, string>,
-    o: { uncommitted?: Record<string, string>; branches?: Record<string, Record<string, string>> } = {}
+    o: { uncommitted?: Record<string, string>; branches?: Record<string, Record<string, string>>; symlinks?: Record<string, string> } = {}
 ): Promise<string> {
     const root = await mkdtemp(join(tmpdir(), "auditdesk-repo-"));
     await git(["init", "-q", "-b", "main"], root);
     await write(root, files);
+    for (const [path, target] of Object.entries(o.symlinks ?? {})) {
+        await mkdir(dirname(join(root, path)), { recursive: true });
+        await symlink(target, join(root, path));
+    }
     await git(["add", "-A"], root);
     await git([...ID, "commit", "-q", "-m", "initial"], root);
     for (const [branch, branchFiles] of Object.entries(o.branches ?? {})) {

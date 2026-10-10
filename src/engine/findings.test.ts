@@ -143,3 +143,27 @@ describe("scannerDuplicates", () => {
         ]);
     });
 });
+
+describe("indexLine and the client's AI policy", () => {
+    const f = {
+        label: "F-004",
+        severity: "high" as const,
+        checklistItem: "SEC-02",
+        evidence: [{ file: "certs/server.key", startLine: 1, endLine: 1 }],
+        title: "Private key in input `-----BEGIN PRIVATE KEY-----`"
+    };
+
+    it("gives a finding in an excluded file a neutral title, keeping its item, file and line", () => {
+        const excluded = (file: string) => file.startsWith("certs/");
+        expect(indexLine({ ...f, source: "scanner" }, excluded)).toBe(
+            "F-004 [high] SEC-02 certs/server.key:1 a scanner result in an excluded file"
+        );
+        expect(indexLine({ ...f, source: "agent" }, excluded)).toBe("F-004 [high] SEC-02 certs/server.key:1 a finding in an excluded file");
+        expect(indexLine(f, () => false)).toBe(`F-004 [high] SEC-02 certs/server.key:1 ${f.title}`);
+    });
+
+    it("neutralises the title when any of its places is excluded", () => {
+        const two = { ...f, source: "scanner" as const, evidence: [{ file: "src/a.ts", startLine: 2, endLine: 2 }, ...f.evidence] };
+        expect(indexLine(two, file => file === "certs/server.key")).toMatch(/ a scanner result in an excluded file$/);
+    });
+});

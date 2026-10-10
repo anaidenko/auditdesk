@@ -48,7 +48,7 @@ export class MemorySink implements AuditSink {
                     (!filter.source || f.source === filter.source) &&
                     (!filter.cites || cites(f.evidence, filter.cites))
             )
-            .map(indexLine);
+            .map(f => indexLine(f, filter.excluded));
     }
     /**
      * As the app's sink folds, but the agent's finding keeps its own evidence: the eval grades each

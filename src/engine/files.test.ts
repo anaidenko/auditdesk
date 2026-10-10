@@ -3,6 +3,9 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { beforeAll, describe, expect, it } from "vitest";
 
+import { CANARY, makePolicyRepo } from "@/test/policy-repo";
+
+import { readAiPolicy } from "./ai-policy";
 import { LIMITS, grepFiles, listFiles, readFileRange } from "./files";
 
 let root: string;
@@ -94,5 +97,56 @@ describe("grepFiles", () => {
 
     it("explains an invalid pattern", async () => {
         await expect(grepFiles(root, "(")).rejects.toThrow(/Invalid regular expression/);
+    });
+});
+
+describe("the client's AI policy in listFiles and grepFiles", () => {
+    it("names an excluded file without its size, and shows a directory excluded as a whole as one line with its count", async () => {
+        const repo = await makePolicyRepo();
+        const policy = await readAiPolicy(repo);
+        const out = (await listFiles(repo, { policy })).split("\n");
+        expect(out).toEqual(
+            expect.arrayContaining([
+                ".env (excluded)",
+                "api/.env (excluded)",
+                "certs/ (excluded: 2 files)",
+                "keys/ (excluded: 2 files)",
+                "packages/api/certs/ (excluded: 1 file)",
+                "store/client.p12 (excluded)",
+                "vault/secret.txt (excluded)",
+                "vault/README.md (8 bytes)"
+            ])
+        );
+        expect(out.join("\n")).not.toMatch(/server\.key|dev\.key|private\.pem/);
+    });
+
+    it("answers a probe for a name inside a directory excluded as a whole the same, whether the name exists or not", async () => {
+        const repo = await makePolicyRepo();
+        await symlink(join(repo, "certs"), join(repo, "certs-link"));
+        const policy = await readAiPolicy(repo);
+        const areas = "certs/ (excluded: 2 files)\nkeys/ (excluded: 2 files)\npackages/api/certs/ (excluded: 1 file)";
+        expect(await listFiles(repo, { policy, glob: "certs/server.key" })).toBe(areas);
+        expect(await listFiles(repo, { policy, glob: "certs/nope.key" })).toBe(areas);
+        expect(await listFiles(repo, { policy, glob: "src/*.js" })).toBe(`${areas}\nsrc/db.js (54 bytes)`);
+        for (const dir of ["certs", "certs/nosuch", "packages/api/certs", "certs-link"])
+            await expect(listFiles(repo, { policy, dir })).rejects.toThrow(
+                `${dir} is excluded by the client's AI policy (.claude/settings.json).`
+            );
+        expect(await listFiles(repo, { policy, dir: "vault" })).toBe("vault/README.md (8 bytes)\nvault/secret.txt (excluded)");
+        const note = "(9 files excluded by the client's AI policy were not searched)";
+        expect(await grepFiles(repo, "x", { policy, glob: "certs/server.key" })).toBe(`No matches.\n${note}`);
+        expect(await grepFiles(repo, "x", { policy, glob: "certs/nope.key" })).toBe(`No matches.\n${note}`);
+    });
+
+    it("searches no excluded file and says how many it skipped", async () => {
+        const repo = await makePolicyRepo();
+        const policy = await readAiPolicy(repo);
+        expect(await grepFiles(repo, CANARY)).toContain(CANARY);
+        expect(await grepFiles(repo, CANARY, { policy })).toBe(
+            "No matches.\n(9 files excluded by the client's AI policy were not searched)"
+        );
+        expect(await grepFiles(repo, "SELECT", { policy, glob: "src/**" })).toBe(
+            'src/db.js:1: db.query("SELECT * FROM u WHERE id=" + req.query.id);\n(9 files excluded by the client\'s AI policy were not searched)'
+        );
     });
 });

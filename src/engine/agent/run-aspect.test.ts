@@ -5,8 +5,10 @@ import { describe, expect, it } from "vitest";
 import { message, replayFetch } from "@/engine/replay";
 import { CHECKLIST, finding, finish, text, tool } from "@/test/agent-messages";
 import { makeRepo } from "@/test/git-repo";
+import { CANARY, POLICY_FILES } from "@/test/policy-repo";
 import { SAMPLE_KEY } from "@/test/sample-repo";
 
+import { readAiPolicy } from "../ai-policy";
 import { ASPECTS } from "../aspects";
 import { type Checklist, loadChecklist, parseChecklist } from "../checklists";
 import { Masker } from "../masker";
@@ -26,11 +28,14 @@ async function setup(
         aspect?: string;
         model?: string;
         effort?: Effort;
+        /** The test repository of the client's AI policy, with its rules read. */
+        policy?: boolean;
     } = {}
 ) {
     const clonePath = await makeRepo({
         "src/db.js": `const key = "${SAMPLE_KEY}";\ndb.query("SELECT * FROM u WHERE id=" + req.query.id);\n`,
-        ...o.files
+        ...o.files,
+        ...(o.policy && POLICY_FILES)
     });
     const sink = new MemorySink();
     const { fetch, requests } = replayFetch(responses);
@@ -43,6 +48,7 @@ async function setup(
         masker: new Masker((o.secrets ?? []).map(value => ({ value, rule: "generic-api-key" }))),
         repoMap: "map",
         sink,
+        ...(o.policy && { policy: await readAiPolicy(clonePath) }),
         state: { finished: null, reported: [], fatal: null }
     };
     const run = () =>
@@ -350,6 +356,25 @@ describe("runAspect", () => {
         const { requests, run } = await setup([text("I looked around."), text("Still looking.")]);
         expect(await run()).toMatchObject({ status: "partial", note: expect.stringMatching(/without reporting coverage/) });
         expect(requests).toHaveLength(2);
+    });
+
+    it("keeps every file the client's AI policy excludes from the model: reads, searches and evidence there are refused", async () => {
+        const { sink, requests, run } = await setup(
+            [
+                tool("read_file", { path: "certs/server.key", start_line: 1, end_line: 5 }),
+                tool("grep", { pattern: "PRIVATE KEY|PASSWORD", glob: "" }),
+                tool("report_finding", finding({ evidence: [{ file: "keys/public.pem", start_line: 1, end_line: 1 }] })),
+                finish()
+            ],
+            { policy: true }
+        );
+        expect((await run()).status).toBe("done");
+        const bodies = requests.map(r => JSON.stringify(r.body));
+        expect(bodies.join("")).not.toContain(CANARY);
+        expect(bodies[1]).toContain("certs/server.key is excluded by the client's AI policy (.claude/settings.json).");
+        expect(bodies[2]).toContain("No matches.\\n(9 files excluded by the client's AI policy were not searched)");
+        expect(bodies[3]).toContain("keys/public.pem is excluded by the client's AI policy (.claude/settings.json).");
+        expect(sink.findings).toEqual([]);
     });
 
     it("masks secrets in tool results before they enter the conversation", async () => {

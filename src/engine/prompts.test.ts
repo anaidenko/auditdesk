@@ -1,13 +1,63 @@
 import { describe, expect, it } from "vitest";
 
+import type { AiPolicySummary } from "./ai-policy";
 import { loadChecklist, parseChecklist } from "./checklists";
-import { SYSTEM_PROMPT, aspectMessage, briefText, prefixBlocks } from "./prompts";
+import { SYSTEM_PROMPT, aspectMessage, briefText, policyText, prefixBlocks } from "./prompts";
+
+const summary: AiPolicySummary = {
+    sources: [
+        {
+            file: ".claude/settings.json",
+            tool: "Claude Code",
+            patterns: [
+                { line: 7, pattern: "Read(./certs/**)" },
+                { line: 8, pattern: "Read(~/.aws/**)", note: "outside the repository, not applicable" }
+            ],
+            excludedFiles: 2
+        },
+        { file: "packages/api/.cursorignore", tool: "Cursor", nested: true, patterns: [{ line: 1, pattern: "*.pem" }], excludedFiles: 1 },
+        { file: ".claudeignore", tool: "no tool (intent)", intent: true, patterns: [{ line: 2, pattern: "drafts/" }], excludedFiles: 0 }
+    ],
+    warnings: [],
+    readsNothing: null,
+    files: 40,
+    excludedFiles: 3,
+    excluded: ["certs/ (2 files)", "packages/api/key.pem"],
+    everything: false
+};
 
 describe("prompts", () => {
     it("puts the cache breakpoint on the last block of the shared prefix", () => {
         const blocks = prefixBlocks({ stackProfile: "s", repoMap: "m", brief: "b" });
         expect(blocks.at(-1)!.cache_control).toEqual({ type: "ephemeral" });
         expect(blocks.slice(0, -1).every(b => !b.cache_control)).toBe(true);
+    });
+
+    it("tells the agents what the client's AI policy excludes and to mark the items it touches partly", () => {
+        const text = policyText(summary)!;
+        expect(text).toContain("3 of the repository's 40 files");
+        expect(text).toContain("- .claude/settings.json (Claude Code): Read(./certs/**)");
+        expect(text).not.toContain("~/.aws");
+        expect(text).toContain("- packages/api/.cursorignore (Cursor): *.pem");
+        expect(text).toContain("- .claudeignore (no tool enforces it; the team's intent): drafts/");
+        expect(text).toContain("Excluded: certs/ (2 files), packages/api/key.pem");
+        expect(text).toMatch(/"partly"/);
+        expect(policyText({ ...summary, sources: [], excludedFiles: 0, excluded: [] })).toBeNull();
+    });
+
+    it("puts the policy before the brief, in the cached prefix, and leaves the prefix as it was without one", () => {
+        const blocks = prefixBlocks({ stackProfile: "s", repoMap: "m", brief: "b", aiPolicy: "P" });
+        expect(blocks.map(b => b.text.split("\n")[0])).toEqual([
+            expect.any(String),
+            "# Stack profile",
+            "m",
+            "# The client's AI policy",
+            "# Brief from the auditor"
+        ]);
+        expect(blocks.at(-1)!.cache_control).toEqual({ type: "ephemeral" });
+        expect(prefixBlocks({ stackProfile: "s", repoMap: "m", brief: "b", aiPolicy: null })).toEqual(
+            prefixBlocks({ stackProfile: "s", repoMap: "m", brief: "b" })
+        );
     });
 
     it("keeps the system prompt free of anything that changes between runs", () => {

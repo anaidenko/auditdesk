@@ -1,5 +1,6 @@
 import type { BetaTextBlockParam } from "@anthropic-ai/sdk/resources/beta/messages/messages";
 
+import type { AiPolicySummary } from "./ai-policy";
 import type { Checklist } from "./checklists";
 import { maskUrlPasswords } from "./masker";
 
@@ -25,13 +26,36 @@ Finishing
 - When every checklist item has been examined, or your budget is nearly spent, call finish_aspect with a short summary and the coverage of every checklist item: examined, partly (say why in the summary) or not_examined. Coverage records what you looked at, never that something passed.
 - Between tool calls, keep your notes to a sentence about what you are doing next.`;
 
-export function prefixBlocks(o: { stackProfile: string; repoMap: string; brief: string }): BetaTextBlockParam[] {
+/** `aiPolicy`: what the client's own settings exclude (policyText); a prefix without one is the same as before it existed. */
+export function prefixBlocks(o: { stackProfile: string; repoMap: string; brief: string; aiPolicy?: string | null }): BetaTextBlockParam[] {
     return [
         { type: "text", text: SYSTEM_PROMPT },
         { type: "text", text: `# Stack profile\n\n${o.stackProfile}` },
         { type: "text", text: o.repoMap },
+        ...(o.aiPolicy ? [{ type: "text" as const, text: `# The client's AI policy\n\n${o.aiPolicy}` }] : []),
         { type: "text", text: `# Brief from the auditor\n\n${o.brief}`, cache_control: { type: "ephemeral" } }
     ];
+}
+
+/**
+ * The policy as an agent reads it, so it marks the items it touches instead of discovering the gaps
+ * by refusals; null when the repository states none.
+ */
+export function policyText(s: AiPolicySummary): string | null {
+    const sources = s.sources
+        .map(src => {
+            const patterns = src.patterns.filter(p => p.note !== "outside the repository, not applicable").map(p => p.pattern);
+            const tool = src.intent ? "no tool enforces it; the team's intent" : src.tool;
+            return patterns.length ? `- ${src.file} (${tool}): ${patterns.join(", ")}` : null;
+        })
+        .filter(Boolean);
+    if (!sources.length) return null;
+    return [
+        `The client's AI policy (its own settings and any exclusions agreed with it) excludes ${s.excludedFiles} of the repository's ${s.files} files from any AI tool. The tools refuse to read or search them, and a finding cannot cite them.`,
+        `Sources:\n${sources.join("\n")}`,
+        `Excluded: ${s.excluded.join(", ") || "no file at this commit"}.`,
+        'Do not try to read them. The scanners did run on them; their findings there are listed under a neutral title. Mark each checklist item whose code lies in an excluded area "partly", and name the area in your summary.'
+    ].join("\n\n");
 }
 
 export function aspectMessage(o: {

@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import { makeRepo } from "@/test/git-repo";
 
+import { readAiPolicy } from "./ai-policy";
 import { Masker } from "./masker";
 import { buildRepoMap } from "./repomap";
 
@@ -42,6 +43,18 @@ describe("buildRepoMap", () => {
         expect(map).toMatch(/DATABASE_URL/);
         expect(map).toContain("test/login.test.js");
         expect(map).toContain(".github/workflows/ci.yml");
+    });
+
+    it("takes no entry point, route, environment variable or schema model from a file the client's AI policy excludes", async () => {
+        const root = await makeRepo({
+            ...files,
+            ".aiignore": "server.js\nprisma/\n.env.example\npackage.json\nsrc/app/api/\n"
+        });
+        const map = await buildRepoMap(root, new Masker([]), { policy: await readAiPolicy(root) });
+        expect(map).not.toMatch(/STRIPE_KEY|DATABASE_URL|\/users\/:id|POST \/login|User, Order|script start|orders/);
+        expect(map).toMatch(/^# Repository map \(10 files; 5 excluded by the client's AI policy and left out\)$/m);
+        expect(map).toContain("page /dashboard (src/app/dashboard/page.tsx)");
+        expect(map).toContain("test/login.test.js");
     });
 
     it("names environment variables but never their example values", async () => {

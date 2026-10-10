@@ -22,6 +22,17 @@ Local only: it binds 127.0.0.1 and has no login. The design is in [docs/design.m
   back end's routes, auth across both, CORS, validation only on the client, secrets in the bundle.
 - **Stack detection** from manifests and schemas, confirmed or edited by the auditor, suggests
   the conditional aspects; an AI-built mode adds checks for code written largely by AI tools.
+- **The client's own AI exclusions:** the files a repository already keeps from AI tools stay out
+  of the review: Claude Code's `Read` denies in `.claude/settings.json` and
+  `.claude/settings.local.json`, the ignore files of Cursor (`.cursorignore`), Gemini Code Assist
+  (`.aiexclude`), Gemini CLI (`.geminiignore`), JetBrains AI Assistant and Junie (`.aiignore`),
+  Windsurf (`.codeiumignore`) and Aider (`.aiderignore`), nested ones included, and a
+  `.claudeignore` as the team's intent. The auditor can add patterns per repository, saved with
+  the client's consent. No agent reads, searches or cites an excluded file, through a symlink
+  either; the agents see its name, and a directory excluded as a whole as one line with its count.
+  The project page shows the policy beside the stack, and the report's Scope and method lists each
+  source, its patterns and the files. The scanners still cover those files. A repository whose
+  policy leaves no file to read is refused.
 - **Review:** accept, edit, merge, reject or exclude every finding, each action confirmed in a
   toast; only accepted or edited ones reach the report and the exports. Expand all opens every
   card of the list. The Export panel says how many still await review, and its
@@ -109,7 +120,9 @@ starts on the Claude plan.
 A value in `.env.local` wins over a saved one. Saved values live in
 `~/.auditdesk/credentials.json` (mode 0600), never in the database. The Agent SDK session gets
 the app's seven tools (five read the clone, two file findings and coverage) and nothing else: no
-built-in tools, no settings, hooks, skills or MCP servers from the clone or from `~/.claude`.
+built-in tools, no settings, hooks, skills or MCP servers from the clone or from `~/.claude`. The
+clone's `.claude/settings.json` is still read as data on both engines, for its `Read` denies alone
+(What it does, the client's own AI exclusions); the app's tools enforce them.
 
 A Claude plan run keeps half of the plan's 5-hour window in reserve. The engine saves the last
 reading the plan reports to `~/.auditdesk/plan-usage.json`; above 50% a run starts only with
