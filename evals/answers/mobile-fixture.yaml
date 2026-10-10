@@ -53,6 +53,10 @@ entries:
         startLine: 13
         endLine: 13
         anchor: Bearer ${PAYWISE_KEY}
+      - file: expo-app/app/checkout.tsx
+        startLine: 37
+        endLine: 38
+        anchor: const charge = await chargeCard(
   - id: MOBX-04
     aspect: mobile
     checklistItem: MOB-01
@@ -83,6 +87,9 @@ entries:
     kind: finding
     severity: high
     title: One-tap sign-in tokens travel through a custom scheme any app can claim, and any link signs the user in
+    alsoItems:
+      - SEC-01
+      - SEC-02
     file: expo-app/src/lib/links.ts
     startLine: 16
     endLine: 22
@@ -98,6 +105,11 @@ entries:
     kind: finding
     severity: high
     title: The help WebView opens any URL a link gives it, hands that page the access token and follows its navigation messages
+    alsoItems:
+      - SEC-15
+      - SEC-05
+      - SEC-02
+      - MOB-05
     file: expo-app/app/help.tsx
     startLine: 20
     endLine: 25
@@ -113,6 +125,8 @@ entries:
     kind: finding
     severity: medium
     title: The app lock is a yes/no answer in JavaScript, and opens without a prompt when no biometrics are enrolled
+    alsoItems:
+      - SEC-01
     file: expo-app/src/lib/biometrics.ts
     startLine: 5
     endLine: 11
@@ -128,6 +142,9 @@ entries:
     kind: finding
     severity: medium
     title: Every analytics event sends the customer's email and precise location to a third party, without consent
+    alsoItems:
+      - MOB-02
+      - SEC-13
     file: expo-app/src/lib/analytics.ts
     startLine: 9
     endLine: 16
@@ -144,11 +161,6 @@ entries:
     startLine: 26
     endLine: 36
     anchor: export async function flush()
-    also:
-      - file: expo-app/src/lib/session.ts
-        startLine: 26
-        endLine: 28
-        anchor: export async function clearSession()
   # Fieldbook: Ionic React 8 and Capacitor 6.
   - id: MOBC-01
     aspect: mobile
@@ -158,6 +170,7 @@ entries:
     title: The shipped configuration loads the app from a development server over plain HTTP
     alsoItems:
       - MOB-12
+      - SEC-11
     file: capacitor-app/capacitor.config.ts
     startLine: 9
     endLine: 10
@@ -168,6 +181,9 @@ entries:
     kind: finding
     severity: high
     title: Any page may load in the app's WebView, and help articles from other sites open there with the native bridge
+    alsoItems:
+      - SEC-05
+      - SEC-15
     file: capacitor-app/capacitor.config.ts
     startLine: 11
     endLine: 11
@@ -183,6 +199,8 @@ entries:
     kind: finding
     severity: medium
     title: The bridge logs its calls in release builds, the stored token among them
+    alsoItems:
+      - SEC-13
     file: capacitor-app/capacitor.config.ts
     startLine: 7
     endLine: 7
@@ -197,8 +215,8 @@ entries:
       - MOB-02
       - SEC-02
     file: capacitor-app/src/services/auth.ts
-    startLine: 14
-    endLine: 14
+    startLine: 13
+    endLine: 13
     anchor: "await Preferences.set({ key: TOKEN, value: token });"
     also:
       - file: capacitor-app/android/app/src/main/AndroidManifest.xml
@@ -257,13 +275,13 @@ entries:
       - SEC-10
       - SEC-01
     file: capacitor-app/src/pages/Settings.tsx
-    startLine: 38
-    endLine: 42
+    startLine: 39
+    endLine: 43
     anchor: "{supportTools && ("
     also:
       - file: capacitor-app/src/pages/Settings.tsx
-        startLine: 19
-        endLine: 19
+        startLine: 20
+        endLine: 20
         anchor: const supportTools = taps >= 7;
   - id: MOBC-09
     aspect: mobile
@@ -277,11 +295,6 @@ entries:
     startLine: 29
     endLine: 29
     anchor: '{ method: "PUT", body: q.job }'
-    also:
-      - file: capacitor-app/src/services/auth.ts
-        startLine: 21
-        endLine: 22
-        anchor: export async function signOut()
   - id: MOBC-10
     aspect: mobile
     checklistItem: MOB-08
@@ -290,19 +303,47 @@ entries:
     title: The unlock PIN is stored as plain text and checked on the device, with no limit on attempts
     alsoItems:
       - MOB-01
-    file: capacitor-app/src/services/auth.ts
-    startLine: 26
-    endLine: 32
+      - SEC-01
+    file: capacitor-app/src/services/pin.ts
+    startLine: 6
+    endLine: 12
     anchor: 'export async function setPin(pin: string)'
+    also:
+      - file: capacitor-app/src/pages/Lock.tsx
+        startLine: 13
+        endLine: 14
+        anchor: if (await checkPin(pin))
 known:
+  # An absence with nothing to point at: no forced-update path in either app.
   - checklistItem: MOB-10
     title: No forced-update path in either app
   - checklistItem: MOB-07
-    title: No privacy manifest declaring the required-reason APIs (UserDefaults through Preferences, AsyncStorage)
+    title: No privacy manifest declaring the required-reason APIs (AsyncStorage)
+    file: expo-app/app.json
+  - checklistItem: MOB-07
+    title: No privacy manifest declaring the required-reason APIs (UserDefaults through Preferences)
+    file: capacitor-app/ios/App/App/Info.plist
   - checklistItem: MOB-03
-    title: No certificate pinning; the brief names no risk that calls for it
+    title: No certificate pinning in Larder's API client; the brief names no risk that calls for it
+    file: expo-app/src/lib/api.ts
+  - checklistItem: MOB-03
+    title: No certificate pinning in Larder's configuration
+    file: expo-app/app.json
+  - checklistItem: MOB-03
+    title: No certificate pinning in Fieldbook's API client
+    file: capacitor-app/src/services/api.ts
+  - checklistItem: MOB-03
+    title: No certificate pinning in Fieldbook's configuration
+    file: capacitor-app/capacitor.config.ts
   - checklistItem: MOB-02
-    title: Sensitive screens (the gate code, the saved card) are not hidden from the app switcher's snapshot
+    title: The saved card is not hidden from the app switcher's snapshot
+    file: expo-app/app/checkout.tsx
+  - checklistItem: MOB-02
+    title: The gate code is not hidden from the app switcher's snapshot
+    file: capacitor-app/src/pages/JobDetail.tsx
+  - checklistItem: MOB-02
+    title: No FLAG_SECURE on the activity that shows the gate code
+    file: capacitor-app/android/app/src/main/java/com/fieldbook/app/MainActivity.java
   - checklistItem: MOB-12
     title: R8 is off for the Android release build (the Capacitor template's default)
     file: capacitor-app/android/app/build.gradle
@@ -312,3 +353,18 @@ known:
   - checklistItem: MOB-13
     title: An order queued offline is placed without its payment
     file: expo-app/app/checkout.tsx
+  - checklistItem: MOB-08
+    title: The app lock shows only on resume, not on a cold start, and Back leaves it
+    file: capacitor-app/src/App.tsx
+  - checklistItem: MOB-08
+    title: Larder never locks again when it returns from the background
+    file: expo-app/app/_layout.tsx
+  - checklistItem: MOB-01
+    title: Queued reports keep customers' addresses and gate codes in plain Preferences
+    file: capacitor-app/src/services/queue.ts
+  - checklistItem: SEC-11
+    title: No Content-Security-Policy in Fieldbook's index.html
+    file: capacitor-app/index.html
+  - checklistItem: MOB-04
+    title: No Content-Security-Policy for the WebView in Fieldbook's index.html
+    file: capacitor-app/index.html

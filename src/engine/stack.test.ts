@@ -95,6 +95,13 @@ describe("detectStack", () => {
         for (const root of [ionic, dev, swift]) expect(suggestAspects(await detectStack(root))).not.toContain("mobile");
     });
 
+    it("reads a profile saved before the user interface was detected: a shipped mobile runtime suggests the aspect, a dev-only one does not", () => {
+        const { userInterface: _, ...old } = { ...EMPTY_STACK, frameworks: ["Capacitor 6"] };
+        expect(suggestAspects(old as typeof EMPTY_STACK)).toContain("mobile");
+        const dev = { ...old, frameworks: ["Capacitor 6 (dev only)"] } as typeof EMPTY_STACK;
+        expect(suggestAspects(dev)).not.toContain("mobile");
+    });
+
     it("lists Objective-C in a native project as not covered", async () => {
         const root = await makeRepo({
             "package.json": pkg({ "react-native": "0.76.5" }),

@@ -134,8 +134,8 @@ const UNFINISHED: Record<string, string> = {
 /** A partial agent that examined nothing, such as one the plan's reserve kept from starting. */
 const NOTHING_EXAMINED = "Not covered: the agent stopped before it had examined any item.";
 
-/** The languages of a mobile app's native plugins and modules, whose bridge surface the Mobile app aspect reads. */
-const NATIVE = /^(Swift|Objective-C|Kotlin|Java) \(/;
+/** The native code of a mobile app's android/ or ios/ project, whose bridge surface the Mobile app aspect reads. */
+const NATIVE = /^(Swift|Objective-C|Kotlin|Java|C\/C\+\+) \(.*the native android\/ or ios\/ project\)$/;
 
 /** A repository's languages the audit did not analyse, and the native ones the Mobile app aspect read in part. */
 function notCovered(r: ReportData["repositories"][number]): string {

@@ -166,7 +166,12 @@ describe("renderReport", () => {
                         name: "app",
                         branch: "main",
                         sha: "0123456789abcdef",
-                        notCovered: ["Swift (2 files; the native android/ or ios/ project)", "Python (1 file)"],
+                        notCovered: [
+                            "Swift (2 files; the native android/ or ios/ project)",
+                            "C/C++ (3 files; the native android/ or ios/ project)",
+                            "Kotlin (40 files; build.gradle.kts)",
+                            "Python (1 file)"
+                        ],
                         bridgeRead: true
                     },
                     { name: "api", branch: "main", sha: "fedcba9876543210", notCovered: ["Kotlin (1 file)"] }
@@ -174,10 +179,11 @@ describe("renderReport", () => {
             })
         );
         expect(html).toContain(
-            "<li>Partly covered in app: Swift (2 files; the native android/ or ios/ project). The Mobile app aspect read its bridge surface only: the methods the app's JavaScript can call, and what they trust from it.</li>"
+            "<li>Partly covered in app: Swift (2 files; the native android/ or ios/ project); C/C++ (3 files; the native android/ or ios/ project). The Mobile app aspect read its bridge surface only: the methods the app's JavaScript can call, and what they trust from it.</li>"
         );
+        // Native code outside the app's android/ or ios/ project, such as a Kotlin service beside it, was not read at all.
         expect(html).toContain(
-            "<li>Not covered in app: Python (1 file). The audit covers JavaScript and TypeScript; these were not analysed.</li>"
+            "<li>Not covered in app: Kotlin (40 files; build.gradle.kts); Python (1 file). The audit covers JavaScript and TypeScript; these were not analysed.</li>"
         );
         expect(html).toContain(
             "<li>Not covered in api: Kotlin (1 file). The audit covers JavaScript and TypeScript; these were not analysed.</li>"

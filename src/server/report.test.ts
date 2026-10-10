@@ -374,18 +374,29 @@ describe("repositories in the report", () => {
         expect(d.aiBuilt).toBe(true);
     });
 
-    it("marks a repository whose Mobile app agent finished as read at its native bridge, and no other", async () => {
+    it("marks a mobile app whose Mobile app agent examined something as read at its native bridge, and no other repository", async () => {
+        const app = { ...EMPTY_STACK, frameworks: ["Capacitor 6"], userInterface: ["Capacitor 6"] };
         const { project, repo } = await projectWithRepo("git@github.com:acme/app.git");
-        const other = await prisma.repository.create({
-            data: { projectId: project.id, source: "git@github.com:acme/api.git", branch: "main" }
+        await prisma.repository.update({ where: { id: repo.id }, data: { stack: app } });
+        const api = await prisma.repository.create({
+            data: { projectId: project.id, source: "git@github.com:acme/api.git", branch: "main", stack: { ...EMPTY_STACK } }
+        });
+        const idle = await prisma.repository.create({
+            data: { projectId: project.id, source: "git@github.com:acme/kiosk.git", branch: "main", stack: app }
         });
         const r = await run(project.id, "done", null, new Date());
         await agent(r.id, repo.id, "partial", new Date(), "mobile");
-        await agent(r.id, other.id, "done", new Date(), "security");
+        // Mobile app ran on the API too, as a conditional aspect runs on every repository: it is no app.
+        await agent(r.id, api.id, "done", new Date(), "mobile");
+        // Stopped by the plan's reserve before it examined anything.
+        await prisma.agentRun.create({
+            data: { runId: r.id, repositoryId: idle.id, aspect: "mobile", status: "partial", tokenShare: 1, usdShare: 1, coverage: [] }
+        });
         const d = await loadReportData(project.id);
         expect(d.repositories.map(x => [x.name, x.bridgeRead ?? false])).toEqual([
             ["acme/app", true],
-            ["acme/api", false]
+            ["acme/api", false],
+            ["acme/kiosk", false]
         ]);
     });
 });

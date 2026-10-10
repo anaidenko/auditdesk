@@ -12,7 +12,7 @@ import { loadReferences, referencesFor } from "@/engine/references";
 import { repoLinks, webUrl } from "@/engine/report/links";
 import type { ReportData, ReportFinding } from "@/engine/report/types";
 import type { ToolVersions } from "@/engine/scanners/types";
-import type { StackProfile } from "@/engine/stack";
+import { type StackProfile, suggestAspects } from "@/engine/stack";
 import type { Evidence, References, SeverityName } from "@/engine/types";
 import { parseSource } from "@/engine/workspace";
 import { Prisma } from "@/generated/prisma/client";
@@ -182,6 +182,16 @@ export async function loadReportData(
         const [ry, ay] = order(y);
         return rx - ry || ax - ay;
     });
+    // A mobile app's native bridge was read when its Mobile app agent examined something there.
+    const bridgeRead = (repositoryId: string, stack: StackProfile | null) =>
+        !!stack &&
+        suggestAspects(stack).includes("mobile") &&
+        latestAgents.some(
+            a =>
+                a.repositoryId === repositoryId &&
+                a.aspect === "mobile" &&
+                ((a.coverage as { status: string }[] | null) ?? []).some(c => c.status === "examined" || c.status === "partly")
+        );
     const scanned = await prisma.run.findFirst({
         where: { projectId, toolVersions: { not: Prisma.DbNull } },
         orderBy: { createdAt: "desc" },
@@ -237,9 +247,7 @@ export async function loadReportData(
                 branch,
                 sha: r.commitSha ?? "not cloned",
                 notCovered: (r.stack as StackProfile | null)?.notCovered ?? [],
-                ...(latestAgents.some(a => a.repositoryId === r.id && a.aspect === "mobile" && ["done", "partial"].includes(a.status)) && {
-                    bridgeRead: true
-                }),
+                ...(bridgeRead(r.id, r.stack as StackProfile | null) && { bridgeRead: true }),
                 ...(links && { links })
             };
         }),

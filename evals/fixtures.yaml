@@ -13,7 +13,7 @@ fixtures:
   # aspect design, Q2): one key, its paths starting with the folder.
   - name: mobile
     url: https://github.com/anaidenko/auditdesk-mobile-fixture
-    sha: 1cff1c3e2dd1082106aba62a27a952c2c9a3a880
+    sha: efa28320b2bbca2166c76a9b972a1e07902e26c0
     dirs: [expo-app, capacitor-app]
     aspects: [security, mobile]
     aiBuilt: false

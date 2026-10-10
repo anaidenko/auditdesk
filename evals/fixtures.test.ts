@@ -9,6 +9,7 @@ import { loadChecklist } from "@/engine/checklists";
 import { SEVERITIES } from "@/engine/types";
 
 import { type KeyEntry, type KeyLocation, loadFixtures, loadKey } from "./fixtures";
+import { type GradedFinding, grade } from "./grade";
 
 const own = loadFixtures().find(f => f.name === "own")!;
 
@@ -158,6 +159,47 @@ describe("the mobile fixture's answer key", () => {
                 ).toBe(true);
         }
         for (const k of key.known) expect(items, k.title).toContain(k.checklistItem);
+    });
+
+    // What a correct Security or Mobile app agent files, as the grader reads it against the key.
+    const filed = (checklistItem: string, ...at: [string, number, number][]): GradedFinding => ({
+        label: "F-001",
+        kind: "finding",
+        source: "agent",
+        aspect: checklistItem.startsWith("SEC") ? "security" : "mobile",
+        checklistItem,
+        title: "t",
+        evidence: at.map(([file, startLine, endLine]) => ({ file, startLine, endLine }))
+    });
+    const credited = (f: GradedFinding) => grade([f], key, { aspects: spec.aspects as string[] }).matched.map(m => m.key);
+
+    it("credits a defect the Security agent files under its own item, since Security runs first", () => {
+        expect(credited(filed("SEC-15", ["expo-app/app/help.tsx", 20, 22]))).toEqual(["MOBX-07"]);
+        expect(credited(filed("SEC-05", ["capacitor-app/src/pages/Help.tsx", 24, 24]))).toEqual(["MOBC-02"]);
+        expect(credited(filed("SEC-01", ["capacitor-app/src/services/pin.ts", 10, 12]))).toEqual(["MOBC-10"]);
+        expect(credited(filed("SEC-01", ["expo-app/src/lib/links.ts", 16, 22]))).toEqual(["MOBX-06"]);
+        expect(credited(filed("SEC-13", ["expo-app/src/lib/analytics.ts", 12, 16]))).toEqual(["MOBX-09"]);
+        expect(credited(filed("SEC-13", ["capacitor-app/capacitor.config.ts", 7, 7]))).toEqual(["MOBC-03"]);
+    });
+
+    it("credits the offline queues only to a finding on the queue, not to one on token storage", () => {
+        expect(credited(filed("MOB-01", ["expo-app/src/lib/session.ts", 17, 19], ["expo-app/src/lib/session.ts", 26, 28]))).toEqual([
+            "MOBX-04"
+        ]);
+        expect(
+            credited(filed("MOB-01", ["capacitor-app/src/services/auth.ts", 13, 13], ["capacitor-app/src/services/auth.ts", 20, 22]))
+        ).toEqual(["MOBC-04"]);
+    });
+
+    it("credits the PIN screen's unlimited attempts and the client-side charge to their defects", () => {
+        expect(credited(filed("MOB-08", ["capacitor-app/src/pages/Lock.tsx", 12, 15]))).toEqual(["MOBC-10"]);
+        expect(credited(filed("MOB-09", ["expo-app/app/checkout.tsx", 37, 38]))).toEqual(["MOBX-03"]);
+    });
+
+    it("places the known issues in their files, so a finding elsewhere under the same item still counts as false", () => {
+        for (const k of key.known.filter(k => k.checklistItem !== "MOB-10")) expect(k.file, k.title).toBeTruthy();
+        const g = grade([filed("MOB-03", ["expo-app/app/login.tsx", 16, 16])], key, { aspects: spec.aspects as string[] });
+        expect(g.leftovers).toEqual(["F-001"]);
     });
 
     it("plants 8 to 10 defects in each app, keeps IDs unique and gives each a severity", () => {

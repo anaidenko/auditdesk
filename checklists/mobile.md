@@ -9,10 +9,12 @@ methods of a plugin or native module that JavaScript can call, and what they tru
 (arguments, URLs, origins). The rest of the native code is not reviewed; mark an item that would
 need it "partly" and say so in the summary.
 
-While this aspect runs, what is specific to the device is filed here, not under Security: tokens
-and secrets stored on the device, keys compiled into the app, the app's transport settings and
-what a release build logs. Injection and cross-site scripting in the app's own screens stay
-Security's, and so do the back end's routes.
+On a mobile app, what is specific to the device is filed here, not under Security: tokens and
+secrets stored on the device, keys compiled into the app, the app's transport settings, the
+WebView and its bridge, deep links, the app's lock, and what a release build logs or sends to
+analytics. Injection in the app's own code stays Security's, and so do the back end's routes. In
+a repository of the project that is not a mobile app, such as its API, report nothing here and
+mark every item not examined.
 
 Severity: critical when anyone who installs the app, or any app or website, can exploit it now
 with serious impact (a server's secret key in the bundle, a deep link that acts for the signed-in
@@ -35,9 +37,9 @@ MASVS controls: MASVS-STORAGE-1.
 
 Tokens, passwords or personal data in `console.log` calls that a release build keeps (React
 Native keeps them unless a Babel plugin removes them; Capacitor's `loggingBehavior:
-"production"` logs the bridge's traffic in release builds), in crash reports and analytics
-events; sensitive values copied to the clipboard; Android `android:allowBackup="true"` without
-backup rules for an app that holds tokens in plain files; sensitive screens left in the app
+"production"` logs the bridge's traffic in release builds) and in crash reports (personal data
+sent to analytics is MOB-11's); sensitive values copied to the clipboard; Android
+`android:allowBackup="true"` without backup rules for an app that holds tokens in plain files; sensitive screens left in the app
 switcher's snapshot or a screen recording; sensitive data in notifications on the lock screen.
 
 MASVS controls: MASVS-STORAGE-2, MASVS-PLATFORM-3.

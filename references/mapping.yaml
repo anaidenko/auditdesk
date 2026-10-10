@@ -37,10 +37,10 @@ cheatsheets:
   Input_Validation: "Input Validation Cheat Sheet"
   Insecure_Direct_Object_Reference_Prevention: "Insecure Direct Object Reference Prevention Cheat Sheet"
   LLM_Prompt_Injection_Prevention: "LLM Prompt Injection Prevention Cheat Sheet"
-  # Answered HTTP 200 under this title on 2026-10-11.
-  Mobile_Application_Security: "Mobile Application Security Cheat Sheet"
   Logging: "Logging Cheat Sheet"
   Mass_Assignment: "Mass Assignment Cheat Sheet"
+  # Answered HTTP 200 under this title on 2026-10-11.
+  Mobile_Application_Security: "Mobile Application Security Cheat Sheet"
   Multi_Tenant_Security: "Multi-Tenant Application Security Cheat Sheet"
   Nodejs_Security: "NodeJS Security Cheat Sheet"
   NodeJS_Docker: "Node.js Docker Cheat Sheet"

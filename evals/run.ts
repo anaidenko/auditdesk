@@ -202,7 +202,10 @@ async function folderRepository(tree: string, dir: string): Promise<{ id: string
     return { id: dir, source, branch: "main", sha: await commitPrepared(source) };
 }
 
-/** What an eval run audits: --aspect, or the fixture's list; "all" leaves out the seams pass, since every fixture is one repository. */
+/**
+ * What an eval run audits: --aspect, or the fixture's list; "all" leaves out the seams pass, since a
+ * fixture's repositories, its folders included, are audited apart and never as one project.
+ */
 export function evalAspects(spec: FixtureSpec, aspect?: string): string[] {
     if (aspect) return [aspect];
     return !spec.aspects || spec.aspects === "all" ? ASPECTS.map(a => a.key).filter(k => k !== SEAMS) : spec.aspects;

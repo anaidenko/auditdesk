@@ -61,9 +61,17 @@ describe("checklists", () => {
             const to = text.indexOf("\n## ", from + 1);
             return text.slice(from, to < 0 ? undefined : to);
         };
-        expect(await body("security")).toMatch(/Mobile app aspect runs[^.]*SEC-02[^.]*SEC-10[^.]*SEC-11[^.]*SEC-13/);
-        expect(await body("dependencies", "DEP-04")).toMatch(/MOB-10's while Mobile app runs/);
+        const security = await body("security");
+        expect(security).toMatch(/When the Mobile app aspect runs on a\smobile app,\s[^.]*belongs to it/);
+        for (const item of ["SEC-01", "SEC-02", "SEC-05", "SEC-09", "SEC-10", "SEC-11", "SEC-13", "SEC-15"])
+            expect(security.slice(security.indexOf("Mobile app aspect")), item).toContain(item);
+        expect(security).toMatch(/WebView/);
+        expect(await body("dependencies", "DEP-04")).toMatch(/React Native modules[^.]*MOB-10's while Mobile\sapp runs/);
+        expect(await body("production", "PRD-01")).toMatch(/MOB-09's while Mobile\sapp runs/);
+        expect(await body("production", "PRD-02")).toMatch(/MOB-02's while Mobile\sapp runs/);
+        expect(await body("production", "PRD-03")).toMatch(/MOB-12's while Mobile\sapp runs/);
         expect(await body("production", "PRD-08")).toMatch(/While Mobile app runs[^.]*MOB-10[^.]*MOB-12/);
+        expect(await body("mobile", "MOB-02")).toMatch(/MOB-11's/);
         expect(await body("seams", "SEA-01")).toMatch(/deep link/);
     });
 

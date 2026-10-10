@@ -15,17 +15,20 @@ hygiene.
 Every environment variable listed in an example file (`.env.example`) and validated at
 start-up; secrets supplied by the platform or a secret manager; secrets read at import time,
 which breaks builds and tests; one configuration per environment. A secret in the code, the
-history, a bundle or an image is SEC-10's.
+history, a bundle or an image is SEC-10's, and one compiled into a mobile app is MOB-09's while Mobile
+app runs.
 
 ## PRD-02 Logging
 
 Structured logs with levels; a request or correlation ID carried through; background jobs
-logged too; where the logs go. Passwords, tokens or personal data in logs are SEC-13's.
+logged too; where the logs go. Passwords, tokens or personal data in logs are SEC-13's, and in a
+mobile app's logs MOB-02's while Mobile app runs.
 
 ## PRD-03 Error tracking and monitoring
 
 An error tracker wired on the server and the client (Sentry or similar), source maps uploaded
-to it and not served publicly, metrics; alerting and uptime checks (usually a question).
+to it and not served publicly (a mobile app's are MOB-12's while Mobile app runs), metrics;
+alerting and uptime checks (usually a question).
 
 ## PRD-04 Health and lifecycle
 
