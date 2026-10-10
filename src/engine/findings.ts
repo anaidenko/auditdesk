@@ -28,14 +28,22 @@ export function fingerprint(f: {
 
 const INDEXED_PLACES = 10;
 
-/** One line per finding, as the agent sees the ones already filed (design § 6). */
-export function indexLine(f: {
-    label: string;
-    severity: SeverityName | null;
-    checklistItem: string | null;
-    evidence: Evidence[];
-    title: string;
-}): string {
+/**
+ * One line per finding, as the agent sees the ones already filed (design § 6). A finding with a
+ * place in a file the client's AI policy excludes keeps its item and places under a neutral title:
+ * a scanner's message may quote the code.
+ */
+export function indexLine(
+    f: {
+        label: string;
+        severity: SeverityName | null;
+        checklistItem: string | null;
+        evidence: Evidence[];
+        title: string;
+        source?: "scanner" | "agent";
+    },
+    excluded?: (file: string) => boolean
+): string {
     // A scanner finding of several places names each, so an agent does not file one again as new.
     const places = f.evidence.length > 1 && f.evidence.every(e => e.key) ? f.evidence : f.evidence.slice(0, 1);
     const where = places
@@ -43,7 +51,13 @@ export function indexLine(f: {
         .map(e => `${e.file}:${e.startLine}`)
         .join(", ");
     const more = places.length > INDEXED_PLACES ? ` and ${places.length - INDEXED_PLACES} more` : "";
-    return `${f.label} [${f.severity ?? "question"}] ${f.checklistItem ?? "-"} ${where || "-"}${more} ${f.title}`;
+    const title =
+        excluded && f.evidence.some(e => excluded(e.file))
+            ? f.source === "scanner"
+                ? "a scanner result in an excluded file"
+                : "a finding in an excluded file"
+            : f.title;
+    return `${f.label} [${f.severity ?? "question"}] ${f.checklistItem ?? "-"} ${where || "-"}${more} ${title}`;
 }
 
 /** Whether any of the finding's evidence lies under the path name, as a seams finding's paths do. */

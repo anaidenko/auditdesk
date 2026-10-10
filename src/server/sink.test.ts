@@ -345,6 +345,42 @@ describe("PrismaSink", () => {
         expect(index[0]).toMatch(/Not reachable \(rejected by the auditor: Admin-only route\.; do not report it again\)/);
     });
 
+    it("lists a finding in a file the client's AI policy excludes under a neutral title", async () => {
+        const { sink, repo, add } = await setup();
+        await add({
+            title: "Key `-----BEGIN PRIVATE KEY-----` committed",
+            source: "scanner",
+            evidence: [{ file: "certs/a.key", startLine: 1, endLine: 1 }]
+        });
+        await add({ title: "Kept", evidence: [{ file: "src/a.ts", startLine: 3, endLine: 3 }] });
+        expect(await sink.findingIndex(repo.id, { excluded: file => file.startsWith("certs/") })).toEqual([
+            "F-001 [high] SEC-01 certs/a.key:1 a scanner result in an excluded file",
+            "F-002 [high] SEC-01 src/a.ts:3 Kept"
+        ]);
+    });
+
+    it("records the client's AI policy a run read at its commit", async () => {
+        const { sink, repo } = await setup();
+        const summary = {
+            sources: [
+                {
+                    file: ".aiignore",
+                    tool: "JetBrains AI Assistant and Junie",
+                    patterns: [{ line: 1, pattern: "certs/" }],
+                    excludedFiles: 2
+                }
+            ],
+            warnings: [],
+            readsNothing: null,
+            files: 10,
+            excludedFiles: 2,
+            excluded: ["certs/ (2 files)"],
+            everything: false
+        };
+        await sink.aiPolicyRead(repo.id, summary);
+        expect((await prisma.repository.findUniqueOrThrow({ where: { id: repo.id } })).aiPolicy).toEqual(summary);
+    });
+
     it("records a detected stack on the repository and leaves a confirmed profile as Andrii wrote it", async () => {
         const { project, repo } = await projectWithRepo();
         await prisma.repository.update({ where: { id: repo.id }, data: { stackText: "Mine.", stackConfirmedAt: new Date() } });

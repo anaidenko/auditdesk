@@ -3,13 +3,14 @@ import { transformJSONSchema } from "@anthropic-ai/sdk/lib/transform-json-schema
 import { readFile } from "node:fs/promises";
 import { z } from "zod";
 
+import { type AiPolicy, checkReadable } from "../ai-policy";
 import type { Checklist } from "../checklists";
 import { limitedReview } from "../coverage";
 import { hoursError, sizeOf } from "../effort";
 import { grepFiles, listFiles, readFileRange, snippetOf } from "../files";
 import { fingerprint } from "../findings";
 import type { Masker } from "../masker";
-import { ToolError, resolveInClone } from "../paths";
+import { ToolError } from "../paths";
 import type { AuditSink, NewFinding } from "../types";
 
 /** "not_reported" is the engine's: the agent stopped before finish_aspect, so what it read is unknown. */
@@ -24,13 +25,15 @@ export interface AgentContext {
     masker: Masker;
     repoMap: string;
     sink: AuditSink;
+    /** The client's own exclusions from AI tools, read from the clone; none when absent. */
+    policy?: AiPolicy;
     /** The agent's budget share; the engines set it from their input. */
     share?: { usd: number; tokens: number };
     /**
      * The repositories a cross-repository agent reads (the seams pass), each path starting with
      * its name; its findings belong to no single repository.
      */
-    roots?: { name: string; clonePath: string; repositoryId: string }[];
+    roots?: { name: string; clonePath: string; repositoryId: string; policy?: AiPolicy }[];
     state: {
         finished: { summary: string; coverage: Coverage[] } | null;
         reported: string[];
@@ -158,10 +161,10 @@ export function toolSpecs(ctx: AgentContext): ToolSpec[] {
             }),
             readOnly: true,
             run: guard(ctx, async ({ dir, glob }) => {
-                if (!ctx.roots) return listFiles(ctx.clonePath, { dir, glob: glob || undefined });
+                if (!ctx.roots) return listFiles(ctx.clonePath, { dir, glob: glob || undefined, policy: ctx.policy });
                 if (!atRoot(dir) || glob)
-                    return across(ctx, atRoot(dir) ? null : dir, glob, (root, rel, g, prefix) =>
-                        listFiles(root, { dir: rel, glob: g, prefix })
+                    return across(ctx, atRoot(dir) ? null : dir, glob, (root, rel, g, prefix, policy) =>
+                        listFiles(root, { dir: rel, glob: g, prefix, policy })
                     );
                 return ctx.roots.map(r => `${r.name}/ (repository)`).join("\n");
             })
@@ -176,7 +179,10 @@ export function toolSpecs(ctx: AgentContext): ToolSpec[] {
                 if (at.prefix && at.rel === ".") throw new ToolError(`${at.prefix.slice(0, -1)} is a repository; use list_files.`);
                 return prefixed(
                     at.prefix,
-                    await named(at, () => readFileRange(at.clonePath, at.rel, start_line, end_line, line => ctx.masker.mask(line)))
+                    await named(at, async () => {
+                        await checkReadable(at.policy, at.clonePath, at.rel);
+                        return readFileRange(at.clonePath, at.rel, start_line, end_line, line => ctx.masker.mask(line));
+                    })
                 );
             })
         }),
@@ -189,9 +195,11 @@ export function toolSpecs(ctx: AgentContext): ToolSpec[] {
             }),
             readOnly: true,
             run: guard(ctx, async ({ pattern, glob }) => {
-                const search = (root: string, _rel: string | undefined, g: string | undefined, prefix?: string) =>
-                    grepFiles(root, pattern, { glob: g, prefix, mask: line => ctx.masker.mask(line) });
-                return ctx.roots ? across(ctx, null, glob, search) : search(ctx.clonePath, undefined, glob || undefined);
+                const search = (root: string, _rel: string | undefined, g: string | undefined, prefix?: string, policy?: AiPolicy) =>
+                    grepFiles(root, pattern, { glob: g, prefix, mask: line => ctx.masker.mask(line), policy });
+                return ctx.roots
+                    ? across(ctx, null, glob, search)
+                    : search(ctx.clonePath, undefined, glob || undefined, undefined, ctx.policy);
             })
         }),
         spec({
@@ -207,10 +215,14 @@ export function toolSpecs(ctx: AgentContext): ToolSpec[] {
             inputSchema: z.strictObject({ aspect: z.string().describe("Such as security or dependencies.") }),
             readOnly: true,
             run: guard(ctx, async ({ aspect }) => {
-                const repos = ctx.roots ?? [{ name: "", clonePath: ctx.clonePath, repositoryId: ctx.repositoryId }];
+                const repos = ctx.roots ?? [{ name: "", clonePath: ctx.clonePath, repositoryId: ctx.repositoryId, policy: ctx.policy }];
                 const rows: string[] = [];
                 for (const r of repos)
-                    for (const row of await ctx.sink.findingIndex(r.repositoryId, { source: "scanner", aspect }))
+                    for (const row of await ctx.sink.findingIndex(r.repositoryId, {
+                        source: "scanner",
+                        aspect,
+                        ...(r.policy && { excluded: (file: string) => !!r.policy!.match(file) })
+                    }))
                         rows.push(r.name ? `${r.name}: ${row}` : row);
                 return rows.length ? rows.join("\n") : `No scanner findings for ${aspect}.`;
             })
@@ -235,12 +247,21 @@ export function toolSpecs(ctx: AgentContext): ToolSpec[] {
 const atRoot = (dir: string) => ["", ".", "./", "/"].includes(dir.trim());
 
 /** A path of a cross-repository agent, in its repository's clone; a single repository's as it is. */
-function inRoot(ctx: AgentContext, path: string): { clonePath: string; rel: string; prefix: string; repositoryId: string } {
-    if (!ctx.roots) return { clonePath: ctx.clonePath, rel: path, prefix: "", repositoryId: ctx.repositoryId };
+function inRoot(
+    ctx: AgentContext,
+    path: string
+): { clonePath: string; rel: string; prefix: string; repositoryId: string; policy?: AiPolicy } {
+    if (!ctx.roots) return { clonePath: ctx.clonePath, rel: path, prefix: "", repositoryId: ctx.repositoryId, policy: ctx.policy };
     const [head, ...rest] = path.replace(/^\.?\/+/, "").split("/");
     const root = ctx.roots.find(r => r.name === head);
     if (!root) throw new ToolError(`Start the path with a repository's name: ${ctx.roots.map(r => `${r.name}/`).join(", ")}.`);
-    return { clonePath: root.clonePath, rel: rest.join("/") || ".", prefix: `${root.name}/`, repositoryId: root.repositoryId };
+    return {
+        clonePath: root.clonePath,
+        rel: rest.join("/") || ".",
+        prefix: `${root.name}/`,
+        repositoryId: root.repositoryId,
+        policy: root.policy
+    };
 }
 
 /** Puts the repository's name before each path a file tool printed, leaving its notes as they are. */
@@ -273,7 +294,7 @@ async function across(
     ctx: AgentContext,
     dir: string | null,
     glob: string,
-    tool: (root: string, rel: string | undefined, glob: string | undefined, prefix: string) => Promise<string>
+    tool: (root: string, rel: string | undefined, glob: string | undefined, prefix: string, policy?: AiPolicy) => Promise<string>
 ): Promise<string> {
     const head = glob.split("/")[0];
     const roots = dir
@@ -281,11 +302,14 @@ async function across(
         : ctx.roots!.filter(r => !ctx.roots!.some(x => x.name === head) || r.name === head).map(r => inRoot(ctx, `${r.name}/`));
     const outs = await Promise.all(
         roots.map(async r =>
-            prefixed(r.prefix, await named(r, () => tool(r.clonePath, dir ? r.rel : undefined, glob || undefined, r.prefix)))
+            prefixed(r.prefix, await named(r, () => tool(r.clonePath, dir ? r.rel : undefined, glob || undefined, r.prefix, r.policy)))
         )
     );
     const found = outs.filter(o => !/^(No files\.|No matches)/.test(o));
-    return found.length ? found.join("\n") : outs[0];
+    if (found.length) return found.join("\n");
+    // Nothing found anywhere: one "No matches." with every repository's notes after it.
+    const [first, ...rest] = outs;
+    return [first, ...rest.flatMap(o => o.split("\n").slice(1))].join("\n");
 }
 
 /** The API engine's declaration: strict tools on the SDK's tool runner. */
@@ -313,7 +337,7 @@ async function reportFinding(ctx: AgentContext, input: z.infer<typeof findingInp
     const evidence = [];
     for (const e of input.evidence) {
         const at = inRoot(ctx, e.file);
-        const { abs, rel: inClone } = await resolveInClone(at.clonePath, at.rel);
+        const { abs, rel: inClone } = await named(at, () => checkReadable(at.policy, at.clonePath, at.rel));
         const rel = `${at.prefix}${inClone}`;
         const text = await readFile(abs, "utf8").catch(() => {
             throw new ToolError(`${rel} is a directory or unreadable; evidence must name a file.`);

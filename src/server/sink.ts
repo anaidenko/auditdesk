@@ -1,6 +1,7 @@
 import "server-only";
 
 import type { AgentOutcome } from "@/engine/agent/run-aspect";
+import type { AiPolicySummary } from "@/engine/ai-policy";
 import { freshTokens } from "@/engine/budget";
 import { cites, findingLabel, indexLine, scannerDuplicates } from "@/engine/findings";
 import type { PipelineSink } from "@/engine/pipeline";
@@ -116,13 +117,17 @@ export class PrismaSink implements PipelineSink {
         });
         const rows = filter.cites ? found.filter(r => cites(r.evidence as never, filter.cites!)) : found;
         return rows.map(r => {
-            const line = indexLine({
-                label: findingLabel(r.number),
-                severity: r.severity as SeverityName | null,
-                checklistItem: r.checklistItem,
-                evidence: r.evidence as never,
-                title: r.title
-            });
+            const line = indexLine(
+                {
+                    label: findingLabel(r.number),
+                    severity: r.severity as SeverityName | null,
+                    checklistItem: r.checklistItem,
+                    evidence: r.evidence as never,
+                    title: r.title,
+                    source: r.source
+                },
+                filter.excluded
+            );
             if (r.status === "rejected") return `${line} (rejected by the auditor: ${r.statusReason}; do not report it again)`;
             // Fixed at a re-audit: the same problem in other code is a new finding, not a duplicate.
             if (r.recheck === "fixed") return `${line} (fixed at ${shortSha(r.recheckedSha ?? "")}; file it again if it is back)`;
@@ -249,6 +254,10 @@ export class PrismaSink implements PipelineSink {
             where: { id: repositoryId },
             data: { stack: profile as unknown as Prisma.InputJsonObject, stackDetectedAt: new Date() }
         });
+    }
+
+    async aiPolicyRead(repositoryId: string, summary: AiPolicySummary) {
+        await prisma.repository.update({ where: { id: repositoryId }, data: { aiPolicy: summary as unknown as Prisma.InputJsonObject } });
     }
 
     async repositoryCloned(repositoryId: string, sha: string, clonePath: string, branch: string | null) {

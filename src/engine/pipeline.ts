@@ -4,13 +4,14 @@ import { join } from "node:path";
 import type { Effort } from "./agent/request";
 import type { AgentOutcome, AspectRunner } from "./agent/run-aspect";
 import type { AgentContext } from "./agent/tools";
+import { type AiPolicy, type AiPolicySummary, readAiPolicy, summarizePolicy } from "./ai-policy";
 import { SEAMS, agentCount, aspectTitle } from "./aspects";
 import { shareFor } from "./budget";
 import { forMode, loadChecklist } from "./checklists";
 import { readSnippet } from "./files";
 import { Masker, maskUrlPasswords } from "./masker";
 import { resolveInClone } from "./paths";
-import { type Brief, aspectMessage, briefText, prefixBlocks } from "./prompts";
+import { type Brief, aspectMessage, briefText, policyText, prefixBlocks } from "./prompts";
 import { type EarlierFinding, type RecheckResult, type RecheckStatus, recheck } from "./recheck";
 import { buildRepoMap } from "./repomap";
 import { normaliseGitleaks } from "./scanners/gitleaks";
@@ -27,6 +28,8 @@ export interface PipelineSink extends AuditSink {
     /** `branch`: what the clone checked out; null on a re-run, which returns to a recorded commit and keeps its branch. */
     repositoryCloned(repositoryId: string, sha: string, clonePath: string, branch: string | null): Promise<void>;
     stackDetected(repositoryId: string, profile: StackProfile): Promise<void>;
+    /** The client's AI policy as read from the run's clone, at the commit it audits. */
+    aiPolicyRead(repositoryId: string, summary: AiPolicySummary): Promise<void>;
     toolVersions(v: ToolVersions): Promise<void>;
     startAgent(repositoryId: string, aspect: string, share: { usd: number; tokens: number }): Promise<string>;
     finishAgent(agentRunId: string, outcome: AgentOutcome): Promise<void>;
@@ -60,6 +63,8 @@ export interface AuditInput {
         /** The stack profile as the auditor confirmed or edited it; detected afresh when absent (design § 6). */
         stackText?: string | null;
         instructions?: string | null;
+        /** The auditor's own exclusions, gitignore patterns saved with the client's consent. */
+        aiExclusions?: string | null;
     }[];
     brief?: Brief;
     aspects: string[];
@@ -110,7 +115,15 @@ export async function runAudit(input: AuditInput, deps: AuditDeps): Promise<{ st
     const agentsInRun = agentCount(input.repositories.length, input.aspects);
     const fullShare = shareFor(input.budget, agentsInRun);
     const names = pathNames(input.repositories);
-    const views: { name: string; repo: AuditInput["repositories"][number]; clonePath: string; repoMap: string; stackText: string }[] = [];
+    const views: {
+        name: string;
+        repo: AuditInput["repositories"][number];
+        clonePath: string;
+        repoMap: string;
+        stackText: string;
+        policy: AiPolicy;
+        policyText: string | null;
+    }[] = [];
 
     const runDir = join(deps.workspaceDir, input.projectId, "runs", input.runId);
     const rulesDir = join(runDir, "rules");
@@ -120,8 +133,18 @@ export async function runAudit(input: AuditInput, deps: AuditDeps): Promise<{ st
     // repository runs gitleaks alone on the others; a re-run of the seams pass, on all of them, since
     // it reads each repository's map and files nothing from the scanners. `scan` is null then.
     const seamsOnly = input.only?.aspect === SEAMS;
-    const scanned: { repo: AuditInput["repositories"][number]; sha: string; clonePath: string; scan: ScanResults | null }[] = [];
+    const scanned: {
+        repo: AuditInput["repositories"][number];
+        sha: string;
+        clonePath: string;
+        scan: ScanResults | null;
+        policy: AiPolicy;
+        summary: AiPolicySummary;
+    }[] = [];
     const masks: { value: string; rule: string }[] = [];
+    // Every repository's policy, refused ones too: a seams finding of an earlier run may cite any of them.
+    const policies = new Map<string, AiPolicy>();
+    const refused: string[] = [];
     for (const repo of input.repositories) {
         if (await sink.stopRequested()) return { stopped: true };
         const target = !input.only || seamsOnly || input.only.repositoryId === repo.id;
@@ -134,14 +157,32 @@ export async function runAudit(input: AuditInput, deps: AuditDeps): Promise<{ st
             projectId: input.projectId,
             repositoryId: repo.id
         });
-        if (!target || seamsOnly) {
+        const policy = await readAiPolicy(clonePath, { auditor: repo.aiExclusions });
+        const summary = await summarizePolicy(policy, clonePath);
+        policies.set(repo.id, policy);
+        if (target) {
+            await sink.repositoryCloned(repo.id, sha, clonePath, repo.sha ? null : repo.branch);
+            await sink.aiPolicyRead(repo.id, summary);
+        }
+        // A policy that leaves no file to read refuses the repository (design § 6 Q2): no scanner,
+        // map or agent; gitleaks alone, so its secrets stay out of the brief.
+        if (summary.everything) {
+            refused.push(repo.id);
+            const why = summary.readsNothing
+                ? `a bare Read deny at ${summary.readsNothing}`
+                : `its patterns cover all ${summary.files} files`;
+            await sink.progress(
+                `Refused ${names.get(repo.id)}: the client's AI policy excludes every file (${why}). Ask the client which files the review may read.`,
+                "warn"
+            );
+        }
+        if (!target || seamsOnly || summary.everything) {
             await sink.progress("Running gitleaks, so this repository's secrets stay out of the brief…");
             const leaks = await runGitleaks({ clonePath, runner: deps.scanners, configDir: join(runDir, "gitleaks") });
             masks.push(...(await leakMasks(clonePath, leaks)));
-            if (seamsOnly) scanned.push({ repo, sha, clonePath, scan: null });
+            if (seamsOnly && !summary.everything) scanned.push({ repo, sha, clonePath, scan: null, policy, summary });
             continue;
         }
-        await sink.repositoryCloned(repo.id, sha, clonePath, repo.sha ? null : repo.branch);
         await sink.progress("Running gitleaks, osv-scanner and Semgrep…");
         const scan = await runScanners({
             clonePath,
@@ -152,8 +193,18 @@ export async function runAudit(input: AuditInput, deps: AuditDeps): Promise<{ st
         });
         await sink.toolVersions(scan.versions);
         masks.push(...(await leakMasks(clonePath, scan.leaks)));
-        scanned.push({ repo, sha, clonePath, scan });
+        scanned.push({ repo, sha, clonePath, scan, policy, summary });
     }
+    if (refused.length === input.repositories.length)
+        throw new Error(
+            "The client's AI policy excludes every file of every repository in this run; ask the client which files the review may read."
+        );
+    /** A seams finding's path: its repository's name, then a path that repository's policy may exclude. */
+    const seamsExcluded = (file: string) =>
+        input.repositories.some(r => {
+            const prefix = `${names.get(r.id)}/`;
+            return file.startsWith(prefix) && !!policies.get(r.id)?.match(file.slice(prefix.length));
+        });
     const masker = new Masker(masks);
     const readMasked = async (clonePath: string, file: string) => {
         try {
@@ -201,7 +252,8 @@ export async function runAudit(input: AuditInput, deps: AuditDeps): Promise<{ st
         }
     }
 
-    for (const { repo, sha, clonePath, scan } of scanned) {
+    for (const { repo, sha, clonePath, scan, policy, summary } of scanned) {
+        const excluded = (file: string) => !!policy.match(file);
         if (scan) {
             const inTree = new Set<string>();
             for (const leak of scan.leaks)
@@ -253,20 +305,30 @@ export async function runAudit(input: AuditInput, deps: AuditDeps): Promise<{ st
         }
 
         await sink.progress("Building the repository map…");
-        const repoMap = await buildRepoMap(clonePath, masker);
+        const repoMap = await buildRepoMap(clonePath, masker, { policy });
         let stackText = repo.stackText?.trim();
         if (!stackText) {
-            const profile = await detectStack(clonePath);
+            const profile = await detectStack(clonePath, { excluded });
             await sink.stackDetected(repo.id, profile);
             stackText = `${stackProfileText(profile)}\n\nDetected from the manifests; the auditor has not confirmed it yet.`;
         }
+        const aiPolicy = policyText(summary);
         const system = prefixBlocks({
             stackProfile: masker.mask(stackText),
             repoMap,
+            aiPolicy: aiPolicy && masker.mask(aiPolicy),
             brief: masker.mask(briefText(input.brief, repo.instructions))
         });
 
-        views.push({ name: names.get(repo.id)!, repo, clonePath, repoMap, stackText: masker.mask(stackText) });
+        views.push({
+            name: names.get(repo.id)!,
+            repo,
+            clonePath,
+            repoMap,
+            stackText: masker.mask(stackText),
+            policy,
+            policyText: aiPolicy && masker.mask(aiPolicy)
+        });
 
         for (const aspect of perRepo) {
             if (input.only && input.only.aspect !== aspect) continue;
@@ -274,12 +336,14 @@ export async function runAudit(input: AuditInput, deps: AuditDeps): Promise<{ st
             const outcome = await runAgent({
                 aspect,
                 repositoryId: repo.id,
-                view: { clonePath, repoMap },
+                view: { clonePath, repoMap, policy },
                 system,
                 before: input.only ? () => sink.supersedeUnreviewed(repo.id, aspect) : undefined,
                 findingIndex: async () => [
-                    ...(await sink.findingIndex(repo.id)),
-                    ...(await sink.findingIndex(null, { cites: names.get(repo.id)! })).map(l => `Across repositories: ${l}`)
+                    ...(await sink.findingIndex(repo.id, { excluded })),
+                    ...(await sink.findingIndex(null, { cites: names.get(repo.id)!, excluded: seamsExcluded })).map(
+                        l => `Across repositories: ${l}`
+                    )
                 ],
                 after: async agentRunId => {
                     try {
@@ -309,11 +373,17 @@ export async function runAudit(input: AuditInput, deps: AuditDeps): Promise<{ st
                 view: {
                     clonePath: views[0].clonePath,
                     repoMap: section(v => v.repoMap),
-                    roots: views.map(v => ({ name: v.name, clonePath: v.clonePath, repositoryId: v.repo.id }))
+                    roots: views.map(v => ({ name: v.name, clonePath: v.clonePath, repositoryId: v.repo.id, policy: v.policy }))
                 },
                 system: prefixBlocks({
                     stackProfile: section(v => v.stackText),
                     repoMap: section(v => v.repoMap),
+                    aiPolicy: views.some(v => v.policyText)
+                        ? views
+                              .filter(v => v.policyText)
+                              .map(v => `## ${v.name}\n\n${v.policyText}`)
+                              .join("\n\n")
+                        : null,
                     brief: masker.mask(
                         [
                             briefText(input.brief),
@@ -327,8 +397,16 @@ export async function runAudit(input: AuditInput, deps: AuditDeps): Promise<{ st
                 }),
                 before: input.only ? () => sink.supersedeUnreviewed(null, SEAMS) : undefined,
                 findingIndex: async () => [
-                    ...(await Promise.all(views.map(async v => (await sink.findingIndex(v.repo.id)).map(l => `${v.name}: ${l}`)))).flat(),
-                    ...(await sink.findingIndex(null))
+                    ...(
+                        await Promise.all(
+                            views.map(async v =>
+                                (await sink.findingIndex(v.repo.id, { excluded: file => !!v.policy.match(file) })).map(
+                                    l => `${v.name}: ${l}`
+                                )
+                            )
+                        )
+                    ).flat(),
+                    ...(await sink.findingIndex(null, { excluded: seamsExcluded }))
                 ]
             });
             if (outcome?.status === "stopped") return { stopped: true };
@@ -341,7 +419,7 @@ export async function runAudit(input: AuditInput, deps: AuditDeps): Promise<{ st
     async function runAgent(a: {
         aspect: string;
         repositoryId: string;
-        view: { clonePath: string; repoMap: string; roots?: AgentContext["roots"] };
+        view: { clonePath: string; repoMap: string; policy?: AiPolicy; roots?: AgentContext["roots"] };
         system: ReturnType<typeof prefixBlocks>;
         findingIndex: () => Promise<string[]>;
         before?: () => Promise<void>;
@@ -380,6 +458,7 @@ export async function runAudit(input: AuditInput, deps: AuditDeps): Promise<{ st
                     masker,
                     repoMap: a.view.repoMap,
                     sink,
+                    ...(a.view.policy ? { policy: a.view.policy } : {}),
                     ...(a.view.roots ? { roots: a.view.roots } : {}),
                     state: { finished: null, reported: [], fatal: null }
                 },

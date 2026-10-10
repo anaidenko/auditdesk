@@ -21,6 +21,8 @@ export interface StackProfile {
     notCovered: string[];
     /** Every file detection read, and nothing else. */
     manifests: string[];
+    /** Manifests the client's AI policy excludes, left unread; absent when none. */
+    excludedManifests?: string[];
 }
 
 export const EMPTY_STACK: StackProfile = {
@@ -286,7 +288,7 @@ const plural = (n: number) => `${n} ${n === 1 ? "file" : "files"}`;
  * Reads the clone's tracked manifests and schemas as text, never its code: package.json files,
  * Prisma schemas and SQL migrations. Everything else is judged by file names alone.
  */
-export async function detectStack(root: string, o: { read?: Reader } = {}): Promise<StackProfile> {
+export async function detectStack(root: string, o: { read?: Reader; excluded?: (rel: string) => boolean } = {}): Promise<StackProfile> {
     const read: Reader =
         o.read ??
         (async rel => {
@@ -303,7 +305,12 @@ export async function detectStack(root: string, o: { read?: Reader } = {}): Prom
                 .some(dir => DETECT_SKIP.has(dir))
     );
     const manifests: string[] = [];
+    const excludedManifests: string[] = [];
     const take = async (rel: string) => {
+        if (o.excluded?.(rel)) {
+            excludedManifests.push(rel);
+            return null;
+        }
         try {
             const text = await read(rel);
             manifests.push(rel);
@@ -397,7 +404,8 @@ export async function detectStack(root: string, o: { read?: Reader } = {}): Prom
             .map(([key, where]) => `${key} (${where[0]}${where.length > 1 ? ` and ${where.length - 1} more` : ""})`),
         aiBuiltSigns: aiBuiltSigns.sort(),
         notCovered,
-        manifests: manifests.sort()
+        manifests: manifests.sort(),
+        ...(excludedManifests.length && { excludedManifests: excludedManifests.sort() })
     };
 }
 
@@ -466,6 +474,7 @@ export function stackProfileText(s: StackProfile): string {
         line("Multi-tenancy hints", s.tenancyHints),
         line("Signs of AI-assisted development", s.aiBuiltSigns),
         line("Not covered by this audit", s.notCovered),
-        line("Manifests read", manifests)
+        line("Manifests read", manifests),
+        ...(s.excludedManifests?.length ? [line("Manifests excluded by the client's AI policy, not read", s.excludedManifests)] : [])
     ].join("\n");
 }

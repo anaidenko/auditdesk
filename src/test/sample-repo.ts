@@ -3,8 +3,8 @@ import { makeRepo } from "./git-repo";
 // Assembled at run time, so this file itself carries no secret for the pre-commit scan.
 export const SAMPLE_KEY = ["8f3c9d2e", "7a1b4c6d", "9e0f1a2b", "3c4d5e6f"].join("");
 
-/** One planted secret, one vulnerable dependency (lodash 4.17.15), one injection. */
-export function makeSampleRepo(): Promise<string> {
+/** One planted secret, one vulnerable dependency (lodash 4.17.15), one injection; `extra` adds files. */
+export function makeSampleRepo(extra: Record<string, string> = {}): Promise<string> {
     return makeRepo({
         "package.json": JSON.stringify(
             { name: "sample", version: "1.0.0", dependencies: { lodash: "4.17.15", express: "4.21.2" } },
@@ -36,6 +36,7 @@ export function makeSampleRepo(): Promise<string> {
             'app.get("/calc", (req, res) => res.send(String(eval(req.query.expr))));',
             "app.listen(3000);",
             ""
-        ].join("\n")
+        ].join("\n"),
+        ...extra
     });
 }

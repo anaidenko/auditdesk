@@ -2,6 +2,7 @@ import { readFile, stat } from "node:fs/promises";
 import { join } from "node:path";
 import { Script, createContext } from "node:vm";
 
+import { type AiPolicy, areaMap, exclusionTest } from "./ai-policy";
 import { ToolError, globToRegExp, resolveInClone, walk } from "./paths";
 
 export const LIMITS = {
@@ -33,7 +34,11 @@ const globMatcher = (glob: string | undefined, prefix = "") => {
     return (rel: string) => !match || match.test(rel) || (!!prefix && match.test(`${prefix}${rel}`));
 };
 
-export async function listFiles(root: string, o: { dir?: string; glob?: string; limit?: number; prefix?: string } = {}): Promise<string> {
+/** An excluded file shows by name, a directory excluded as a whole as one line with its count (design § 6 Q1). */
+export async function listFiles(
+    root: string,
+    o: { dir?: string; glob?: string; limit?: number; prefix?: string; policy?: AiPolicy } = {}
+): Promise<string> {
     let base = "";
     if (o.dir && o.dir !== ".") {
         const { abs, rel } = await resolveInClone(root, o.dir);
@@ -42,16 +47,35 @@ export async function listFiles(root: string, o: { dir?: string; glob?: string; 
     }
     const matches = globMatcher(o.glob, o.prefix);
     const limit = o.limit ?? LIMITS.listEntries;
+    const entries = [];
+    for await (const entry of walk(join(root, base))) entries.push({ ...entry, rel: base ? `${base}/${entry.rel}` : entry.rel });
+    const rels = entries.map(e => e.rel);
+    const areas = o.policy ? areaMap(rels, exclusionTest(o.policy, rels), base) : new Map<string, string>();
+    const inArea = new Map<string, number>();
+    for (const area of areas.values()) inArea.set(area, (inArea.get(area) ?? 0) + 1);
     const lines: string[] = [];
+    const shown = new Set<string>();
     let more = 0;
-    for await (const entry of walk(join(root, base))) {
-        const rel = base ? `${base}/${entry.rel}` : entry.rel;
+    for (const entry of entries) {
+        const { rel } = entry;
         if (!matches(rel)) continue;
+        const area = areas.get(rel);
+        if (area && shown.has(area)) continue;
+        if (area) shown.add(area);
         if (lines.length >= limit) {
             more++;
             continue;
         }
-        lines.push("symlink" in entry ? `${rel} -> symlink, not followed` : `${rel} (${entry.size} bytes)`);
+        const n = inArea.get(area ?? "") ?? 0;
+        lines.push(
+            area?.endsWith("/")
+                ? `${area} (excluded: ${n} ${n === 1 ? "file" : "files"})`
+                : area
+                  ? `${rel} (excluded)`
+                  : "symlink" in entry
+                    ? `${rel} -> symlink, not followed`
+                    : `${rel} (${entry.size} bytes)`
+        );
     }
     if (more) lines.push(`… ${more} more files not shown; narrow with dir or glob.`);
     return lines.join("\n") || "No files.";
@@ -103,7 +127,7 @@ export async function readSnippet(root: string, path: string, startLine: number,
 export async function grepFiles(
     root: string,
     pattern: string,
-    o: { glob?: string; prefix?: string; timeoutMs?: number; totalMs?: number; mask?: LineMask } = {}
+    o: { glob?: string; prefix?: string; timeoutMs?: number; totalMs?: number; mask?: LineMask; policy?: AiPolicy } = {}
 ): Promise<string> {
     let re: RegExp;
     try {
@@ -116,9 +140,14 @@ export async function grepFiles(
     const deadline = Date.now() + (o.totalMs ?? LIMITS.grepTotalMs);
     const hits: string[] = [];
     let tooBig = 0;
+    let excluded = 0;
     let more = 0;
     for await (const entry of walk(root)) {
         if ("symlink" in entry || !matches(entry.rel)) continue;
+        if (o.policy?.match(entry.rel)) {
+            excluded++;
+            continue;
+        }
         if (entry.size > LIMITS.grepFileBytes) {
             tooBig++;
             continue;
@@ -143,5 +172,10 @@ export async function grepFiles(
     }
     if (more) hits.push(`… ${more} more matches not shown; narrow the pattern or glob.`);
     if (tooBig) hits.push(`(${tooBig} file${tooBig > 1 ? "s" : ""} over ${LIMITS.grepFileBytes} bytes skipped; read them in ranges)`);
-    return hits.join("\n") || "No matches.";
+    const notes = excluded
+        ? [
+              `(${excluded} ${excluded > 1 ? "files" : "file"} excluded by the client's AI policy ${excluded > 1 ? "were" : "was"} not searched)`
+          ]
+        : [];
+    return [...(hits.length ? hits : ["No matches."]), ...notes].join("\n");
 }

@@ -88,27 +88,35 @@ model Project {
 }
 
 model Repository {
-  id               String     @id @default(uuid())
-  projectId        String
-  project          Project    @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  source           String
-  branch           String
-  commitSha        String?
+  id                 String     @id @default(uuid())
+  projectId          String
+  project            Project    @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  source             String
+  branch             String
+  commitSha          String?
   /// The branch the last clone was made from: the report names it beside commitSha, whatever the
   /// branch has been changed to since.
-  commitBranch     String?
-  clonePath        String?
+  commitBranch       String?
+  clonePath          String?
   /// The last stack detection's StackProfile.
-  stack            Json?
-  stackDetectedAt  DateTime?
+  stack              Json?
+  stackDetectedAt    DateTime?
   /// The stack profile as Andrii confirmed or edited it; agents read this when set.
-  stackText        String?
-  stackConfirmedAt DateTime?
+  stackText          String?
+  stackConfirmedAt   DateTime?
   /// How to run it, its local URL, its database (design § 6).
-  instructions     String?
-  createdAt        DateTime   @default(now())
-  findings         Finding[]
-  agents           AgentRun[]
+  instructions       String?
+  /// The auditor's own exclusions from the AI review, gitignore patterns saved with the client's
+  /// consent (the client's own AI exclusions, Q3).
+  aiExclusions       String?
+  /// The client's AI policy as the last run read it from its clone, at commitSha: what the report states.
+  aiPolicy           Json?
+  /// The policy read with the last stack detection, on a scratch clone of the branch.
+  aiPolicyDetected   Json?
+  aiPolicyDetectedAt DateTime?
+  createdAt          DateTime   @default(now())
+  findings           Finding[]
+  agents             AgentRun[]
 }
 
 model Run {

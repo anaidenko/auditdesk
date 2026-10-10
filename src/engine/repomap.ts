@@ -1,6 +1,7 @@
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 
+import type { AiPolicy } from "./ai-policy";
 import type { Masker } from "./masker";
 import { walk } from "./paths";
 
@@ -9,10 +10,16 @@ const ENV = /\b(?:process\.env|import\.meta\.env)\.([A-Z_][A-Z0-9_]*)/g;
 const TEST = /(^|\/)(__tests__|tests?|e2e|spec)\/|\.(test|spec)\.[cm]?[jt]sx?$/;
 const CODE = /\.[cm]?[jt]sx?$/;
 
-export async function buildRepoMap(root: string, masker: Masker, o: { maxChars?: number } = {}): Promise<string> {
+/** A file the client's AI policy excludes adds nothing: no entry point, route, variable name or model. */
+export async function buildRepoMap(root: string, masker: Masker, o: { maxChars?: number; policy?: AiPolicy } = {}): Promise<string> {
     const maxChars = o.maxChars ?? 40_000;
     const files: { rel: string; size: number }[] = [];
-    for await (const e of walk(root)) if (!("symlink" in e)) files.push(e);
+    let excluded = 0;
+    for await (const e of walk(root)) {
+        if ("symlink" in e) continue;
+        if (o.policy?.match(e.rel)) excluded++;
+        else files.push(e);
+    }
     const read = (rel: string) => readFile(join(root, rel), "utf8").catch(() => "");
 
     const entry: string[] = [];
@@ -62,7 +69,7 @@ export async function buildRepoMap(root: string, masker: Masker, o: { maxChars?:
 
     const section = (title: string, rows: string[]) => `## ${title}\n${rows.length ? rows.join("\n") : "(none found)"}`;
     const text = [
-        `# Repository map (${files.length} files)`,
+        `# Repository map (${files.length + excluded} files${excluded ? `; ${excluded} excluded by the client's AI policy and left out` : ""})`,
         section("Entry points and scripts", entry),
         section("Routes and handlers", routes),
         section("Data schema and migrations", data),

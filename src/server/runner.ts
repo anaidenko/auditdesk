@@ -116,7 +116,8 @@ export async function processJob(job: Job, deps?: (sink: PrismaSink) => AuditDep
                         // A re-run audits the commit its own run audited; runs from before `commits` fall back to the latest clone.
                         sha: job.aspect ? ((run.commits as Record<string, string> | null)?.[r.id] ?? r.commitSha) : null,
                         stackText: r.stackConfirmedAt ? r.stackText : null,
-                        instructions: r.instructions
+                        instructions: r.instructions,
+                        aiExclusions: r.aiExclusions
                     })),
                 brief: {
                     product: run.project.briefProduct,

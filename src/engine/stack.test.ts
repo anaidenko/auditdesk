@@ -217,6 +217,30 @@ describe("detectStack", () => {
         expect(suggestAiBuilt(s)).toBe(true);
     });
 
+    it("reads no manifest the client's AI policy excludes, and names it in the profile", async () => {
+        const root = await makeRepo({
+            "package.json": pkg({ next: "16.0.0" }),
+            "payments/package.json": pkg({ stripe: "18.0.0", express: "5.0.0" }),
+            "prisma/schema.prisma": 'datasource db {\n  provider = "postgresql"\n}\n'
+        });
+        const read: string[] = [];
+        const s = await detectStack(root, {
+            read: async rel => {
+                read.push(rel);
+                return readFile(`${root}/${rel}`, "utf8");
+            },
+            excluded: rel => rel.startsWith("payments/") || rel.endsWith(".prisma")
+        });
+        expect(read).toEqual(["package.json"]);
+        expect(s.manifests).toEqual(["package.json"]);
+        expect(s.excludedManifests).toEqual(["payments/package.json", "prisma/schema.prisma"]);
+        expect(s.frameworks).toEqual(["Next.js 16"]);
+        expect(stackProfileText(s)).toMatch(
+            /\nManifests excluded by the client's AI policy, not read: payments\/package\.json, prisma\/schema\.prisma$/
+        );
+        expect(stackProfileText(await detectStack(root))).not.toContain("excluded");
+    });
+
     it("never reads a file outside the manifests it lists", async () => {
         const root = await makeRepo({
             "package.json": pkg({ next: "16.0.0" }),

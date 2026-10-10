@@ -284,6 +284,13 @@ export async function checkReadable(policy: AiPolicy | undefined, root: string, 
  * exclude as a whole (every file in it, and any new one), with its file count, or the file itself.
  */
 export function areasOf(rels: string[], excluded: (rel: string) => boolean, base = ""): { area: string; files: number }[] {
+    const areas = new Map<string, number>();
+    for (const area of areaMap(rels, excluded, base).values()) areas.set(area, (areas.get(area) ?? 0) + 1);
+    return [...areas].map(([area, files]) => ({ area, files }));
+}
+
+/** Each excluded file under `base`, to the area it is shown as ("certs/" or its own path). */
+export function areaMap(rels: string[], excluded: (rel: string) => boolean, base = ""): Map<string, string> {
     const ancestors = (rel: string) => {
         const parts = rel.split("/");
         return parts
@@ -302,13 +309,19 @@ export function areasOf(rels: string[], excluded: (rel: string) => boolean, base
         if (!whole.has(d)) whole.set(d, total.get(d) === out.get(d) && excluded(`${d}/${PROBE}`));
         return whole.get(d)!;
     };
-    const areas = new Map<string, number>();
-    for (const rel of hit) {
-        const dir = ancestors(rel).find(isWhole);
-        const area = dir ? `${dir}/` : rel;
-        areas.set(area, (areas.get(area) ?? 0) + 1);
-    }
-    return [...areas].map(([area, files]) => ({ area, files }));
+    return new Map(
+        hit.map(rel => {
+            const dir = ancestors(rel).find(isWhole);
+            return [rel, dir ? `${dir}/` : rel];
+        })
+    );
+}
+
+/** The test areaMap takes: a listed file by one pass of the rules, a probe path by the rules. */
+export function exclusionTest(policy: AiPolicy, rels: string[]): (rel: string) => boolean {
+    const known = new Set(rels);
+    const hit = new Set(rels.filter(rel => policy.match(rel)));
+    return rel => (known.has(rel) ? hit.has(rel) : !!policy.match(rel));
 }
 
 export const MAX_AREAS = 100;
