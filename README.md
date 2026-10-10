@@ -13,7 +13,8 @@ Local only: it binds 127.0.0.1 and has no login. The design is in [docs/design.m
 - **Scanners first:** gitleaks over the history of every branch cloned, osv-scanner over the lock files and
   Semgrep, in pinned Docker images and on the app's own configuration. Every secret gitleaks
   finds is masked in everything the model or the client sees.
-- **One agent per aspect:** security always, plus dependencies, architecture, data model, code
+- **One agent per aspect:** security always, plus a mobile app's own risks (Capacitor, Cordova,
+  React Native and Expo, against OWASP MASVS 2.1.0), dependencies, architecture, data model, code
   quality and tests, production readiness, API design, performance, accessibility, LLM
   integrations and multi-tenancy as chosen. Each
   works from a checklist with stable item IDs and reads the code through read-only tools. With
@@ -37,8 +38,8 @@ Local only: it binds 127.0.0.1 and has no login. The design is in [docs/design.m
   what to fix before sign-off and what can wait, scope and method (the steps that ran, what the
   review made of the findings, each aspect's coverage), each finding with its
   recommendation in view and its details and evidence a click away (Expand all opens every card;
-  print and the PDF show them all), and links to the OWASP Top 10:2025, ASVS 5.0.0, CWE, Cheat
-  Sheets and WCAG 2.2 it is relevant to. A repository cloned from GitHub, GitLab or Bitbucket links
+  print and the PDF show them all), and links to the OWASP Top 10:2025, ASVS 5.0.0, MASVS 2.1.0, CWE,
+  Cheat Sheets and WCAG 2.2 it is relevant to. A repository cloned from GitHub, GitLab or Bitbucket links
   to itself, its branch and its commit; a local one does not.
 - **Exports:** besides the report, SARIF 2.1.0 for code scanning, one file per repository, and the
   accepted findings as issue drafts: a CSV for Linear's CLI importer ("Linear (CSV)") or another
@@ -135,10 +136,11 @@ Neither calls the API: recorded model responses and scanner outputs are replayed
 key and no scanner images. The database files run one after another, after the rest run in
 parallel; a run of other files alone (`pnpm vitest run src/engine`) needs no database.
 `AUDITDESK_SCREENSHOTS=1 pnpm test:e2e -g screenshots` retakes the screenshots above from a
-replayed run on a sample repository. `pnpm test` clones the own fixture from GitHub to check its
-answer key; offline, point the URL at a local clone with
+replayed run on a sample repository. `pnpm test` clones the own and the mobile fixtures from
+GitHub to check their answer keys; offline, point a URL at a local clone with
 `GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=url.<path>.insteadOf GIT_CONFIG_VALUE_0=https://github.com/anaidenko/auditdesk-fixture`
-(a repository's own `insteadOf` does not reach a clone made inside it).
+(a repository's own `insteadOf` does not reach a clone made inside it), and both at once with
+`GIT_CONFIG_COUNT=2` and a `_1` pair for `auditdesk-mobile-fixture`.
 
 ## Evals
 
@@ -153,6 +155,10 @@ item; with `--judge`, an LLM judge reads what the grader could not place, within
   [anaidenko/auditdesk-fixture](https://github.com/anaidenko/auditdesk-fixture); its answer key is
   in `evals/answers/`, and the unit tests clone the fixture to check every entry at the pinned
   commit.
+- **The mobile fixture,** two small apps, Expo and Ionic with Capacitor, each audited as a
+  repository of its own (`dirs` in `evals/fixtures.yaml`), with ten defects planted in each:
+  [anaidenko/auditdesk-mobile-fixture](https://github.com/anaidenko/auditdesk-mobile-fixture),
+  pinned and keyed like the own fixture.
 - **OWASP Juice Shop** v20.2.0, for comparison: the prep removes its coding challenges' answers
   (fixes, tutorials, translated hints, specs, the code that scores a solve) and renames every
   challenge, and `pnpm eval:key` reads its key from the markers.
