@@ -55,6 +55,7 @@ const LANGUAGES: { ext: RegExp; name: string; covered: boolean; manifests?: RegE
     { ext: /\.cs$/, name: "C#", covered: false, manifests: /\.(csproj|sln)$/ },
     { ext: /\.rs$/, name: "Rust", covered: false, manifests: /(^|\/)Cargo\.toml$/ },
     { ext: /\.swift$/, name: "Swift", covered: false, manifests: /(^|\/)Package\.swift$/ },
+    { ext: /\.(m|mm)$/, name: "Objective-C", covered: false },
     { ext: /\.dart$/, name: "Dart", covered: false, manifests: /(^|\/)pubspec\.yaml$/ },
     { ext: /\.(c|cc|cpp|h|hpp)$/, name: "C/C++", covered: false }
 ];
@@ -71,6 +72,8 @@ const FRAMEWORKS: Table = [
     ["@ionic/vue", "Ionic {v} (Vue)"],
     ["@capacitor/core", "Capacitor {v}"],
     ["cordova", "Cordova {v}"],
+    ["cordova-android", "Cordova Android {v}"],
+    ["cordova-ios", "Cordova iOS {v}"],
     ["vue", "Vue {v}"],
     ["nuxt", "Nuxt {v}"],
     ["svelte", "Svelte {v}"],
@@ -122,6 +125,8 @@ const UI_PACKAGES = new Set([
     "@angular/core",
     "@capacitor/core",
     "cordova",
+    "cordova-android",
+    "cordova-ios",
     "vue",
     "nuxt",
     "svelte",
@@ -132,8 +137,9 @@ const UI_PACKAGES = new Set([
     "@remix-run/react",
     "astro"
 ]);
-// Bundled into what ships although their templates list them as devDependencies.
-const BUNDLED = new Set(["svelte", "@sveltejs/kit", "electron"]);
+// Bundled into what ships although their templates list them as devDependencies; Cordova's platforms
+// are the app's native shell.
+const BUNDLED = new Set(["svelte", "@sveltejs/kit", "electron", "cordova-android", "cordova-ios"]);
 const BUNDLERS = ["vite", "webpack", "react-scripts", "parcel", "@rsbuild/core"];
 
 /** For a profile saved before `userInterface` existed: the frameworks that render one, as their labels start. */
@@ -401,9 +407,13 @@ export async function detectStack(root: string, o: { read?: Reader } = {}): Prom
     };
 }
 
-/** The conditional aspects the profile calls for (design § 7). */
+/** The runtimes that make a repository a mobile app; Ionic alone may ship as a web app, and native code is not covered. */
+const MOBILE_RUNTIME = /^(Capacitor|Cordova|React Native|Expo)\b/;
+
+/** The conditional aspects the profile calls for (design § 7), in the catalogue's order. */
 export function suggestAspects(s: StackProfile): AspectKey[] {
     return [
+        ...((s.userInterface ?? s.frameworks).some(f => MOBILE_RUNTIME.test(f) && shipped(f)) ? (["mobile"] as const) : []),
         ...((s.httpApi ?? []).length ? (["api"] as const) : []),
         ...((s.userInterface ?? s.frameworks.filter(f => UI_FRAMEWORK.test(f) && shipped(f))).length ? (["accessibility"] as const) : []),
         ...(s.llmSdks.some(shipped) ? (["llm"] as const) : []),
@@ -430,7 +440,7 @@ export function suggestionsFor(
     const added = o.lastRunRepositories !== undefined && (o.lastRunRepositories === null || profiles.length > o.lastRunRepositories);
     return {
         aspects: [
-            ...(["api", "accessibility", "llm", "tenancy"] as const).filter(k => keys.has(k)),
+            ...(["mobile", "api", "accessibility", "llm", "tenancy"] as const).filter(k => keys.has(k)),
             ...(profiles.length > 1 && (known.length || added) ? (["seams"] as const) : [])
         ],
         aiBuiltSigns: [...new Set(known.flatMap(p => p.aiBuiltSigns))].sort()

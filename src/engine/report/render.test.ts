@@ -158,6 +158,59 @@ describe("renderReport", () => {
         expect(both).toContain(a11y);
     });
 
+    it("says native code was read for its bridge surface only where Mobile app ran, and not analysed elsewhere", () => {
+        const html = renderReport(
+            data({
+                repositories: [
+                    {
+                        name: "app",
+                        branch: "main",
+                        sha: "0123456789abcdef",
+                        notCovered: [
+                            "Swift (2 files; the native android/ or ios/ project)",
+                            "C/C++ (3 files; the native android/ or ios/ project)",
+                            "Kotlin (40 files; build.gradle.kts)",
+                            "Python (1 file)"
+                        ],
+                        bridgeRead: true
+                    },
+                    { name: "api", branch: "main", sha: "fedcba9876543210", notCovered: ["Kotlin (1 file)"] }
+                ]
+            })
+        );
+        expect(html).toContain(
+            "<li>Partly covered in app: Swift (2 files; the native android/ or ios/ project); C/C++ (3 files; the native android/ or ios/ project). The Mobile app aspect read its bridge surface only: the methods the app's JavaScript can call, and what they trust from it.</li>"
+        );
+        // Native code outside the app's android/ or ios/ project, such as a Kotlin service beside it, was not read at all.
+        expect(html).toContain(
+            "<li>Not covered in app: Kotlin (40 files; build.gradle.kts); Python (1 file). The audit covers JavaScript and TypeScript; these were not analysed.</li>"
+        );
+        expect(html).toContain(
+            "<li>Not covered in api: Kotlin (1 file). The audit covers JavaScript and TypeScript; these were not analysed.</li>"
+        );
+    });
+
+    it("cites a Mobile app finding's MASVS controls among what it is relevant to", () => {
+        const masvs = {
+            label: "MASVS v2.1.0 MASVS-STORAGE-1: The app securely stores sensitive data",
+            url: "https://mas.owasp.org/MASVS/controls/MASVS-STORAGE-1/"
+        };
+        const html = renderReport(
+            data({
+                findings: [
+                    finding({
+                        aspect: "mobile",
+                        checklistItem: "MOB-01",
+                        refs: { top10: null, cwe: null, asvs: [], cheatsheets: [], advisories: [], nist: null, wcag: [], masvs: [masvs] }
+                    })
+                ]
+            })
+        );
+        expect(html).toMatch(
+            /Relevant to: <a [^>]*href="https:\/\/mas\.owasp\.org\/MASVS\/controls\/MASVS-STORAGE-1\/"[^>]*>MASVS v2\.1\.0 MASVS-STORAGE-1: The app securely stores sensitive data<\/a>\./
+        );
+    });
+
     it("carries the disclaimer", () => {
         expect(renderReport(data())).toMatch(/does not certify/);
     });
@@ -305,6 +358,7 @@ describe("renderReport", () => {
                             cheatsheets: [],
                             advisories: [],
                             nist: null,
+                            masvs: [],
                             wcag: []
                         }
                     })
@@ -683,6 +737,7 @@ describe("renderReport", () => {
                             ],
                             advisories: [],
                             nist: null,
+                            masvs: [],
                             wcag: []
                         }
                     })
@@ -714,6 +769,7 @@ describe("renderReport", () => {
                             cheatsheets: [],
                             advisories: [],
                             nist: null,
+                            masvs: [],
                             wcag: [
                                 {
                                     label: "WCAG 2.2 SC 1.1.1 Non-text Content (Level A)",
@@ -929,6 +985,7 @@ describe("renderReport", () => {
                             cheatsheets: [],
                             advisories: [],
                             nist: null,
+                            masvs: [],
                             wcag: []
                         }
                     })

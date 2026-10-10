@@ -5,7 +5,17 @@ fixtures:
   - name: own
     url: https://github.com/anaidenko/auditdesk-fixture
     sha: 32aee95a5bfc9ae48f8d25b2c97da263ff078a45
-    aspects: all
+    # Every aspect of one web repository: no seams pass, and no mobile app to audit.
+    aspects: [security, dependencies, architecture, data, quality, production, api, performance, accessibility, llm, tenancy]
+    aiBuilt: false
+    falseFindings: true
+  # Two small apps, Expo and Ionic with Capacitor, each audited as a repository of its own (mobile
+  # aspect design, Q2): one key, its paths starting with the folder.
+  - name: mobile
+    url: https://github.com/anaidenko/auditdesk-mobile-fixture
+    sha: efa28320b2bbca2166c76a9b972a1e07902e26c0
+    dirs: [expo-app, capacitor-app]
+    aspects: [security, mobile]
     aiBuilt: false
     falseFindings: true
   # OWASP Juice Shop v20.2.0 (plan, Task 2.1), prepared without its coding challenges' answers

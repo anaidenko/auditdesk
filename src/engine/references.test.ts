@@ -40,6 +40,46 @@ describe("references", () => {
         expect(referencesFor(refs, "ACC-08", {}).wcag.map(w => w.label)).toEqual(["WCAG 2.2 SC 4.1.3 Status Messages (Level AA)"]);
     });
 
+    it("reads the 24 controls of MASVS 2.1.0, each with its statement and its page on mas.owasp.org", () => {
+        expect(refs.masvs).toHaveLength(24);
+        expect(new Set(refs.masvs.map(c => c.id)).size).toBe(24);
+        for (const c of refs.masvs) {
+            expect(c.id).toMatch(/^MASVS-(STORAGE|CRYPTO|AUTH|NETWORK|PLATFORM|CODE|RESILIENCE|PRIVACY)-\d$/);
+            expect(c.url).toBe(`https://mas.owasp.org/MASVS/controls/${c.id}/`);
+            expect(c.statement, c.id).toMatch(/^The app [^.]+\.$/);
+        }
+    });
+
+    it("cites MASVS controls for every Mobile app item but the AI-built one, as its checklist names them, and for no other item", async () => {
+        const known = new Set(refs.masvs.map(c => c.id));
+        const mobile = await loadChecklist("mobile");
+        for (const [item, m] of Object.entries(refs.mapping.items)) {
+            const ours = mobile.items.find(i => i.id === item);
+            if (ours && !ours.aiBuilt) expect(m.masvs?.length, item).toBeGreaterThan(0);
+            else expect(m.masvs, item).toBeUndefined();
+            for (const id of m.masvs ?? []) expect(known, `${item} ${id}`).toContain(id);
+            if (!ours) continue;
+            const named = mobile.text
+                .match(new RegExp(`## ${item} [^\\n]*\\n[\\s\\S]*?(?=\\n## |$)`))![0]
+                .match(/^MASVS controls: (.+)\.$/m)?.[1];
+            expect(named?.split(", ") ?? [], item).toEqual(m.masvs ?? []);
+        }
+    });
+
+    it("links a MASVS control to its page, with its statement", () => {
+        expect(referencesFor(refs, "MOB-02", {}).masvs).toEqual([
+            {
+                label: "MASVS v2.1.0 MASVS-STORAGE-2: The app prevents leakage of sensitive data",
+                url: "https://mas.owasp.org/MASVS/controls/MASVS-STORAGE-2/"
+            },
+            {
+                label: "MASVS v2.1.0 MASVS-PLATFORM-3: The app uses the user interface securely",
+                url: "https://mas.owasp.org/MASVS/controls/MASVS-PLATFORM-3/"
+            }
+        ]);
+        expect(referencesFor(refs, "MOB-01", {}).cheatsheets.map(c => c.label)).toEqual(["Mobile Application Security Cheat Sheet"]);
+    });
+
     it("never uses a CWE MITRE prohibits for mapping", () => {
         expect(Object.values(refs.mapping.items).map(m => m.cwe)).not.toContain(16);
     });
@@ -106,7 +146,8 @@ describe("references", () => {
             cheatsheets: [],
             advisories: [],
             nist: null,
-            wcag: []
+            wcag: [],
+            masvs: []
         });
         expect(referencesFor(refs, null, {}).asvs).toEqual([]);
     });

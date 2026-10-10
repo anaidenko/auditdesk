@@ -20,7 +20,7 @@ const LEVEL: Record<SeverityName, "error" | "warning" | "note"> = {
  * not per result: over 9.0 is critical, 7.0 to 8.9 high, 4.0 to 6.9 medium, 0.1 to 3.9 low.
  */
 const SECURITY_SEVERITY: Partial<Record<SeverityName, string>> = { critical: "9.5", high: "8.0", medium: "5.5", low: "2.0" };
-const SECURITY_ITEM = /^(SEC|DEP|LLM|TEN)-/;
+const SECURITY_ITEM = /^(SEC|MOB|DEP|LLM|TEN)-/;
 const RANK: SeverityName[] = ["info", "low", "medium", "high", "critical"];
 
 type SarifRule = {
@@ -179,7 +179,16 @@ function effortGloss(f: ReportFinding): string {
 
 function body(f: ReportFinding): string {
     const refs = f.refs
-        ? [f.refs.top10, f.refs.cwe, ...f.refs.asvs, ...f.refs.wcag, ...f.refs.cheatsheets, ...f.refs.advisories, f.refs.nist]
+        ? [
+              f.refs.top10,
+              f.refs.cwe,
+              ...f.refs.asvs,
+              ...f.refs.wcag,
+              ...f.refs.masvs,
+              ...f.refs.cheatsheets,
+              ...f.refs.advisories,
+              f.refs.nist
+          ]
         : [];
     const lines = [
         ...(f.unreviewed

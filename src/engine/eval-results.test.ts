@@ -97,6 +97,12 @@ describe("parseEvalResult", () => {
         });
     });
 
+    it("reads the unfinished agents of a fixture of several apps, named by aspect and folder", () => {
+        const md = own.replace(/\| security \| partial \|/, "| mobile (expo-app) | partial |");
+        expect(md).toContain("| mobile (expo-app) | partial |");
+        expect(parseEvalResult(md, "x.md")!.incomplete).toEqual(["mobile (expo-app): partial", "quality: not started"]);
+    });
+
     it("reads the costs from their own lines, whatever a finding's text puts at the start of a line", () => {
         expect(parseEvalResult(own, "x.md")).toMatchObject({ usd: 1.23, judgeUsd: null });
     });

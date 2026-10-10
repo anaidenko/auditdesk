@@ -29,6 +29,7 @@ const data = () =>
                     cheatsheets: [],
                     advisories: [],
                     nist: null,
+                    masvs: [],
                     wcag: []
                 }
             })
@@ -136,7 +137,8 @@ describe("sarif", () => {
                 reportFinding({ label: "F-002", severity: "critical" }),
                 reportFinding({ label: "F-003", severity: "high", checklistItem: "DEP-01" }),
                 reportFinding({ label: "F-004", severity: "info", checklistItem: "LLM-02" }),
-                reportFinding({ label: "F-005", severity: "high", checklistItem: "QUA-03" })
+                reportFinding({ label: "F-005", severity: "high", checklistItem: "QUA-03" }),
+                reportFinding({ label: "F-006", severity: "critical", checklistItem: "MOB-09" })
             ]
         });
         const rules = Object.fromEntries(sarif(d, "app").runs[0].tool.driver.rules.map(r => [r.id, r.properties]));
@@ -144,6 +146,8 @@ describe("sarif", () => {
         expect(rules["DEP-01"]).toEqual({ "tags": ["security"], "security-severity": "8.0" });
         expect(rules["LLM-02"]).toEqual({ tags: ["security"] });
         expect(rules["QUA-03"]).toBeUndefined();
+        // The Mobile app aspect takes over device secrets and storage from Security: GitHub must still see them as security alerts.
+        expect(rules["MOB-09"]).toEqual({ "tags": ["security"], "security-severity": "9.5" });
     });
 
     it("percent-encodes a path that is not a valid URI as it stands", () => {
@@ -256,10 +260,24 @@ describe("issue drafts", () => {
         const [draft] = issueDrafts(
             one({
                 checklistItem: "ACC-03",
-                refs: { top10: null, cwe: null, asvs: [], cheatsheets: [], advisories: [], nist: null, wcag: [wcag] }
+                refs: { top10: null, cwe: null, asvs: [], cheatsheets: [], advisories: [], nist: null, wcag: [wcag], masvs: [] }
             })
         );
         expect(draft.body).toContain("[WCAG 2.2 SC 2.4.7 Focus Visible (Level AA)](https://www.w3.org/TR/WCAG22/#focus-visible)");
+    });
+
+    it("links a Mobile app finding's MASVS controls in its issue, as the report does", () => {
+        const masvs = {
+            label: "MASVS v2.1.0 MASVS-STORAGE-1: The app securely stores sensitive data",
+            url: "https://mas.owasp.org/MASVS/controls/MASVS-STORAGE-1/"
+        };
+        const [draft] = issueDrafts(
+            one({
+                checklistItem: "MOB-01",
+                refs: { top10: null, cwe: null, asvs: [], cheatsheets: [], advisories: [], nist: null, wcag: [], masvs: [masvs] }
+            })
+        );
+        expect(draft.body).toContain(`[${masvs.label}](${masvs.url})`);
     });
 
     it("orders the drafts by severity, so the first issue created is the worst", () => {

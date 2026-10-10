@@ -9,6 +9,7 @@ describe("aspects", () => {
     it("lists security first, then the rest of the catalogue, the seams between repositories last", () => {
         expect(ASPECTS.map(a => a.key)).toEqual([
             "security",
+            "mobile",
             "dependencies",
             "architecture",
             "data",

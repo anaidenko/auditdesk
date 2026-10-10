@@ -3,7 +3,13 @@
 Always on. Examine each item against the repository's own code. Scanner results are leads,
 already filed as findings; report what they missed. When the multi-tenancy aspect is on,
 tenant scoping belongs to it, not to SEC-03. When the LLM integrations aspect is off, prompt
-injection that reaches tools or data is filed here, under SEC-04.
+injection that reaches tools or data is filed here, under SEC-04. When the Mobile app aspect runs on a
+mobile app, what is specific to the device belongs to it, not to these items: tokens and secrets
+stored on the device (SEC-02), keys compiled into the app (SEC-10), the app's transport settings
+(SEC-11), the WebView and its bridge, its Content-Security-Policy included (SEC-05, SEC-11,
+SEC-15), deep links (SEC-01, SEC-02, SEC-09), the app's lock, PIN and biometrics (SEC-01), and
+what a release build logs or sends to analytics (SEC-13). The back end's routes and the server's
+own TLS stay here.
 
 Severity: critical when anyone who can reach the app, or sign up for it, can exploit it now
 with serious impact (all users' data, remote code execution, a live credential). High when it
