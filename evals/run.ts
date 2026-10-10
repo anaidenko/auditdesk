@@ -1,7 +1,7 @@
 import type Anthropic from "@anthropic-ai/sdk";
 import { createHash } from "node:crypto";
 import { existsSync } from "node:fs";
-import { mkdir, writeFile } from "node:fs/promises";
+import { cp, mkdir, rm, writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
 
 import { DEFAULT_EFFORT, DEFAULT_MODEL, type Effort } from "@/engine/agent/request";
@@ -22,6 +22,7 @@ import { type GradedFinding, grade } from "./grade";
 import { judgeLeftovers } from "./judge";
 import { prepareFixture } from "./prep/fixture";
 import { JUICE_SHOP_RULES } from "./prep/juice-shop";
+import { commitPrepared } from "./prep/strip";
 import type { StripRules } from "./prep/strip";
 import { type EvalResult, summaryMarkdown } from "./summary";
 
@@ -163,16 +164,16 @@ export function parseEvalArgs(argv: string[]): { ok: true; value: EvalOptions } 
 }
 
 class EvalSink extends MemorySink implements PipelineSink {
-    agents: { id: string; aspect: string; outcome: AgentOutcome | null }[] = [];
+    agents: { id: string; repositoryId: string; aspect: string; outcome: AgentOutcome | null }[] = [];
     versions: ToolVersions | null = null;
     async repositoryCloned() {}
     async stackDetected() {}
     async toolVersions(v: ToolVersions) {
         this.versions = v;
     }
-    async startAgent(_repositoryId: string, aspect: string) {
+    async startAgent(repositoryId: string, aspect: string) {
         const id = `agent-${this.agents.length + 1}`;
-        this.agents.push({ id, aspect, outcome: null });
+        this.agents.push({ id, repositoryId, aspect, outcome: null });
         return id;
     }
     async finishAgent(id: string, outcome: AgentOutcome) {
@@ -184,6 +185,21 @@ class EvalSink extends MemorySink implements PipelineSink {
         return [];
     }
     async recheckFindings() {}
+}
+
+/**
+ * A folder of the prepared tree as a repository of its own, committed like the tree: the agents
+ * and scanners see that app alone, as they would a client's.
+ */
+async function folderRepository(tree: string, dir: string): Promise<{ id: string; source: string; branch: string; sha: string }> {
+    if (!/^[\w.-]+(\/[\w.-]+)*$/.test(dir) || dir.split("/").some(p => p === "." || p === ".."))
+        throw new Error(`A fixture folder is a plain relative path, not ${dir}`);
+    if (!existsSync(join(tree, dir))) throw new Error(`The fixture has no folder ${dir}`);
+    const source = join(`${tree}-folders`, dir);
+    await rm(source, { recursive: true, force: true });
+    await cp(join(tree, dir), source, { recursive: true });
+    await git(["init", "--quiet", "-b", "main"], source);
+    return { id: dir, source, branch: "main", sha: await commitPrepared(source) };
 }
 
 /** What an eval run audits: --aspect, or the fixture's list; "all" leaves out the seams pass, since every fixture is one repository. */
@@ -217,6 +233,10 @@ export async function runEval(o: EvalOptions, deps: EvalDeps): Promise<{ file: s
         dirty: (await git(["status", "--porcelain", "--", ".", ":!evals/results"], root)) !== ""
     };
 
+    const repositories = spec.dirs
+        ? await Promise.all(spec.dirs.map(d => folderRepository(prepared.path, d)))
+        : [{ id: spec.name, source: prepared.path, branch: "main", sha: prepared.preparedSha }];
+
     const now = deps.now ?? (() => new Date());
     const startedAt = now();
     const started = performance.now();
@@ -230,7 +250,7 @@ export async function runEval(o: EvalOptions, deps: EvalDeps): Promise<{ file: s
                 model: o.model,
                 effort: o.effort,
                 budget: { usd: o.budgetUsd, tokens: o.budgetTokens },
-                repositories: [{ id: spec.name, source: prepared.path, branch: "main", sha: prepared.preparedSha }],
+                repositories,
                 brief: { product: null, concerns: null, outOfScope: null, aiBuilt: spec.aiBuilt ?? false },
                 aspects
             },
@@ -249,6 +269,9 @@ export async function runEval(o: EvalOptions, deps: EvalDeps): Promise<{ file: s
     const durationMs = performance.now() - started;
 
     // Each finding is graded by its own evidence; a folded scanner finding still counts as the scanner's find.
+    // A folder's findings cite paths in its own repository, and the key paths in the fixture.
+    const inFixture = (f: (typeof sink.findings)[number], file: string) =>
+        spec.dirs && f.repositoryId ? `${f.repositoryId}/${file}` : file;
     const findings: GradedFinding[] = sink.findings.map(f => ({
         ...(f.mergedInto ? { folded: true } : {}),
         label: f.label,
@@ -258,7 +281,7 @@ export async function runEval(o: EvalOptions, deps: EvalDeps): Promise<{ file: s
         checklistItem: f.checklistItem,
         title: f.title,
         summary: f.summary,
-        evidence: f.evidence
+        evidence: f.evidence.map(e => ({ ...e, file: inFixture(f, e.file) }))
     }));
     const g = grade(findings, key, { aspects });
 
@@ -274,8 +297,10 @@ export async function runEval(o: EvalOptions, deps: EvalDeps): Promise<{ file: s
         cacheRead += c.usage.cacheRead;
         inputSide += c.usage.input + c.usage.cacheRead + c.usage.cacheWrite5m + c.usage.cacheWrite1h;
     }
-    const agents = aspects.map(aspect => {
-        const ran = sink.agents.find(a => a.aspect === aspect);
+    // A folder's agents are named by aspect and folder.
+    const runs = repositories.flatMap(r => aspects.map(aspect => ({ r, aspect, label: spec.dirs ? `${aspect} (${r.id})` : aspect })));
+    const agents = runs.map(({ r, aspect: key, label: aspect }) => {
+        const ran = sink.agents.find(a => a.aspect === key && a.repositoryId === r.id);
         if (ran) {
             const o = ran.outcome;
             if (!o) return { aspect, status: "failed" as const, note: "Did not finish." };
@@ -286,7 +311,7 @@ export async function runEval(o: EvalOptions, deps: EvalDeps): Promise<{ file: s
                 : null;
             return { aspect, status: o.status, note: o.note, summary: o.summary, coverage };
         }
-        const skipped = sink.events.find(m => m.startsWith(`Skipped ${aspectTitle(aspect)}:`));
+        const skipped = sink.events.find(m => m.startsWith(`Skipped ${aspectTitle(key)}:`));
         return {
             aspect,
             status: "not started" as const,

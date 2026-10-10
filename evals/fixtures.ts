@@ -8,6 +8,11 @@ export interface FixtureSpec {
     name: string;
     url: string;
     sha: string;
+    /**
+     * Folders audited each as a repository of its own, as a client's app would be: a key's paths
+     * start with the folder. Absent, the fixture is one repository.
+     */
+    dirs?: string[];
     /** What an eval run audits: "all" or a list of aspect keys. */
     aspects?: "all" | string[];
     aiBuilt?: boolean;

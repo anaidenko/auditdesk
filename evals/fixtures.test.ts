@@ -49,29 +49,30 @@ describe("the own fixture's answer key", () => {
 });
 
 // A full clone, not a partial one: the tests read every file, and a partial clone would fetch each blob apart.
-describe("the own fixture at its pinned commit", () => {
-    const key = loadKey("own");
+function atPinnedCommit(name: string, o: { audited: (file: string) => boolean }) {
+    const spec = loadFixtures().find(f => f.name === name)!;
+    const key = loadKey(name);
     let clone = "";
     beforeAll(() => {
-        clone = join(mkdtempSync(join(tmpdir(), "own-fixture-")), "clone");
+        clone = join(mkdtempSync(join(tmpdir(), `${name}-fixture-`)), "clone");
         try {
             // execFileSync blocks vitest's hook timeout, so the clone carries its own, and a missing
             // repository fails rather than waiting at a password prompt or an askpass dialog.
-            run("git", ["clone", "--quiet", "--no-checkout", own.url, clone], {
+            run("git", ["clone", "--quiet", "--no-checkout", spec.url, clone], {
                 stdio: "pipe",
                 timeout: 60_000,
                 env: { ...process.env, GIT_TERMINAL_PROMPT: "0", GIT_ASKPASS: "" }
             });
         } catch (e) {
             throw new Error(
-                `Cannot clone ${own.url}. Offline, point it at a local clone: GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=url.<path>.insteadOf GIT_CONFIG_VALUE_0=${own.url} pnpm test`,
+                `Cannot clone ${spec.url}. Offline, point it at a local clone: GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=url.<path>.insteadOf GIT_CONFIG_VALUE_0=${spec.url} pnpm test`,
                 { cause: e }
             );
         }
     }, 70_000);
     // Read without trimming, or a file's leading blank lines would shift every anchor in it.
-    const show = (file: string) => run("git", ["show", `${own.sha}:${file}`], { cwd: clone, encoding: "utf8" });
-    const tree = () => run("git", ["ls-tree", "-r", "--name-only", own.sha], { cwd: clone, encoding: "utf8" }).split("\n").filter(Boolean);
+    const show = (file: string) => run("git", ["show", `${spec.sha}:${file}`], { cwd: clone, encoding: "utf8" });
+    const tree = () => run("git", ["ls-tree", "-r", "--name-only", spec.sha], { cwd: clone, encoding: "utf8" }).split("\n").filter(Boolean);
     const located = (e: KeyEntry): KeyLocation[] => [
         ...(e.kind === "finding" ? [{ file: e.file!, startLine: e.startLine!, endLine: e.endLine!, anchor: e.anchor! }] : []),
         ...(e.also ?? [])
@@ -93,10 +94,10 @@ describe("the own fixture at its pinned commit", () => {
         for (const k of key.known) if (k.file) expect(tree(), k.title).toContain(k.file);
     });
 
-    it("names no defect anywhere in the fixture: its files, their names or its history", () => {
-        const files = tree();
-        expect(files.filter(f => /^\.(claude|cursor|windsurf|kiro|bolt)\//.test(f))).toEqual([]);
-        const log = run("git", ["log", "--format=%B", own.sha], { cwd: clone, encoding: "utf8" });
+    it("names no defect anywhere the agents read: the audited files, their names or the history", () => {
+        const files = tree().filter(o.audited);
+        expect(files.filter(f => /(^|\/)\.(claude|cursor|windsurf|kiro|bolt)\//.test(f))).toEqual([]);
+        const log = run("git", ["log", "--format=%B", spec.sha], { cwd: clone, encoding: "utf8" });
         const text = [log, ...files.map(f => `${f}\n${show(f)}`)].join("\n").toLowerCase();
         for (const word of [
             "vuln",
@@ -114,10 +115,63 @@ describe("the own fixture at its pinned commit", () => {
             "wcag",
             "idempot",
             "prefetch",
-            "contrast"
+            "contrast",
+            "masvs",
+            "leak",
+            "hardcod",
+            "bypass",
+            "attacker",
+            "malicious"
         ]) {
             expect(text, word).not.toContain(word);
         }
         for (const e of key.entries) expect(text, e.id).not.toContain(e.title.toLowerCase());
     });
+}
+
+describe("the own fixture at its pinned commit", () => atPinnedCommit("own", { audited: () => true }));
+
+describe("the mobile fixture's answer key", () => {
+    const spec = loadFixtures().find(f => f.name === "mobile")!;
+    const key = loadKey("mobile");
+
+    it("pins two apps by their public repository and a full commit, each audited as a repository of its own", () => {
+        expect(spec.url).toBe("https://github.com/anaidenko/auditdesk-mobile-fixture");
+        expect(spec.sha).toMatch(/^[0-9a-f]{40}$/);
+        expect(spec.dirs).toEqual(["expo-app", "capacitor-app"]);
+        expect(spec.aspects).toEqual(["security", "mobile"]);
+    });
+
+    it("files every entry under an item of the run's checklists, at a path inside one of the apps", async () => {
+        const items = new Set((await Promise.all(ASPECTS.map(a => loadChecklist(a.key)))).flatMap(c => c.items.map(i => i.id)));
+        for (const e of key.entries) {
+            expect(spec.aspects, e.id).toContain(e.aspect);
+            expect(
+                (await loadChecklist(e.aspect)).items.map(i => i.id),
+                e.id
+            ).toContain(e.checklistItem);
+            for (const item of e.alsoItems ?? []) expect(items, `${e.id} ${item}`).toContain(item);
+            for (const file of [e.file, ...(e.also ?? []).map(l => l.file)].filter(Boolean))
+                expect(
+                    spec.dirs!.some(d => file!.startsWith(`${d}/`)),
+                    `${e.id} ${file}`
+                ).toBe(true);
+        }
+        for (const k of key.known) expect(items, k.title).toContain(k.checklistItem);
+    });
+
+    it("plants 8 to 10 defects in each app, keeps IDs unique and gives each a severity", () => {
+        for (const d of spec.dirs!) {
+            const n = key.entries.filter(e => e.file?.startsWith(`${d}/`)).length;
+            expect(n, d).toBeGreaterThanOrEqual(8);
+            expect(n, d).toBeLessThanOrEqual(10);
+        }
+        expect(new Set(key.entries.map(e => e.id)).size).toBe(key.entries.length);
+        for (const e of key.entries) expect(SEVERITIES, e.id).toContain(e.severity);
+    });
 });
+
+// The repository's own README warns that it is deliberately vulnerable: no audit reads it, since
+// each app is audited from its own folder.
+describe("the mobile fixture at its pinned commit", () =>
+    atPinnedCommit("mobile", { audited: f => ["expo-app/", "capacitor-app/"].some(d => f.startsWith(d)) }));
