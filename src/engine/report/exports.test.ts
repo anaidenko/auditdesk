@@ -29,6 +29,7 @@ const data = () =>
                     cheatsheets: [],
                     advisories: [],
                     nist: null,
+                    masvs: [],
                     wcag: []
                 }
             })
@@ -256,7 +257,7 @@ describe("issue drafts", () => {
         const [draft] = issueDrafts(
             one({
                 checklistItem: "ACC-03",
-                refs: { top10: null, cwe: null, asvs: [], cheatsheets: [], advisories: [], nist: null, wcag: [wcag] }
+                refs: { top10: null, cwe: null, asvs: [], cheatsheets: [], advisories: [], nist: null, wcag: [wcag], masvs: [] }
             })
         );
         expect(draft.body).toContain("[WCAG 2.2 SC 2.4.7 Focus Visible (Level AA)](https://www.w3.org/TR/WCAG22/#focus-visible)");

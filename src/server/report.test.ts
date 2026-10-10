@@ -373,6 +373,21 @@ describe("repositories in the report", () => {
         expect(d.repositories.map(r => r.notCovered)).toEqual([["Python (3 files; requirements.txt)"], []]);
         expect(d.aiBuilt).toBe(true);
     });
+
+    it("marks a repository whose Mobile app agent finished as read at its native bridge, and no other", async () => {
+        const { project, repo } = await projectWithRepo("git@github.com:acme/app.git");
+        const other = await prisma.repository.create({
+            data: { projectId: project.id, source: "git@github.com:acme/api.git", branch: "main" }
+        });
+        const r = await run(project.id, "done", null, new Date());
+        await agent(r.id, repo.id, "partial", new Date(), "mobile");
+        await agent(r.id, other.id, "done", new Date(), "security");
+        const d = await loadReportData(project.id);
+        expect(d.repositories.map(x => [x.name, x.bridgeRead ?? false])).toEqual([
+            ["acme/app", true],
+            ["acme/api", false]
+        ]);
+    });
 });
 
 describe("the branch in the report", () => {

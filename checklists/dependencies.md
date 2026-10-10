@@ -44,8 +44,9 @@ conflict without a note.
 
 Packages deprecated by their authors (`request`, `node-sass`, `tslint`, `protractor`), libraries
 the framework replaced (`@angular/http`; in a Capacitor app, Cordova plugins that an official
-Capacitor plugin replaces or that are unmaintained), and packages far behind their current major
-with no upgrade path in sight. Name the evidence for each.
+Capacitor plugin replaces or that are unmaintained, which are MOB-10's while Mobile app runs),
+and packages far behind their current major with no upgrade path in sight. Name the evidence for
+each.
 
 ## DEP-05 Runtime and framework versions
 

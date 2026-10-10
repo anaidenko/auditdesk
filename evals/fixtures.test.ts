@@ -22,9 +22,12 @@ describe("the fixture list", () => {
 describe("the own fixture's answer key", () => {
     const key = loadKey("own");
 
-    it("files every entry under an item of its aspect's checklist, and plants defects for every aspect of one repository", async () => {
-        // The own fixture is one repository, so the seams between repositories have nothing to find in it.
-        expect(new Set(key.entries.map(e => e.aspect))).toEqual(new Set(ASPECTS.map(a => a.key).filter(k => k !== "seams")));
+    it("files every entry under an item of its aspect's checklist, and plants defects for every aspect of one web repository", async () => {
+        // The own fixture is one repository and no mobile app: the seams between repositories and the
+        // mobile aspect have nothing to find in it. A new aspect joins its list, and its key, by hand.
+        const web = ASPECTS.map(a => a.key).filter(k => k !== "seams" && k !== "mobile");
+        expect(own.aspects).toEqual(web);
+        expect(new Set(key.entries.map(e => e.aspect))).toEqual(new Set(web));
         const all = new Set((await Promise.all(ASPECTS.map(a => loadChecklist(a.key)))).flatMap(c => c.items.map(i => i.id)));
         for (const e of key.entries) {
             expect(

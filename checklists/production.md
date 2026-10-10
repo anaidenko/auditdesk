@@ -56,4 +56,5 @@ on the request body size. Pagination belongs to DAT-03.
 When the repository is an app (Ionic, Capacitor, React Native): configuration per build
 flavour, the app version and how old versions are made to update, crash reporting, store builds
 signed in CI rather than on a laptop (often a question), web assets and API URLs that differ
-between builds.
+between builds. While Mobile app runs, forcing old versions to update is MOB-10's, and signing
+and debug code in the release build are MOB-12's.

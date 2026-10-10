@@ -9,6 +9,8 @@
 # nist: NIST SP 800-63B-4, for authentication only.
 # cheatsheets: names of OWASP Cheat Sheets, each from the list below.
 # wcag: WCAG 2.2 success criteria, for Accessibility items only, as listed in wcag-2.2.yaml.
+# masvs: OWASP MASVS 2.1.0 controls, for Mobile app items only, as listed in masvs-2.1.0.yaml; each
+# Mobile app item's checklist names the same controls.
 
 # Each answered HTTP 200 at cheatsheetseries.owasp.org/cheatsheets/<name>_Cheat_Sheet.html on 2026-10-07,
 # under the title its page gives.
@@ -35,6 +37,8 @@ cheatsheets:
   Input_Validation: "Input Validation Cheat Sheet"
   Insecure_Direct_Object_Reference_Prevention: "Insecure Direct Object Reference Prevention Cheat Sheet"
   LLM_Prompt_Injection_Prevention: "LLM Prompt Injection Prevention Cheat Sheet"
+  # Answered HTTP 200 under this title on 2026-10-11.
+  Mobile_Application_Security: "Mobile Application Security Cheat Sheet"
   Logging: "Logging Cheat Sheet"
   Mass_Assignment: "Mass Assignment Cheat Sheet"
   Multi_Tenant_Security: "Multi-Tenant Application Security Cheat Sheet"
@@ -70,6 +74,21 @@ items:
   SEC-14: { cwe: 327, asvs: [V11.3, V11.4, V11.5], cheatsheets: [Cryptographic_Storage] }
   SEC-15: { asvs: [V15.3, V1.5], cheatsheets: [Nodejs_Security, Deserialization, Prototype_Pollution_Prevention] }
   SEC-16: { cwe: 862, asvs: [V8.2, V8.3, V2.2], cheatsheets: [Authorization] }
+
+  MOB-01: { masvs: [MASVS-STORAGE-1], cheatsheets: [Mobile_Application_Security] }
+  MOB-02: { masvs: [MASVS-STORAGE-2, MASVS-PLATFORM-3], cheatsheets: [Mobile_Application_Security] }
+  MOB-03: { masvs: [MASVS-NETWORK-1, MASVS-NETWORK-2], cheatsheets: [Mobile_Application_Security] }
+  MOB-04: { masvs: [MASVS-PLATFORM-2], cheatsheets: [Mobile_Application_Security] }
+  MOB-05: { masvs: [MASVS-PLATFORM-1, MASVS-CODE-4], cheatsheets: [Mobile_Application_Security] }
+  MOB-06: { masvs: [MASVS-PLATFORM-1, MASVS-PRIVACY-1, MASVS-RESILIENCE-4, MASVS-CODE-1], cheatsheets: [Mobile_Application_Security] }
+  MOB-07: { masvs: [MASVS-PRIVACY-1, MASVS-PRIVACY-3], cheatsheets: [Mobile_Application_Security] }
+  MOB-08: { masvs: [MASVS-AUTH-1, MASVS-AUTH-2, MASVS-AUTH-3], cheatsheets: [Mobile_Application_Security] }
+  MOB-09: { cwe: 798, masvs: [MASVS-STORAGE-1], cheatsheets: [Mobile_Application_Security, Secrets_Management] }
+  MOB-10: { masvs: [MASVS-CODE-2, MASVS-CODE-3], cheatsheets: [Mobile_Application_Security] }
+  MOB-11: { masvs: [MASVS-PRIVACY-1, MASVS-PRIVACY-2, MASVS-PRIVACY-3, MASVS-PRIVACY-4], cheatsheets: [Mobile_Application_Security] }
+  MOB-12: { masvs: [MASVS-RESILIENCE-3, MASVS-RESILIENCE-4], cheatsheets: [Mobile_Application_Security] }
+  MOB-13: { masvs: [MASVS-STORAGE-1], cheatsheets: [Mobile_Application_Security] }
+  MOB-14: { cheatsheets: [Mobile_Application_Security] }
 
   DEP-01: { cwe: 1395, asvs: [V15.2], cheatsheets: [Vulnerable_Dependency_Management] }
   DEP-02: { cwe: 1357, asvs: [V15.2], cheatsheets: [NPM_Security, Software_Supply_Chain_Security] }

@@ -43,9 +43,10 @@ export interface ReportData {
     methodUrl?: string | null;
     /**
      * Names are unique within a report; `notCovered` lists languages the audit could not analyse;
+     * `bridgeRead` when a Mobile app agent finished on it, which reads native code's bridge surface;
      * `links` only for a repository cloned from a known web host.
      */
-    repositories: { name: string; branch: string; sha: string; notCovered: string[]; links?: RepoLinks }[];
+    repositories: { name: string; branch: string; sha: string; notCovered: string[]; bridgeRead?: boolean; links?: RepoLinks }[];
     /** The findings filed (questions and superseded ones apart), by what the review made of them. */
     review?: { filed: number; reported: number; fixed: number; merged: number; rejected: number; excluded: number; unreviewed: number };
     /** The name a seams finding's path starts with, per repository; present when there are seams findings. */

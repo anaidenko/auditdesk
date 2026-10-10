@@ -5,7 +5,8 @@ fixtures:
   - name: own
     url: https://github.com/anaidenko/auditdesk-fixture
     sha: 32aee95a5bfc9ae48f8d25b2c97da263ff078a45
-    aspects: all
+    # Every aspect of one web repository: no seams pass, and no mobile app to audit.
+    aspects: [security, dependencies, architecture, data, quality, production, api, performance, accessibility, llm, tenancy]
     aiBuilt: false
     falseFindings: true
   # OWASP Juice Shop v20.2.0 (plan, Task 2.1), prepared without its coding challenges' answers

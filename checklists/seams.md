@@ -17,7 +17,10 @@ under unusual input or misleads the next change. Low is drift that will break la
 Every call the front end makes (fetch, axios, a generated client, Server Actions calling another
 service) against a route the back end really exposes: method, path, parameters and body shape,
 the response fields the front end reads. Calls to routes that do not exist, routes the front end
-relies on that the back end changed, and types copied by hand that have drifted.
+relies on that the back end changed, and types copied by hand that have drifted. For a mobile app,
+the deep links the back end sends (in emails and push notifications) against the routes the app's
+link handler opens, and the association files a web repository serves
+(`apple-app-site-association`, `assetlinks.json`) against the app's identifiers.
 
 ## SEA-02 Authentication across the boundary
 

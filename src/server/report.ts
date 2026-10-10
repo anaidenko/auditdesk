@@ -237,6 +237,9 @@ export async function loadReportData(
                 branch,
                 sha: r.commitSha ?? "not cloned",
                 notCovered: (r.stack as StackProfile | null)?.notCovered ?? [],
+                ...(latestAgents.some(a => a.repositoryId === r.id && a.aspect === "mobile" && ["done", "partial"].includes(a.status)) && {
+                    bridgeRead: true
+                }),
                 ...(links && { links })
             };
         }),

@@ -240,6 +240,7 @@ describe("evalAspects", () => {
         expect(all).not.toContain("seams");
         expect(all).toEqual([
             "security",
+            "mobile",
             "dependencies",
             "architecture",
             "data",

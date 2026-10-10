@@ -134,6 +134,27 @@ const UNFINISHED: Record<string, string> = {
 /** A partial agent that examined nothing, such as one the plan's reserve kept from starting. */
 const NOTHING_EXAMINED = "Not covered: the agent stopped before it had examined any item.";
 
+/** The languages of a mobile app's native plugins and modules, whose bridge surface the Mobile app aspect reads. */
+const NATIVE = /^(Swift|Objective-C|Kotlin|Java) \(/;
+
+/** A repository's languages the audit did not analyse, and the native ones the Mobile app aspect read in part. */
+function notCovered(r: ReportData["repositories"][number]): string {
+    const partly = r.bridgeRead ? r.notCovered.filter(l => NATIVE.test(l)) : [];
+    const not = r.notCovered.filter(l => !partly.includes(l));
+    return [
+        ...(partly.length
+            ? [
+                  `<li>Partly covered in ${e(r.name)}: ${e(partly.join("; "))}. The Mobile app aspect read its bridge surface only: the methods the app's JavaScript can call, and what they trust from it.</li>\n`
+              ]
+            : []),
+        ...(not.length
+            ? [
+                  `<li>Not covered in ${e(r.name)}: ${e(not.join("; "))}. The audit covers JavaScript and TypeScript; these were not analysed.</li>\n`
+              ]
+            : [])
+    ].join("");
+}
+
 const STATIC_ONLY: Record<string, string> = {
     performance: "Performance was judged from the code alone: no page was rendered or timed.",
     accessibility:
@@ -368,8 +389,8 @@ function finding(f: ReportFinding, manyRepos: boolean): string {
     const R = f.refs;
     const refs = R
         ? [
-              (R.top10 || R.asvs.length || R.wcag.length) &&
-                  `Relevant to: ${[R.top10, ...R.asvs, ...R.wcag]
+              (R.top10 || R.asvs.length || R.wcag.length || R.masvs.length) &&
+                  `Relevant to: ${[R.top10, ...R.asvs, ...R.wcag, ...R.masvs]
                       .filter((r): r is Ref => !!r)
                       .map(link)
                       .join("; ")}.`,
@@ -579,13 +600,7 @@ ${method(d)}
 <li>The client's code was read, not installed, built or run: no dependency install, no type-check, no project lint.</li>
 ${staticOnly(d)}
 <li>Model access: ${d.modelAccess.map(a => ACCESS_TEXT[a]).join("; ") || "none"}.</li>
-${d.repositories
-    .filter(r => r.notCovered.length)
-    .map(
-        r =>
-            `<li>Not covered in ${e(r.name)}: ${e(r.notCovered.join("; "))}. The audit covers JavaScript and TypeScript; these were not analysed.</li>`
-    )
-    .join("\n")}
+${d.repositories.map(notCovered).join("")}
 ${d.methodUrl ? `<li>More on the method: ${out(d.methodUrl, e(d.methodUrl.replace(/^https?:\/\//, "").replace(/\/$/, "")))}.</li>` : ""}
 </ul>
 </section>

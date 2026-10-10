@@ -179,7 +179,16 @@ function effortGloss(f: ReportFinding): string {
 
 function body(f: ReportFinding): string {
     const refs = f.refs
-        ? [f.refs.top10, f.refs.cwe, ...f.refs.asvs, ...f.refs.wcag, ...f.refs.cheatsheets, ...f.refs.advisories, f.refs.nist]
+        ? [
+              f.refs.top10,
+              f.refs.cwe,
+              ...f.refs.asvs,
+              ...f.refs.wcag,
+              ...f.refs.masvs,
+              ...f.refs.cheatsheets,
+              ...f.refs.advisories,
+              f.refs.nist
+          ]
         : [];
     const lines = [
         ...(f.unreviewed
