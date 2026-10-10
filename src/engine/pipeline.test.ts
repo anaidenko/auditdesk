@@ -6,9 +6,11 @@ import { describe, expect, it } from "vitest";
 
 import { message, replayFetch } from "@/engine/replay";
 import { finding, tool } from "@/test/agent-messages";
+import { makeHostileRepo } from "@/test/hostile-repo";
 import { SAMPLE_KEY, makeSampleRepo } from "@/test/sample-repo";
 
 import { type AspectInput, type AspectRunner, apiAspectRunner } from "./agent/run-aspect";
+import { toolSpecs } from "./agent/tools";
 import type { AiPolicySummary } from "./ai-policy";
 import { git } from "./git";
 import { MemorySink } from "./memory-sink";
@@ -826,6 +828,22 @@ describe("the client's AI policy in a run", () => {
             `${leak.label} [${leak.severity}] SEC-10 src/config.js:2 a scanner result in an excluded file`
         );
         expect(agent.firstMessage).not.toContain(leak.title);
+    });
+
+    it("keeps a committed symlink through the clone, and refuses it when it leads into an excluded directory", async () => {
+        const sink = new TestSink();
+        const { inputs, runAspect } = capturing();
+        const source = await makeHostileRepo(join(await mkdtemp(join(tmpdir(), "marker-")), "ran"));
+        await audit(sink, source, await mkdtemp(join(tmpdir(), "ws-")), {}, runAspect);
+        const { ctx } = inputs[0];
+        const read = (path: string) =>
+            toolSpecs(ctx)
+                .find(t => t.name === "read_file")!
+                .run({ path, start_line: 1, end_line: 1 } as never);
+        await expect(read("keys/server.key")).rejects.toThrow(
+            "keys/server.key is excluded by the client's AI policy (.claude/settings.json)."
+        );
+        await expect(read("src/db.js")).resolves.toContain("SELECT");
     });
 
     it("detects the stack without reading a manifest the policy excludes", async () => {
