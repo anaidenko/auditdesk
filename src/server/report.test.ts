@@ -96,6 +96,25 @@ describe("the report's links", () => {
     });
 });
 
+describe("the report's AI exclusions", () => {
+    it("states the policy the last run read at the audited commit, not a later detection's", async () => {
+        const { project, repo } = await projectWithRepo();
+        const read = (excludedFiles: number) => ({
+            sources: [
+                { file: ".aiignore", tool: "JetBrains AI Assistant and Junie", patterns: [{ line: 1, pattern: "certs/" }], excludedFiles }
+            ],
+            warnings: [],
+            readsNothing: null,
+            files: 10,
+            excludedFiles,
+            excluded: ["certs/"],
+            everything: false
+        });
+        await prisma.repository.update({ where: { id: repo.id }, data: { aiPolicy: read(2), aiPolicyDetected: read(5) } });
+        expect((await loadReportData(project.id)).repositories[0].aiPolicy).toEqual(read(2));
+    });
+});
+
 describe("the report's review tally", () => {
     it("counts the findings filed by what the review made of them, leaving questions and superseded ones out", async () => {
         const { project, repo } = await projectWithRepo();

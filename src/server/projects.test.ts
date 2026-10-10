@@ -14,6 +14,7 @@ import {
     deleteProject,
     deleteRepository,
     detectRepositoryStack,
+    saveConsent,
     saveRepositoryNotes,
     setRepositoryBranch
 } from "@/server/projects";
@@ -51,6 +52,48 @@ describe("deleteProject", () => {
         await expect(deleteProject(project.id, ws)).rejects.toBeInstanceOf(ActiveRunError);
         expect(await prisma.project.findUnique({ where: { id: project.id } })).not.toBeNull();
         expect(existsSync(join(ws, project.id))).toBe(true);
+    });
+});
+
+describe("the client's consent and AI policy", () => {
+    it("saves the consent with each repository's own exclusions, and clears both together", async () => {
+        const { project, repo } = await projectWithRepo();
+        const other = await prisma.repository.create({ data: { projectId: project.id, source: "/tmp/y", branch: "main" } });
+        await prisma.project.update({ where: { id: project.id }, data: { aiConsentAt: null } });
+        await saveConsent(project.id, { consent: true, exclusions: { [repo.id]: "payments/**", [other.id]: null } });
+        const saved = await prisma.project.findUniqueOrThrow({
+            where: { id: project.id },
+            include: { repositories: { orderBy: { createdAt: "asc" } } }
+        });
+        expect(saved.aiConsentAt).toBeInstanceOf(Date);
+        expect(saved.repositories.map(r => r.aiExclusions)).toEqual(["payments/**", null]);
+        await saveConsent(project.id, { consent: false, exclusions: { [repo.id]: "payments/**" } });
+        expect((await prisma.project.findUniqueOrThrow({ where: { id: project.id } })).aiConsentAt).toBeNull();
+    });
+
+    it("ignores an exclusion for a repository of another project", async () => {
+        const { project } = await projectWithRepo();
+        const { repo: foreign } = await projectWithRepo();
+        await saveConsent(project.id, { consent: true, exclusions: { [foreign.id]: "x/**" } });
+        expect((await prisma.repository.findUniqueOrThrow({ where: { id: foreign.id } })).aiExclusions).toBeNull();
+    });
+
+    it("reads the policy with the stack, on the same scratch clone, with the auditor's own patterns", async () => {
+        const { project, repo } = await projectWithRepo(await makeSampleRepo({ ".cursorignore": "src/config.js\n" }));
+        await prisma.repository.update({ where: { id: repo.id }, data: { aiExclusions: "package.json\n" } });
+        const profile = await detectRepositoryStack(project.id, repo.id, await mkdtemp(join(tmpdir(), "ws-")));
+        expect(profile.excludedManifests).toEqual(["package.json"]);
+        const after = await prisma.repository.findUniqueOrThrow({ where: { id: repo.id } });
+        expect(after.aiPolicyDetected).toMatchObject({
+            excludedFiles: 2,
+            excluded: ["package.json", "src/config.js"],
+            sources: [
+                { file: ".cursorignore", tool: "Cursor", excludedFiles: 1 },
+                { file: "the auditor's exclusions", tool: "the auditor", excludedFiles: 1 }
+            ]
+        });
+        expect(after.aiPolicyDetectedAt).toBeInstanceOf(Date);
+        expect(after.aiPolicy).toBeNull();
     });
 });
 

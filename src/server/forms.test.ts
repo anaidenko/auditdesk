@@ -1,6 +1,14 @@
 import { describe, expect, it } from "vitest";
 
-import { parseBriefForm, parseModelAccess, parseProjectForm, parseRepositoryForm, parseRepositoryNotesForm, parseRunForm } from "./forms";
+import {
+    parseBriefForm,
+    parseConsentForm,
+    parseModelAccess,
+    parseProjectForm,
+    parseRepositoryForm,
+    parseRepositoryNotesForm,
+    parseRunForm
+} from "./forms";
 
 const fd = (o: Record<string, string>) => {
     const f = new FormData();
@@ -9,6 +17,20 @@ const fd = (o: Record<string, string>) => {
 };
 
 describe("forms", () => {
+    it("reads the consent with each repository's own exclusions, and caps each field", () => {
+        const form = new FormData();
+        form.set("consent", "on");
+        form.set("exclusions-r1", "  payments/**\n*.sql \n");
+        form.set("exclusions-r2", "   ");
+        expect(parseConsentForm(form, ["r1", "r2", "r3"])).toEqual({
+            ok: true,
+            value: { consent: true, exclusions: { r1: "payments/**\n*.sql", r2: null, r3: null } }
+        });
+        form.set("exclusions-r2", "x".repeat(4001));
+        expect(parseConsentForm(form, ["r1", "r2"])).toEqual({ ok: false, error: "Keep each field under 4,000 characters." });
+        expect(parseConsentForm(new FormData(), [])).toEqual({ ok: true, value: { consent: false, exclusions: {} } });
+    });
+
     it("needs a project name", () => {
         expect(parseProjectForm(fd({ name: "  " }))).toEqual({ ok: false, error: "Name the project." });
     });

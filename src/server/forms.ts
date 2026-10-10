@@ -62,6 +62,20 @@ export function parseBriefForm(fd: FormData): Parsed<Brief> {
     return tooLong(value.product, value.concerns, value.outOfScope) ? { ok: false, error: TOO_LONG } : { ok: true, value };
 }
 
+/**
+ * The client's consent with the auditor's own exclusions per repository (`exclusions-<id>`): the
+ * consent's scope is saved with it.
+ */
+export function parseConsentForm(
+    fd: FormData,
+    repositoryIds: string[]
+): Parsed<{ consent: boolean; exclusions: Record<string, string | null> }> {
+    const exclusions = Object.fromEntries(repositoryIds.map(id => [id, note(fd, `exclusions-${id}`)]));
+    return tooLong(...Object.values(exclusions))
+        ? { ok: false, error: TOO_LONG }
+        : { ok: true, value: { consent: fd.get("consent") === "on", exclusions } };
+}
+
 /** `confirm`: the "Save and confirm" button; the other saves the instructions alone. */
 export function parseRepositoryNotesForm(
     fd: FormData

@@ -2,6 +2,7 @@ import { readdir, rm } from "node:fs/promises";
 import { join } from "node:path";
 import "server-only";
 
+import { readAiPolicy, summarizePolicy } from "@/engine/ai-policy";
 import { pathNames } from "@/engine/pipeline";
 import { type StackProfile, detectStack, stackProfileText } from "@/engine/stack";
 import { deleteProjectClones, isBranchName, readRemote, withScratchClone } from "@/engine/workspace";
@@ -65,17 +66,37 @@ export async function deleteProject(projectId: string, workspaceDir: string): Pr
 
 /**
  * Detects the branch's stack as it is now, from a clone of its own, so Andrii can confirm it before
- * the first run. The audited commit and the run's clones are left alone.
+ * the first run, and reads the client's AI policy there with the auditor's own patterns: a manifest
+ * it excludes is not read. The audited commit and the run's clones are left alone.
  */
 export async function detectRepositoryStack(projectId: string, repositoryId: string, workspaceDir: string): Promise<StackProfile> {
     if (await hasActiveRun(projectId)) throw new ActiveRunError();
     const repo = await prisma.repository.findFirstOrThrow({ where: { id: repositoryId, projectId } });
-    const profile = await withScratchClone({ source: repo.source, branch: repo.branch, workspaceDir, projectId }, detectStack);
+    const { profile, policy } = await withScratchClone({ source: repo.source, branch: repo.branch, workspaceDir, projectId }, async dir => {
+        const read = await readAiPolicy(dir, { auditor: repo.aiExclusions });
+        return { profile: await detectStack(dir, { excluded: rel => !!read.match(rel) }), policy: await summarizePolicy(read, dir) };
+    });
+    const now = new Date();
     await prisma.repository.update({
         where: { id: repositoryId },
-        data: { stack: profile as unknown as Prisma.InputJsonObject, stackDetectedAt: new Date() }
+        data: {
+            stack: profile as unknown as Prisma.InputJsonObject,
+            stackDetectedAt: now,
+            aiPolicyDetected: policy as unknown as Prisma.InputJsonObject,
+            aiPolicyDetectedAt: now
+        }
     });
     return profile;
+}
+
+/** The client's consent and, with it, the auditor's own exclusions for each of the project's repositories. */
+export async function saveConsent(projectId: string, v: { consent: boolean; exclusions: Record<string, string | null> }): Promise<void> {
+    await prisma.$transaction([
+        prisma.project.update({ where: { id: projectId }, data: { aiConsentAt: v.consent ? new Date() : null } }),
+        ...Object.entries(v.exclusions).map(([id, aiExclusions]) =>
+            prisma.repository.updateMany({ where: { id, projectId }, data: { aiExclusions: aiExclusions?.trim() || null } })
+        )
+    ]);
 }
 
 /**

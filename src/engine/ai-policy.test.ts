@@ -127,9 +127,9 @@ describe("readAiPolicy: Claude Code's Read rules", () => {
         expect(q.match("vault2")).toBeNull();
     });
 
-    it("matches without regard to case, as the clone's file system opens SSL/ for ssl/", async () => {
-        const p = await readAiPolicy(await tree({ ".claude/settings.json": settings(["Read(./ssl/**)"]) }));
-        expect(p.match("SSL/server.key")).not.toBeNull();
+    it("matches without regard to case, as the clone's file system opens TLS/ for tls/", async () => {
+        const p = await readAiPolicy(await tree({ ".claude/settings.json": settings(["Read(./tls/**)"]) }));
+        expect(p.match("TLS/server.key")).not.toBeNull();
     });
 });
 
@@ -234,30 +234,30 @@ describe("readAiPolicy: the auditor's own patterns", () => {
 
 describe("excludedBy and checkReadable", () => {
     it("matches the path as asked and the path it resolves to", async () => {
-        const p = await readAiPolicy(await tree({ ".claude/settings.json": settings(["Read(./ssl/**)"]) }));
-        expect(excludedBy(p, "web/server.key", "ssl/server.key")?.file).toBe(".claude/settings.json");
-        expect(excludedBy(p, "ssl/server.key", "certs/server.key")?.file).toBe(".claude/settings.json");
-        expect(excludedBy(p, "./ssl//server.key")).not.toBeNull();
-        expect(excludedBy(p, "src/../ssl/server.key")).not.toBeNull();
+        const p = await readAiPolicy(await tree({ ".claude/settings.json": settings(["Read(./tls/**)"]) }));
+        expect(excludedBy(p, "web/server.key", "tls/server.key")?.file).toBe(".claude/settings.json");
+        expect(excludedBy(p, "tls/server.key", "certs/server.key")?.file).toBe(".claude/settings.json");
+        expect(excludedBy(p, "./tls//server.key")).not.toBeNull();
+        expect(excludedBy(p, "src/../tls/server.key")).not.toBeNull();
         expect(excludedBy(p, "src/a.ts", "src/a.ts")).toBeNull();
     });
 
     it("refuses a symlink into an excluded directory, and a path in it that does not exist, before naming either", async () => {
         const root = await tree({
-            ".claude/settings.json": settings(["Read(./ssl/**)"]),
-            "ssl/server.key": "-----BEGIN PRIVATE KEY-----\n",
+            ".claude/settings.json": settings(["Read(./tls/**)"]),
+            "tls/server.key": "-----BEGIN PRIVATE KEY-----\n",
             "src/a.ts": "export {};\n"
         });
-        await symlink(join(root, "ssl"), join(root, "certs"));
-        await symlink(join(root, "ssl/server.key"), join(root, "key.pem"));
+        await symlink(join(root, "tls"), join(root, "certs"));
+        await symlink(join(root, "tls/server.key"), join(root, "key.pem"));
         const p = await readAiPolicy(root);
         await expect(checkReadable(p, root, "certs/server.key")).rejects.toThrow(
             "certs/server.key is excluded by the client's AI policy (.claude/settings.json)."
         );
         await expect(checkReadable(p, root, "key.pem")).rejects.toThrow(/key\.pem is excluded by the client's AI policy/);
-        await expect(checkReadable(p, root, "ssl/missing.key")).rejects.toThrow(/excluded by the client's AI policy/);
+        await expect(checkReadable(p, root, "tls/missing.key")).rejects.toThrow(/excluded by the client's AI policy/);
         expect((await checkReadable(p, root, "src/a.ts")).rel).toBe("src/a.ts");
-        await expect(checkReadable(undefined, root, "certs/server.key")).resolves.toMatchObject({ rel: "ssl/server.key" });
+        await expect(checkReadable(undefined, root, "certs/server.key")).resolves.toMatchObject({ rel: "tls/server.key" });
     });
 });
 

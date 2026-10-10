@@ -3,16 +3,18 @@ import { notFound } from "next/navigation";
 
 import { ActionForm } from "@/app/ActionForm";
 import { ReportExport } from "@/app/ReportExport";
-import { deleteProject, removeRepository, setBranch, setConsent } from "@/app/actions";
-import { Badge, Card, Icon, PageHeader, RunStatus, button, field } from "@/app/ui";
+import { deleteProject, removeRepository, setBranch } from "@/app/actions";
+import { Card, Icon, PageHeader, RunStatus, button, field } from "@/app/ui";
+import type { AiPolicySummary } from "@/engine/ai-policy";
 import { credentialStatus } from "@/engine/credentials";
 import { PLAN_RESERVE, clock, overReserve, planUsageLine, readPlanUsage } from "@/engine/plan-usage";
 import { type StackProfile, stackProfileText, suggestionsFor } from "@/engine/stack";
 import { agentCostStats, planShareRate } from "@/server/estimate";
 import { getProject } from "@/server/queries";
 
+import { AiPolicyPanel } from "./AiPolicy";
 import { ModelAccessCard } from "./ModelAccess";
-import { AddRepositoryForm, BriefForm, RepositoryNotes, StartRunForm } from "./forms";
+import { AddRepositoryForm, BriefForm, ConsentForm, RepositoryNotes, StartRunForm } from "./forms";
 
 export const dynamic = "force-dynamic";
 
@@ -106,6 +108,12 @@ export default async function ProjectPage({ params }: { params: Promise<{ projec
                                             confirmedAt={r.stackConfirmedAt?.toISOString().slice(0, 10) ?? null}
                                             instructions={r.instructions}
                                         />
+                                        <AiPolicyPanel
+                                            detected={r.aiPolicyDetected as AiPolicySummary | null}
+                                            detectedAt={r.aiPolicyDetectedAt?.toISOString().slice(0, 10) ?? null}
+                                            audited={r.aiPolicy as AiPolicySummary | null}
+                                            auditedSha={r.commitSha}
+                                        />
                                     </li>
                                 ))}
                             </ul>
@@ -139,29 +147,13 @@ export default async function ProjectPage({ params }: { params: Promise<{ projec
                     <Card
                         as="section"
                         title="Client's AI consent"
-                        description="Required before any audit: it records that the client agreed to an AI review of their code."
+                        description="Required before any audit: it records that the client agreed to an AI review of their code, and which files the client kept out of it."
                     >
-                        <form action={setConsent.bind(null, project.id)} className="flex flex-wrap items-center gap-3 text-sm">
-                            <label className="flex flex-1 items-start gap-2.5 text-zinc-700">
-                                <input
-                                    type="checkbox"
-                                    name="consent"
-                                    defaultChecked={!!project.aiConsentAt}
-                                    className="mt-0.5 size-4 rounded border-zinc-300 accent-indigo-600"
-                                />
-                                The client agreed that their code may be sent to Claude (Anthropic) for this audit.
-                            </label>
-                            <button className={`${button.secondary} ${button.small}`}>Save</button>
-                            {project.aiConsentAt ? (
-                                <Badge tone="emerald" dot>
-                                    recorded {project.aiConsentAt.toISOString().slice(0, 10)}
-                                </Badge>
-                            ) : (
-                                <Badge tone="amber" dot>
-                                    not recorded
-                                </Badge>
-                            )}
-                        </form>
+                        <ConsentForm
+                            projectId={project.id}
+                            consentAt={project.aiConsentAt?.toISOString().slice(0, 10) ?? null}
+                            repositories={project.repositories.map(r => ({ id: r.id, source: r.source, aiExclusions: r.aiExclusions }))}
+                        />
                     </Card>
                 </div>
 

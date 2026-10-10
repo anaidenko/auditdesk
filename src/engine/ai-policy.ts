@@ -56,7 +56,7 @@ const PROBE = "auditdesk-probe/auditdesk-probe";
 
 type Test = (rel: string) => boolean;
 
-/** gitignore's patterns, case-insensitive: the clone sits on macOS's file system, where SSL/ opens ssl/. */
+/** gitignore's patterns, case-insensitive: the clone sits on macOS's file system, where TLS/ opens tls/. */
 const matcher = (): Ignore => ignore({ ignorecase: true });
 
 /** A `[` never closed, or a lone trailing backslash: git matches no path with it. */

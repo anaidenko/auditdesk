@@ -2,6 +2,7 @@ import { mkdir, writeFile } from "node:fs/promises";
 import { basename, join } from "node:path";
 import "server-only";
 
+import type { AiPolicySummary } from "@/engine/ai-policy";
 import { ASPECTS, SEAMS, aspectTitle } from "@/engine/aspects";
 import { loadChecklist } from "@/engine/checklists";
 import { workspaceDir } from "@/engine/config";
@@ -237,6 +238,7 @@ export async function loadReportData(
                 branch,
                 sha: r.commitSha ?? "not cloned",
                 notCovered: (r.stack as StackProfile | null)?.notCovered ?? [],
+                aiPolicy: r.aiPolicy as AiPolicySummary | null,
                 ...(links && { links })
             };
         }),

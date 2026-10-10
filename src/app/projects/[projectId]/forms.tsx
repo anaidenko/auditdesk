@@ -12,6 +12,7 @@ import {
     detectStack,
     saveBrief,
     saveNotes,
+    setConsent,
     startRun
 } from "@/app/actions";
 import { ACCESS_LABEL } from "@/app/model-access";
@@ -386,5 +387,64 @@ export function RepositoryNotes({
                 </form>
             </div>
         </details>
+    );
+}
+
+/**
+ * The client's consent, and with it the files the client asked to keep out of the AI review, per
+ * repository: the consent's scope is saved, enforced and reported with it.
+ */
+export function ConsentForm({
+    projectId,
+    consentAt,
+    repositories
+}: {
+    projectId: string;
+    consentAt: string | null;
+    repositories: { id: string; source: string; aiExclusions: string | null }[];
+}) {
+    const [state, save, saving] = useActionState<FormState, FormData>(setConsent.bind(null, projectId), { error: null });
+    return (
+        <form action={save} className="space-y-4 text-sm">
+            <div className="flex flex-wrap items-center gap-3">
+                <label className="flex flex-1 items-start gap-2.5 text-zinc-700">
+                    <input
+                        type="checkbox"
+                        name="consent"
+                        defaultChecked={!!consentAt}
+                        className="mt-0.5 size-4 rounded border-zinc-300 accent-indigo-600"
+                    />
+                    The client agreed that their code may be sent to Claude (Anthropic) for this audit.
+                </label>
+                <button disabled={saving} className={`${button.secondary} ${button.small}`}>
+                    Save
+                </button>
+                {consentAt ? (
+                    <Badge tone="emerald" dot>
+                        recorded {consentAt}
+                    </Badge>
+                ) : (
+                    <Badge tone="amber" dot>
+                        not recorded
+                    </Badge>
+                )}
+            </div>
+            {repositories.map(r => (
+                <label key={r.id} className={label}>
+                    Excluded by the client in <span className="font-mono normal-case">{r.source}</span>
+                    <span className="mt-0.5 block font-normal tracking-normal normal-case">
+                        One gitignore pattern per line, such as <code>payments/**</code>: added to the repository&apos;s own rules, no agent
+                        reads these files, and the report lists them.
+                    </span>
+                    <textarea
+                        name={`exclusions-${r.id}`}
+                        maxLength={MAX_NOTE}
+                        defaultValue={r.aiExclusions ?? ""}
+                        className={`${textarea} font-mono text-xs`}
+                    />
+                </label>
+            ))}
+            {state.error && <FormError>{state.error}</FormError>}
+        </form>
     );
 }

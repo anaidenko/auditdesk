@@ -1,3 +1,4 @@
+import { AUDITOR } from "../ai-policy";
 import { SEAMS, aspectTitle } from "../aspects";
 import { limitedReview } from "../coverage";
 import { BY_SIZE_TEXT, SIZES, formatHours, formatTotal, totalHours } from "../effort";
@@ -179,6 +180,44 @@ function method(d: ReportData): string {
 }
 
 /** Performance and accessibility read from code: what the report cannot claim for them. */
+const fileCount = (n: number) => (n ? `${n} ${n === 1 ? "file" : "files"}` : "no file");
+
+/**
+ * What the client's AI policy kept from the agents, per repository: each source with its patterns,
+ * the auditor's own exclusions, and the files (design: the client's own AI exclusions).
+ */
+function exclusions(d: ReportData): string {
+    const rows = d.repositories.flatMap(r => {
+        const p = r.aiPolicy;
+        if (!p?.sources.length) return [];
+        if (p.everything)
+            return [
+                `<p>Not reviewed by AI: the client's own settings exclude every file of ${e(r.name)}${p.readsNothing ? ` (a bare Read deny at <code>${e(p.readsNothing)}</code>)` : ""}.</p>`
+            ];
+        const auditor = p.sources.find(s => s.file === AUDITOR);
+        const sources = p.sources.map(s => {
+            const patterns = s.patterns
+                .filter(x => x.note !== "outside the repository, not applicable")
+                .map(x => `<code>${e(x.pattern)}</code>`)
+                .join(", ");
+            if (s === auditor) return `<li>Agreed with the client, ${fileCount(s.excludedFiles)}: ${patterns}</li>`;
+            const what = s.intent
+                ? "intent, not enforced by any tool"
+                : s.nested
+                  ? `${e(s.tool)}; a nested file, which ${e(s.tool)} reads only at the root`
+                  : e(s.tool);
+            return `<li><code>${e(s.file)}</code> (${what}), ${fileCount(s.excludedFiles)}: ${patterns}</li>`;
+        });
+        return [
+            `<p>In ${e(r.name)}, ${p.excludedFiles} of ${p.files} files, by the client's own settings${auditor ? " and the exclusions agreed with the client" : ""}:</p>`,
+            `<ul class="method">\n${sources.join("\n")}\n</ul>`,
+            ...(p.excluded.length ? [`<p>Files: ${p.excluded.map(x => `<code>${e(x)}</code>`).join(", ")}.</p>`] : [])
+        ];
+    });
+    if (!rows.length) return "";
+    return `<h3>Excluded from the AI review</h3>\n${rows.join("\n")}\n<p class="muted">The scanners still covered these files; their findings there are in this report.</p>`;
+}
+
 function staticOnly(d: ReportData): string {
     return Object.entries(STATIC_ONLY)
         .filter(([key]) => d.aspects.some(a => a.key === key))
@@ -588,6 +627,7 @@ ${d.repositories
     .join("\n")}
 ${d.methodUrl ? `<li>More on the method: ${out(d.methodUrl, e(d.methodUrl.replace(/^https?:\/\//, "").replace(/\/$/, "")))}.</li>` : ""}
 </ul>
+${exclusions(d)}
 </section>
 
 <section id="findings"><h2>Findings</h2>
