@@ -54,7 +54,7 @@ Local only: it binds 127.0.0.1 and has no login. The design is in [docs/design.m
   to itself, its branch and its commit; a local one does not.
 - **Exports:** besides the report, one Markdown file for an AI coding agent that fixes the findings
   (the audited commits, how to work through them, the files the client keeps from AI tools, then
-  every finding worst first under its ID), SARIF 2.1.0 for code scanning, one file per repository,
+  every finding worst first under its ID; one that cites such a file shows only where it is), SARIF 2.1.0 for code scanning, one file per repository,
   and the accepted findings as issue drafts: a CSV for Linear's CLI importer ("Linear (CSV)") or another
   tracker's, or JSON that `pnpm issues:gh` turns into GitHub issues through the `gh` CLI. It
   previews them first; `--create` creates them, skips those that exist, and refuses a public

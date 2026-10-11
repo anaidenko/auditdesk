@@ -1,8 +1,9 @@
+import { existsSync } from "node:fs";
 import { mkdir, writeFile } from "node:fs/promises";
 import { basename, join } from "node:path";
 import "server-only";
 
-import { type AiPolicySummary, policyKey } from "@/engine/ai-policy";
+import { type AiPolicySummary, policyKey, readAiPolicy } from "@/engine/ai-policy";
 import { ASPECTS, SEAMS, aspectTitle } from "@/engine/aspects";
 import { loadChecklist } from "@/engine/checklists";
 import { workspaceDir } from "@/engine/config";
@@ -132,6 +133,37 @@ export function exportOptions(url: string): { includeCost: boolean; includeHours
  * otherwise the report states no cost, and the effort by size alone. `draft`: the findings and
  * questions awaiting review go in too, marked, for a first look before the review.
  */
+const MORE = /^and \d+ more$/;
+
+/**
+ * Per repository, whether a path is one the client keeps from AI tools, for the Markdown for AI: the
+ * policy read again from the clone, as the agents were refused, while it is the one the report
+ * states; otherwise the areas the report lists, and every path when that list was cut short.
+ */
+async function keptFromAi(
+    repos: { id: string; clonePath: string | null; aiExclusions: string | null; aiPolicy: unknown }[]
+): Promise<Map<string, (rel: string) => boolean>> {
+    const tests = new Map<string, (rel: string) => boolean>();
+    for (const r of repos) {
+        const stated = r.aiPolicy as AiPolicySummary | null;
+        if (!stated?.sources.length) continue;
+        if (stated.everything) {
+            tests.set(r.id, () => true);
+            continue;
+        }
+        const policy =
+            r.clonePath && existsSync(r.clonePath) ? await readAiPolicy(r.clonePath, { auditor: r.aiExclusions }).catch(() => null) : null;
+        if (policy && policyKey({ ...stated, sources: policy.sources.map(s => ({ ...s, excludedFiles: 0 })) }) === policyKey(stated)) {
+            tests.set(r.id, rel => !!policy.match(rel));
+            continue;
+        }
+        const cut = stated.excluded.some(x => MORE.test(x));
+        const areas = stated.excluded.filter(x => !MORE.test(x)).map(x => x.replace(/ \(\d+ files?\)$/, ""));
+        tests.set(r.id, rel => cut || areas.some(a => (a.endsWith("/") ? rel.startsWith(a) : rel === a)));
+    }
+    return tests;
+}
+
 export async function loadReportData(
     projectId: string,
     o: { includeCost?: boolean; includeHours?: boolean; draft?: boolean } = {}
@@ -144,6 +176,15 @@ export async function loadReportData(
     const names = reportNames(project.repositories);
     const statuses = o.draft ? [...REPORTABLE, "unreviewed" as const] : [...REPORTABLE];
     const rows = await prisma.finding.findMany({ where: { projectId, status: { in: statuses } }, orderBy: { number: "asc" } });
+    const kept = await keptFromAi(project.repositories);
+    // A seams finding's paths start with the pipeline's name for its repository.
+    const prefixes = [...pathNames(project.repositories)];
+    const isKept = (r: (typeof rows)[number]) =>
+        (r.evidence as unknown as Evidence[]).some(e => {
+            if (r.aspect !== SEAMS) return kept.get(r.repositoryId ?? "")?.(e.file) ?? false;
+            const at = prefixes.find(([, path]) => e.file.startsWith(`${path}/`));
+            return !!at && (kept.get(at[0])?.(e.file.slice(at[1].length + 1)) ?? false);
+        });
     const toReport = (r: (typeof rows)[number]): ReportFinding => ({
         label: findingLabel(r.number),
         severity: r.severity as SeverityName | null,
@@ -164,7 +205,8 @@ export async function loadReportData(
         fixBeforeSignoff: r.fixBeforeSignoff,
         refs: referencesFor(referenceData, r.checklistItem, r.references as References, { question: r.kind === "question" }),
         recheck: r.recheck,
-        ...(r.status === "unreviewed" && { unreviewed: true })
+        ...(r.status === "unreviewed" && { unreviewed: true }),
+        ...(isKept(r) && { aiExcluded: true })
     });
     // Per repository and aspect, the latest agent that finished, across runs: a re-run adds a second
     // agent to its run, and a run that failed before its agents started has none.

@@ -157,7 +157,12 @@ const CODE_SPAN = /(?<!`)(`+)(?!`)[\s\S]*?(?<!`)\1(?!`)/g;
  * so `__proto__` or `<div>` must not turn into emphasis or a tag. The model's inline code is kept.
  */
 function prose(text: string): string {
-    const escape = (s: string) => s.replace(/[\\*_<>[\]|~]/g, "\\$&").replace(/^(\s*)#/gm, "$1\\#");
+    // A backtick CODE_SPAN did not pair would open a fence or a span; a line of - or = would make the line above a heading.
+    const escape = (s: string) =>
+        s
+            .replace(/[\\*_<>[\]|~`]/g, "\\$&")
+            .replace(/^(\s*)#/gm, "$1\\#")
+            .replace(/^(\s*)([-=])(?=[-=\s]*$)/gm, "$1\\$2");
     let out = "";
     let at = 0;
     for (const m of text.matchAll(CODE_SPAN)) {
@@ -167,7 +172,9 @@ function prose(text: string): string {
     return out + escape(text.slice(at));
 }
 
-const code = (s: string) => {
+/** Inline code, on one line: a newline in a client's path or pattern would end the span and start a heading. */
+const code = (raw: string) => {
+    const s = raw.replace(/\r?\n/g, " ");
     const t = ticks(s, 1);
     return t.length > 1 ? `${t} ${s} ${t}` : `\`${s}\``;
 };
@@ -181,10 +188,22 @@ function effortGloss(f: ReportFinding): string {
 /** Andrii's call per finding wins; otherwise critical and high come before sign-off (design § 10), as in the report. */
 const beforeSignoff = (f: ReportFinding) => f.fixBeforeSignoff ?? (f.severity === "critical" || f.severity === "high");
 
+/** A place in the code, and when it lies only in git history, the commit it was found at. */
+const place = (e: Evidence) =>
+    `${code(e.file)}, ${e.startLine === e.endLine ? `line ${e.startLine}` : `lines ${e.startLine}–${e.endLine}`}${
+        e.commit ? ` (in git history at ${code(e.commit.slice(0, 8))}, not in the audited tree)` : ""
+    }`;
+
+/** The first line of a finding: its severity, checklist item, repository and effort, and `extra`. */
+const meta = (f: ReportFinding, extra: string[] = []) =>
+    `**Severity:** ${f.severity ?? "question"} · **Checklist item:** ${f.checklistItem ?? "none"} · **Repository:** ${prose(f.repository)}${
+        f.effort ? ` · **Effort:** ${effortGloss(f)}` : ""
+    }${extra.map(x => ` · ${x}`).join("")}`;
+
 /**
- * A finding as Markdown: its fields under headings one level below `h`, which the caller's own
- * heading takes; `extra` joins the first line, and the footer names the report for an issue that
- * stands alone.
+ * A finding as Markdown: its fields under `h` headings, below the caller's own heading for the
+ * finding; `extra` joins the first line, and the footer names the report for an issue that stands
+ * alone.
  */
 function body(f: ReportFinding, o: { h?: string; extra?: string[]; footer?: boolean } = {}): string {
     const h = o.h ?? "###";
@@ -204,9 +223,7 @@ function body(f: ReportFinding, o: { h?: string; extra?: string[]; footer?: bool
         ...(f.unreviewed
             ? ["**Not reviewed yet:** the auditor has not reviewed this finding; it comes from a draft of the report.", ""]
             : []),
-        `**Severity:** ${f.severity ?? "question"} · **Checklist item:** ${f.checklistItem ?? "none"} · **Repository:** ${prose(f.repository)}${
-            f.effort ? ` · **Effort:** ${effortGloss(f)}` : ""
-        }${(o.extra ?? []).map(x => ` · ${x}`).join("")}`,
+        meta(f, o.extra),
         "",
         prose(f.summary),
         "",
@@ -219,11 +236,7 @@ function body(f: ReportFinding, o: { h?: string; extra?: string[]; footer?: bool
         "",
         `${h} Evidence`,
         "",
-        ...f.evidence.flatMap(e => [
-            `${code(e.file)}, ${e.startLine === e.endLine ? `line ${e.startLine}` : `lines ${e.startLine}–${e.endLine}`}`,
-            ...(e.snippet ? ["", ticks(e.snippet, 3), e.snippet, ticks(e.snippet, 3)] : []),
-            ""
-        ]),
+        ...f.evidence.flatMap(e => [place(e), ...(e.snippet ? ["", ticks(e.snippet, 3), e.snippet, ticks(e.snippet, 3)] : []), ""]),
         `${h} Recommendation`,
         "",
         prose(f.recommendation),
@@ -304,19 +317,48 @@ const area = (x: string) => {
 function keptFromAi(d: ReportData): string[] {
     return d.repositories.flatMap(r => {
         const p = r.aiPolicy;
-        if (!p?.sources.length) return [];
-        if (p.everything) return [`- In ${prose(r.name)}: every file.`];
+        if (!p?.sources.length && !p?.warnings.length) return [];
+        // A policy Auditdesk could not read in full is no all-clear: the team says what else stays out.
+        const warnings = p.warnings.map(
+            w => `  - Auditdesk could not use part of this policy: ${prose(w)} Ask the team which files to keep away from.`
+        );
+        if (p.everything) return [`- In ${prose(r.name)}: every file.`, ...warnings];
+        // As the report names them (render.ts, exclusions): a nested file its tool reads only at the root.
+        const by = (s: (typeof p.sources)[number]) =>
+            s.intent
+                ? "the team's intent; no tool reads it"
+                : s.nested
+                  ? `${prose(s.tool)}; a nested file, which ${prose(s.tool)} reads only at the root`
+                  : prose(s.tool);
         const patterns = p.sources.flatMap(s =>
             s.patterns
                 .filter(x => x.note !== "outside the repository, not applicable")
-                .map(x =>
-                    s.file === AUDITOR
-                        ? `  - ${code(x.pattern)}, agreed with the client`
-                        : `  - ${code(x.pattern)} in ${code(s.file)} (${s.intent ? "the team's intent; no tool reads it" : prose(s.tool)})`
-                )
+                .map(x => {
+                    const what =
+                        s.file === AUDITOR
+                            ? `${code(x.pattern)}, agreed with the client`
+                            : `${code(x.pattern)} in ${code(s.file)} (${by(s)})`;
+                    const note = x.pattern.startsWith("!") ? ": a negation, so these stay readable" : x.note ? ` (${prose(x.note)})` : "";
+                    return `  - ${what}${note}`;
+                })
         );
-        return [`- In ${prose(r.name)}: ${p.excluded.length ? p.excluded.map(area).join(", ") : "no file at this commit"}`, ...patterns];
+        return [
+            `- In ${prose(r.name)}: ${p.excluded.length ? p.excluded.map(area).join(", ") : "no file at this commit"}`,
+            ...patterns,
+            ...warnings
+        ];
     });
+}
+
+/** Where a finding in a file the client keeps from AI tools is, and nothing it says about the code. */
+function keptCard(f: ReportFinding, extra: string[]): string {
+    return [
+        meta(f, extra),
+        "",
+        "In a file the client keeps from AI tools: leave it to the team. Its details are in the report.",
+        "",
+        ...f.evidence.map(e => `- ${place(e)}`)
+    ].join("\n");
 }
 
 /**
@@ -337,11 +379,19 @@ export function agentMarkdown(d: ReportData): string {
         ...(waiting[0] ? [`${waiting[0]} of ${findings.length} ${findings.length === 1 ? "finding" : "findings"}`] : []),
         ...(waiting[1] ? [`${waiting[1]} of ${questions.length} open ${questions.length === 1 ? "question" : "questions"}`] : [])
     ];
-    const heading = (f: ReportFinding) => `### ${f.label}${f.unreviewed ? " (not reviewed)" : ""}: ${prose(f.title)}`;
+    // The title is the model's or a scanner's words about the code, so a kept file's finding goes untitled, as in the agents' index.
+    const heading = (f: ReportFinding) =>
+        `### ${f.label}${f.unreviewed ? " (not reviewed)" : ""}: ${f.aiExcluded ? "A finding in a file the client keeps from AI tools" : prose(f.title)}`;
     const card = (f: ReportFinding, question: boolean) => {
         const extra = question ? [] : [`**Fix before sign-off:** ${beforeSignoff(f) ? "yes" : "no"}`];
         const recheck = f.recheck ? RECHECK[f.recheck] : undefined;
-        return [heading(f), "", body(f, { h: "####", extra, footer: false }), ...(recheck ? ["", `**Re-audit:** ${recheck}`] : []), ""];
+        return [
+            heading(f),
+            "",
+            f.aiExcluded ? keptCard(f, extra) : body(f, { h: "####", extra, footer: false }),
+            ...(recheck ? ["", `**Re-audit:** ${recheck}`] : []),
+            ""
+        ];
     };
     const repos = d.repositories.flatMap(r => [
         `- ${prose(r.name)} · branch ${prose(r.branch)} · commit ${r.sha}`,
@@ -363,7 +413,7 @@ export function agentMarkdown(d: ReportData): string {
         "## How to work through it",
         "",
         "- The findings run worst first, and their IDs (F-012) stay the same through re-audits: name the ID in the commit or pull request that fixes one.",
-        "- Each finding cites files and lines at the commit listed under Audited code. Read the cited code first; if it no longer matches, say so rather than guess.",
+        "- Each finding cites files and lines at the commit listed under Audited code, or at a commit in git history where it says so. Read the cited code first; if it no longer matches, say so rather than guess.",
         "- Fix what the recommendation describes, with a test where the code has tests, and leave unrelated code as it is.",
         "- Start with the findings to fix before sign-off.",
         ...(d.draft && waiting[0] + waiting[1]
@@ -375,6 +425,12 @@ export function agentMarkdown(d: ReportData): string {
         "## Audited code",
         "",
         ...repos,
+        ...(d.seamsPaths?.length
+            ? [
+                  "",
+                  `The seams pass's paths start with their repository: ${d.seamsPaths.map(p => `${code(`${p.path}/`)} is ${prose(p.repository)}`).join(", ")}.`
+              ]
+            : []),
         // An aspect's title names its repository; the list above names them already.
         ...(d.aspects.length
             ? ["", `Aspects examined: ${prose([...new Set(d.aspects.map(a => (a.key ? aspectTitle(a.key) : a.title)))].join(", "))}.`]

@@ -1,3 +1,6 @@
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { aspectTitle } from "@/engine/aspects";
@@ -137,6 +140,57 @@ describe("the report's AI exclusions", () => {
         await prisma.repository.update({ where: { id: repo.id }, data: { aiPolicy: policy("payments/", 2) } });
         // The counts move with the commit; only the sources and patterns tell one policy from another.
         expect((await loadReportData(project.id)).repositories[0].aiPolicyEarlier).toEqual([aspectTitle("architecture")]);
+    });
+});
+
+describe("the findings in files the client keeps from AI tools", () => {
+    const summary = (excluded: string[]) => ({
+        sources: [{ file: ".cursorignore", tool: "Cursor", patterns: [{ line: 1, pattern: "payments/" }], excludedFiles: 1 }],
+        warnings: [],
+        readsNothing: null,
+        files: 3,
+        excludedFiles: 1,
+        excluded,
+        everything: false
+    });
+    async function project(clonePath: string | null, excluded: string[]) {
+        const { project, repo } = await projectWithRepo();
+        await prisma.repository.update({ where: { id: repo.id }, data: { clonePath, aiPolicy: summary(excluded) } });
+        for (const [title, file] of [
+            ["Charge without a check", "payments/charge.ts"],
+            ["Open redirect", "src/a.ts"]
+        ]) {
+            const { id } = await createFinding(
+                project.id,
+                null,
+                sampleFinding(repo.id, { title, evidence: [{ file, startLine: 3, endLine: 4, snippet: "x" }] })
+            );
+            await prisma.finding.update({ where: { id }, data: { status: "accepted" } });
+        }
+        return project.id;
+    }
+    const flagged = async (id: string) => Object.fromEntries((await loadReportData(id)).findings.map(f => [f.title, !!f.aiExcluded]));
+
+    it("are marked by the policy read from the clone, as the agents were refused", async () => {
+        const clone = await mkdtemp(join(tmpdir(), "auditdesk-kept-"));
+        await writeFile(join(clone, ".cursorignore"), "payments/\n");
+        expect(await flagged(await project(clone, ["payments/ (1 file)"]))).toEqual({
+            "Charge without a check": true,
+            "Open redirect": false
+        });
+        await rm(clone, { recursive: true, force: true });
+    });
+
+    it("are marked by the areas the report lists when the clone is gone, and every one when that list was cut short", async () => {
+        expect(await flagged(await project("/tmp/auditdesk-no-such-clone", ["payments/ (1 file)"]))).toEqual({
+            "Charge without a check": true,
+            "Open redirect": false
+        });
+        await resetDb();
+        expect(await flagged(await project(null, ["payments/ (1 file)", "and 3 more"]))).toEqual({
+            "Charge without a check": true,
+            "Open redirect": true
+        });
     });
 });
 

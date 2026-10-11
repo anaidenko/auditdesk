@@ -202,7 +202,10 @@ the findings: the audited commit of each repository, how to work through the fin
 first, the ID named in each commit, the cited code read before it is changed), the files the
 client keeps from AI tools with the patterns that say so, a summary of what to fix before sign-off
 and what can wait, then every finding under its stable ID, with the issue body's fields one
-heading level down, and the open questions apart. Markdown rather than JSON: an agent reads it as
+heading level down, and the open questions apart. A finding that cites a file the client keeps
+from AI tools shows there only its ID, severity, checklist item and places, under a neutral title,
+as in the agents' own index: its snippet, title and explanation stay in the report, which people
+read. Markdown rather than JSON: an agent reads it as
 it reads a README, and SARIF and the issues JSON already serve tools.
 
 Each finding links what it is relevant to, never claiming compliance: its OWASP Top 10:2025
