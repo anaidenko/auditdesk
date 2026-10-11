@@ -5,13 +5,16 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 // The README's screenshots, from a replayed run on the sample repository: no client data.
-// Run with AUDITDESK_SCREENSHOTS=1 pnpm test:e2e -g screenshots.
+// Run with AUDITDESK_SCREENSHOTS=1 pnpm test:e2e -g screenshots. AUDITDESK_SCREENSHOTS_WIDTH and
+// AUDITDESK_SCREENSHOTS_OUT take the same shots at another window width into another folder, as
+// naidenko.dev/audit shows them at 1136.
 test.skip(!process.env.AUDITDESK_SCREENSHOTS, "screenshots are taken on request");
 
 // One clock and one repository path in every shot, so a retake changes only what changed.
-test.use({ timezoneId: "UTC" });
+const width = Number(process.env.AUDITDESK_SCREENSHOTS_WIDTH) || 1440;
+test.use({ timezoneId: "UTC", viewport: { width, height: 900 } });
 const SAMPLE = "/tmp/acme-shop";
-const out = "docs/screenshots";
+const out = process.env.AUDITDESK_SCREENSHOTS_OUT ?? "docs/screenshots";
 
 test("screenshots for the README", async ({ page }) => {
     mkdirSync(out, { recursive: true });

@@ -31,6 +31,11 @@ export interface ReportFinding {
     recheck?: "unchanged" | "open" | "fixed" | "changed" | "regressed" | null;
     /** In a draft only: the auditor has not reviewed it yet, and the report says so on its card. */
     unreviewed?: boolean;
+    /**
+     * It cites a file the client keeps from AI tools: the report, which people read, keeps it whole;
+     * the Markdown for AI states only where it is (design: the client's own AI exclusions).
+     */
+    aiExcluded?: boolean;
 }
 
 export interface ReportData {

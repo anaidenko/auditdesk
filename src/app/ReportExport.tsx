@@ -93,7 +93,7 @@ export async function ReportExport({ projectId }: { projectId: string }) {
                             id={`${panel}-hours`}
                             name="hours"
                             title="Include the hours"
-                            note="Each finding's hours and the totals, in the HTML and the PDF; each finding's hours in the issues."
+                            note="Each finding's hours and the totals, in the HTML and the PDF; each finding's hours in the Markdown and the issues."
                         />
                         <Option
                             id={`${panel}-cost`}
@@ -106,7 +106,7 @@ export async function ReportExport({ projectId }: { projectId: string }) {
                                 id={`${panel}-draft`}
                                 name="draft"
                                 title="Draft: add what awaits review"
-                                note="Marked “not reviewed” in every download: the report, the PDF, the SARIF and the issues."
+                                note="Marked “not reviewed” in every download: the report, the PDF, the Markdown, the SARIF and the issues."
                             />
                         )}
                     </fieldset>
@@ -120,6 +120,14 @@ export async function ReportExport({ projectId }: { projectId: string }) {
                             <button formAction={download("/pdf")} className={button.secondary}>
                                 <Icon name="download" />
                                 PDF report
+                            </button>
+                            <button
+                                formAction={download("/markdown")}
+                                className={button.secondary}
+                                title="One Markdown file for an AI coding agent that fixes the findings"
+                            >
+                                <Icon name="download" />
+                                Markdown for AI
                             </button>
                         </div>
                     </div>

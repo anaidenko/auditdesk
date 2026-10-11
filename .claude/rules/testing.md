@@ -48,7 +48,9 @@ paths:
   generates the client), then run with `E2E_DATABASE_URL` naming a database of its own. Port 3100
   stays shared: one e2e run at a time. A server started to look at a branch (`next dev` on another
   port) runs the job runner too: point it at a database no test or session uses, and stop it
-  before an e2e run, or it takes the e2e's jobs.
+  before an e2e run, or it takes the e2e's jobs. Give it `AUDITDESK_DIST_DIR=.next-e2e`: a new dist
+  directory is added to `tsconfig.json`'s `include` (the file rewritten unformatted) and fails
+  `pnpm lint` (`.next-demo`, 2026-10-11).
 - **A socket a test server hands over** in a `connect` or `upgrade` event needs its own error
   listener: Linux resets it where macOS closes it, and the uncaught `ECONNRESET` fails CI only.
 - **A test that passes before the change exists** is a finding about the test. A red run counts

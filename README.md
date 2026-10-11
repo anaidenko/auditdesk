@@ -52,8 +52,10 @@ Local only: it binds 127.0.0.1 and has no login. The design is in [docs/design.m
   print and the PDF show them all), and links to the OWASP Top 10:2025, ASVS 5.0.0, MASVS 2.1.0, CWE,
   Cheat Sheets and WCAG 2.2 it is relevant to. A repository cloned from GitHub, GitLab or Bitbucket links
   to itself, its branch and its commit; a local one does not.
-- **Exports:** besides the report, SARIF 2.1.0 for code scanning, one file per repository, and the
-  accepted findings as issue drafts: a CSV for Linear's CLI importer ("Linear (CSV)") or another
+- **Exports:** besides the report, one Markdown file for an AI coding agent that fixes the findings
+  (the audited commits, how to work through them, the files the client keeps from AI tools, then
+  every finding worst first under its ID; one that cites such a file shows only where it is), SARIF 2.1.0 for code scanning, one file per repository,
+  and the accepted findings as issue drafts: a CSV for Linear's CLI importer ("Linear (CSV)") or another
   tracker's, or JSON that `pnpm issues:gh` turns into GitHub issues through the `gh` CLI. It
   previews them first; `--create` creates them, skips those that exist, and refuses a public
   repository without `--public`. To upload the SARIF to GitHub, run `github/codeql-action/upload-sarif`
