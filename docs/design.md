@@ -2,8 +2,8 @@
 
 Auditdesk is a local web app for auditing a client's codebase. It clones the repositories, runs
 deterministic scanners, has Claude investigate each chosen aspect with read-only tools, lets the
-auditor accept, edit or reject every finding, and exports a client-ready report as HTML and PDF.
-An eval measures how many known defects the agents find, and at what cost.
+auditor accept, edit or reject every finding, and exports a client-ready report as HTML and PDF,
+and the same findings as Markdown for an AI coding agent. An eval measures how many known defects the agents find, and at what cost.
 
 It is not a pull-request reviewer for a team's daily flow. It is a workbench for an engagement:
 a few repositories, a brief from the client, a report a founder can read and engineers can act
@@ -193,7 +193,17 @@ A draft says so in its title, its file name and a banner on its cover that count
 reviewed; each such finding or question carries "not reviewed" on its card and in the summary, and
 in SARIF its message starts "Not reviewed yet:". An issue's title reads "F-012 (not reviewed): …",
 its body opens with the same warning and it carries a `not-reviewed` label, so a tracker shows a
-draft's issue as unconfirmed rather than as work.
+draft's issue as unconfirmed rather than as work. In the Markdown for AI, its heading reads
+"F-012 (not reviewed): …", and the file tells the agent to confirm such a finding in the code
+before acting on it.
+
+The Markdown for AI is one file for a coding agent (Claude Code, Cursor and the like) that fixes
+the findings: the audited commit of each repository, how to work through the findings (worst
+first, the ID named in each commit, the cited code read before it is changed), the files the
+client keeps from AI tools with the patterns that say so, a summary of what to fix before sign-off
+and what can wait, then every finding under its stable ID, with the issue body's fields one
+heading level down, and the open questions apart. Markdown rather than JSON: an agent reads it as
+it reads a README, and SARIF and the issues JSON already serve tools.
 
 Each finding links what it is relevant to, never claiming compliance: its OWASP Top 10:2025
 category, ASVS 5.0.0 sections or requirements, its CWE when the agent named one, advisories for

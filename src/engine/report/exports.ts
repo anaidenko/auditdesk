@@ -1,3 +1,4 @@
+import { AUDITOR } from "../ai-policy";
 import { SEAMS, aspectTitle } from "../aspects";
 import { SIZES, formatHours } from "../effort";
 import { compareFindings } from "../findings";
@@ -177,7 +178,16 @@ function effortGloss(f: ReportFinding): string {
     return gloss ? `${f.effort} (${gloss})` : `${f.effort}`;
 }
 
-function body(f: ReportFinding): string {
+/** Andrii's call per finding wins; otherwise critical and high come before sign-off (design § 10), as in the report. */
+const beforeSignoff = (f: ReportFinding) => f.fixBeforeSignoff ?? (f.severity === "critical" || f.severity === "high");
+
+/**
+ * A finding as Markdown: its fields under headings one level below `h`, which the caller's own
+ * heading takes; `extra` joins the first line, and the footer names the report for an issue that
+ * stands alone.
+ */
+function body(f: ReportFinding, o: { h?: string; extra?: string[]; footer?: boolean } = {}): string {
+    const h = o.h ?? "###";
     const refs = f.refs
         ? [
               f.refs.top10,
@@ -196,30 +206,29 @@ function body(f: ReportFinding): string {
             : []),
         `**Severity:** ${f.severity ?? "question"} · **Checklist item:** ${f.checklistItem ?? "none"} · **Repository:** ${prose(f.repository)}${
             f.effort ? ` · **Effort:** ${effortGloss(f)}` : ""
-        }`,
+        }${(o.extra ?? []).map(x => ` · ${x}`).join("")}`,
         "",
         prose(f.summary),
         "",
-        "### Details",
+        `${h} Details`,
         "",
         prose(f.explanation),
         ...(f.likelihood || f.impact
             ? ["", `**Likelihood:** ${prose(f.likelihood ?? "not stated")}`, `**Impact:** ${prose(f.impact ?? "not stated")}`]
             : []),
         "",
-        "### Evidence",
+        `${h} Evidence`,
         "",
         ...f.evidence.flatMap(e => [
             `${code(e.file)}, ${e.startLine === e.endLine ? `line ${e.startLine}` : `lines ${e.startLine}–${e.endLine}`}`,
             ...(e.snippet ? ["", ticks(e.snippet, 3), e.snippet, ticks(e.snippet, 3)] : []),
             ""
         ]),
-        "### Recommendation",
+        `${h} Recommendation`,
         "",
         prose(f.recommendation),
-        ...(refs.some(Boolean) ? ["", "### References", "", ...refs.filter((r): r is Ref => !!r).map(r => `- ${link(r)}`)] : []),
-        "",
-        `_From the Auditdesk report, finding ${f.label}._`
+        ...(refs.some(Boolean) ? ["", `${h} References`, "", ...refs.filter((r): r is Ref => !!r).map(r => `- ${link(r)}`)] : []),
+        ...(o.footer === false ? [] : ["", `_From the Auditdesk report, finding ${f.label}._`])
     ];
     return lines.join("\n");
 }
@@ -278,4 +287,127 @@ export function ghIssueCommands(drafts: IssueDraft[], repo: string, o: { labels:
         ],
         stdin: d.body
     }));
+}
+
+const RECHECK: Partial<Record<NonNullable<ReportFinding["recheck"]>, string>> = {
+    regressed: "regressed since the last audit",
+    changed: "the cited code changed since the last audit; check it before you act"
+};
+
+/** "certs/ (2 files)" as the path in code and its count as text; "and 3 more" as it is. */
+const area = (x: string) => {
+    const m = /^(.+?)( \(\d+ files?\))?$/.exec(x)!;
+    return /^and \d+ more$/.test(x) ? x : `${code(m[1])}${m[2] ?? ""}`;
+};
+
+/** Per repository, what the client keeps from AI tools, and the patterns that say so: an agent fixing the code keeps off them too. */
+function keptFromAi(d: ReportData): string[] {
+    return d.repositories.flatMap(r => {
+        const p = r.aiPolicy;
+        if (!p?.sources.length) return [];
+        if (p.everything) return [`- In ${prose(r.name)}: every file.`];
+        const patterns = p.sources.flatMap(s =>
+            s.patterns
+                .filter(x => x.note !== "outside the repository, not applicable")
+                .map(x =>
+                    s.file === AUDITOR
+                        ? `  - ${code(x.pattern)}, agreed with the client`
+                        : `  - ${code(x.pattern)} in ${code(s.file)} (${s.intent ? "the team's intent; no tool reads it" : prose(s.tool)})`
+                )
+        );
+        return [`- In ${prose(r.name)}: ${p.excluded.length ? p.excluded.map(area).join(", ") : "no file at this commit"}`, ...patterns];
+    });
+}
+
+/**
+ * The report for an AI coding agent that works on the audited code: one Markdown file with the
+ * audited commits, how to work through the findings, the files the client keeps from AI tools,
+ * then every reported finding worst first under its stable ID, and the open questions apart.
+ * It honours the export's boxes as the issues do: a draft's unreviewed marked, hours when ticked.
+ */
+export function agentMarkdown(d: ReportData): string {
+    const findings = bySeverity(d.findings);
+    const questions = [...d.questions].sort((a, b) => number(a) - number(b));
+    const fixFirst = findings.filter(beforeSignoff);
+    const canWait = findings.filter(f => !beforeSignoff(f));
+    const kept = keptFromAi(d);
+    const labels = (list: ReportFinding[]) => (list.length ? list.map(f => f.label).join(", ") : "none");
+    const waiting = [findings, questions].map(list => list.filter(f => f.unreviewed).length);
+    const draftParts = [
+        ...(waiting[0] ? [`${waiting[0]} of ${findings.length} ${findings.length === 1 ? "finding" : "findings"}`] : []),
+        ...(waiting[1] ? [`${waiting[1]} of ${questions.length} open ${questions.length === 1 ? "question" : "questions"}`] : [])
+    ];
+    const heading = (f: ReportFinding) => `### ${f.label}${f.unreviewed ? " (not reviewed)" : ""}: ${prose(f.title)}`;
+    const card = (f: ReportFinding, question: boolean) => {
+        const extra = question ? [] : [`**Fix before sign-off:** ${beforeSignoff(f) ? "yes" : "no"}`];
+        const recheck = f.recheck ? RECHECK[f.recheck] : undefined;
+        return [heading(f), "", body(f, { h: "####", extra, footer: false }), ...(recheck ? ["", `**Re-audit:** ${recheck}`] : []), ""];
+    };
+    const repos = d.repositories.flatMap(r => [
+        `- ${prose(r.name)} · branch ${prose(r.branch)} · commit ${r.sha}`,
+        ...(r.notCovered.length ? [`  - Not covered by this audit: ${prose(r.notCovered.join(", "))}.`] : [])
+    ]);
+    const lines = [
+        `# Code audit: ${prose(d.projectName)}`,
+        "",
+        `The findings of a code audit, for an AI coding agent working on the audited code. Exported by Auditdesk on ${d.generatedAt}${
+            d.auditor ? ` from the audit by ${prose(d.auditor)}` : ""
+        }.`,
+        ...(d.draft && draftParts.length
+            ? [
+                  "",
+                  `A draft: ${draftParts.join(" and ")} ${waiting[0] + waiting[1] === 1 ? "is" : "are"} not reviewed by the auditor yet, each marked “not reviewed”.`
+              ]
+            : []),
+        "",
+        "## How to work through it",
+        "",
+        "- The findings run worst first, and their IDs (F-012) stay the same through re-audits: name the ID in the commit or pull request that fixes one.",
+        "- Each finding cites files and lines at the commit listed under Audited code. Read the cited code first; if it no longer matches, say so rather than guess.",
+        "- Fix what the recommendation describes, with a test where the code has tests, and leave unrelated code as it is.",
+        "- Start with the findings to fix before sign-off.",
+        ...(d.draft && waiting[0] + waiting[1]
+            ? ["- A finding marked “not reviewed” is the tools' claim, not yet the auditor's: confirm it in the code before you act on it."]
+            : []),
+        ...(questions.length ? ["- Open questions need an answer from the team: do not settle one by assumption."] : []),
+        ...(kept.length ? ["- The client keeps some files from AI tools, listed below: do not open them."] : []),
+        "",
+        "## Audited code",
+        "",
+        ...repos,
+        // An aspect's title names its repository; the list above names them already.
+        ...(d.aspects.length
+            ? ["", `Aspects examined: ${prose([...new Set(d.aspects.map(a => (a.key ? aspectTitle(a.key) : a.title)))].join(", "))}.`]
+            : []),
+        ...(kept.length
+            ? [
+                  "",
+                  "## Files kept from AI tools",
+                  "",
+                  "The client keeps these files from AI tools. Do not open, quote or change them; if a fix needs one, say so and leave it to the team.",
+                  "",
+                  ...kept
+              ]
+            : []),
+        "",
+        "## Summary",
+        "",
+        `- Fix before sign-off: ${labels(fixFirst)}`,
+        `- Can wait: ${labels(canWait)}`,
+        ...(questions.length ? [`- Open questions: ${labels(questions)}`] : []),
+        "",
+        "## Findings",
+        "",
+        ...(findings.length ? findings.flatMap(f => card(f, false)) : ["No finding is reported.", ""]),
+        ...(questions.length
+            ? [
+                  "## Open questions",
+                  "",
+                  "Points the code alone could not settle; each needs an answer from the team.",
+                  "",
+                  ...questions.flatMap(f => card(f, true))
+              ]
+            : [])
+    ];
+    return `${lines.join("\n").trimEnd()}\n`;
 }

@@ -2,7 +2,9 @@ import { describe, expect, it } from "vitest";
 
 import { reportData, reportFinding } from "@/test/report-data";
 
-import { ghIssueCommands, issueDrafts, issuesCsv, sarif } from "./exports";
+import type { AiPolicySummary } from "../ai-policy";
+
+import { agentMarkdown, ghIssueCommands, issueDrafts, issuesCsv, sarif } from "./exports";
 
 const data = () =>
     reportData({
@@ -328,5 +330,149 @@ describe("gh issue commands", () => {
 
     it("refuses a repository that is not owner/name", () => {
         expect(() => ghIssueCommands([], "shop", { labels: false })).toThrow(/owner\/name/);
+    });
+});
+
+describe("the Markdown for AI agents", () => {
+    const policy: AiPolicySummary = {
+        sources: [
+            {
+                file: ".claude/settings.json",
+                tool: "Claude Code",
+                patterns: [
+                    { line: 7, pattern: "Read(./certs/**)" },
+                    { line: 8, pattern: "Read(~/.ssh/**)", note: "outside the repository, not applicable" }
+                ],
+                excludedFiles: 2
+            },
+            { file: "the auditor's exclusions", tool: "the auditor", patterns: [{ line: 1, pattern: "payments/**" }], excludedFiles: 3 }
+        ],
+        warnings: [],
+        readsNothing: null,
+        files: 120,
+        excludedFiles: 5,
+        excluded: ["certs/ (2 files)", "payments/ (3 files)"],
+        everything: false
+    };
+
+    it("opens with what was audited and how an agent should work through it, then the findings worst first and the questions apart", () => {
+        const md = agentMarkdown(data());
+        expect(md.startsWith("# Code audit: Acme\n")).toBe(true);
+        expect(md).toContain("- app · branch main · commit 0123456789abcdef");
+        expect(md).toContain("- api · branch main · commit fedcba9876543210");
+        expect(md).toContain("## How to work through it");
+        expect(md).toContain("name the ID in the commit");
+        const at = (s: string) => md.indexOf(s);
+        expect(at("### F-001: Raw SQL")).toBeGreaterThan(at("## Findings"));
+        expect(at("### F-002: Verbose errors")).toBeGreaterThan(at("### F-001: Raw SQL"));
+        expect(at("## Open questions")).toBeGreaterThan(at("### F-002: Verbose errors"));
+        expect(at("### F-003: Who rotates the key?")).toBeGreaterThan(at("## Open questions"));
+        expect(md).toContain("#### Recommendation\n\nr");
+        expect(md).not.toContain("\n### Recommendation");
+        expect(md).toContain("`a.ts`, lines 1–2");
+        expect(md).toContain("[CWE-209](https://cwe.mitre.org/data/definitions/209.html)");
+    });
+
+    it("lists what to fix before sign-off and what can wait, Andrii's call on a finding over its severity", () => {
+        const md = agentMarkdown(
+            reportData({
+                findings: [
+                    reportFinding({ label: "F-001", severity: "critical" }),
+                    reportFinding({ label: "F-002", severity: "high", fixBeforeSignoff: false }),
+                    reportFinding({ label: "F-003", severity: "low", fixBeforeSignoff: true }),
+                    reportFinding({ label: "F-004", severity: "medium" })
+                ]
+            })
+        );
+        expect(md).toContain("- Fix before sign-off: F-001, F-003");
+        expect(md).toContain("- Can wait: F-002, F-004");
+        expect(md).toContain("**Fix before sign-off:** yes");
+        expect(md).toContain("**Fix before sign-off:** no");
+    });
+
+    it("says it is a draft and marks each finding the auditor has not reviewed yet", () => {
+        const md = agentMarkdown(
+            reportData({
+                draft: true,
+                findings: [
+                    reportFinding({ label: "F-001", severity: "critical", title: "Raw SQL" }),
+                    reportFinding({ label: "F-002", severity: "low", title: "Verbose errors", unreviewed: true })
+                ]
+            })
+        );
+        expect(md).toContain("A draft: 1 of 2 findings is not reviewed by the auditor yet");
+        expect(md).toContain("### F-002 (not reviewed): Verbose errors");
+        expect(md).toContain("### F-001: Raw SQL");
+        expect(agentMarkdown(reportData())).not.toContain("A draft");
+    });
+
+    it("tells the agent which files the client keeps from AI tools, so it does not open them either", () => {
+        const md = agentMarkdown(
+            reportData({ repositories: [{ name: "app", branch: "main", sha: "0123456789abcdef", notCovered: [], aiPolicy: policy }] })
+        );
+        expect(md).toContain("## Files kept from AI tools");
+        expect(md).toContain("Do not open, quote or change them");
+        expect(md).toContain("- In app: `certs/` (2 files), `payments/` (3 files)");
+        expect(md).toContain("`Read(./certs/**)` in `.claude/settings.json` (Claude Code)");
+        expect(md).toContain("`payments/**`, agreed with the client");
+        expect(md).not.toContain("~/.ssh");
+        expect(agentMarkdown(reportData())).not.toContain("## Files kept from AI tools");
+    });
+
+    it("names a repository the client keeps from AI tools as a whole", () => {
+        const md = agentMarkdown(
+            reportData({
+                repositories: [
+                    {
+                        name: "app",
+                        branch: "main",
+                        sha: "0123456789abcdef",
+                        notCovered: [],
+                        aiPolicy: { ...policy, everything: true, readsNothing: ".claude/settings.json:3" }
+                    }
+                ]
+            })
+        );
+        expect(md).toContain("- In app: every file.");
+    });
+
+    it("gives each finding's hours when the export includes them, and its re-audit state", () => {
+        const md = agentMarkdown(
+            reportData({
+                hours: true,
+                findings: [
+                    reportFinding({ label: "F-001", effort: "M", effortHours: { low: 4, high: 6 }, recheck: "regressed" }),
+                    reportFinding({ label: "F-002", effort: "S", recheck: "changed" })
+                ]
+            })
+        );
+        expect(md).toContain("**Effort:** M (4–6 h)");
+        expect(md).toContain("**Re-audit:** regressed since the last audit");
+        expect(md).toContain("**Re-audit:** the cited code changed since the last audit; check it before you act");
+    });
+
+    it("names the languages the audit did not cover, so an agent does not read silence as a clean bill", () => {
+        const md = agentMarkdown(
+            reportData({ repositories: [{ name: "app", branch: "main", sha: "0123456789abcdef", notCovered: ["Python (3 files)"] }] })
+        );
+        expect(md).toContain("Not covered by this audit: Python (3 files).");
+    });
+
+    it("names each aspect once, without the repository its title carries", () => {
+        const md = agentMarkdown(
+            reportData({
+                aspects: [
+                    { key: "security", title: "Security (app)", status: "done", note: null, coverage: [] },
+                    { key: "security", title: "Security (api)", status: "done", note: null, coverage: [] },
+                    { key: "llm", title: "LLM integrations (app)", status: "done", note: null, coverage: [] }
+                ]
+            })
+        );
+        expect(md).toContain("Aspects examined: Security, LLM integrations.");
+    });
+
+    it("escapes Markdown in a title, as in the body", () => {
+        const md = agentMarkdown(one({ title: "A __proto__ key in <div>" }));
+        expect(md).toContain(String.raw`### F-001: A \_\_proto\_\_ key in \<div\>`);
     });
 });

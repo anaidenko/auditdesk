@@ -1,4 +1,4 @@
-// The public sample report (docs/sample-report.html and .pdf): OWASP Juice Shop, prepared as the
+// The public sample report (docs/sample-report.html, .pdf and .md): OWASP Juice Shop, prepared as the
 // eval prepares it (evals/prep), audited through the app's own runner and reviewed in the app.
 //   pnpm tsx --conditions=react-server scripts/sample-report.mts run <model> <effort> <budget-usd> [<thousand-tokens>=1200]
 //   pnpm tsx --conditions=react-server scripts/sample-report.mts export <projectId>
@@ -79,6 +79,7 @@ if (command === "run") {
     const { loadReportData } = await import("../src/server/report");
     const { renderReport } = await import("../src/engine/report/render");
     const { renderPdf } = await import("../src/engine/report/pdf");
+    const { agentMarkdown } = await import("../src/engine/report/exports");
     const data = await loadReportData(projectId);
     const sha = data.repositories[0]?.sha ?? "";
     // The method names what the sample audited, so its line numbers can be found again.
@@ -89,6 +90,10 @@ if (command === "run") {
     if (!html.includes(note)) throw new Error("The report's method list was not found.");
     await writeFile("docs/sample-report.html", html);
     await writeFile("docs/sample-report.pdf", await renderPdf(html, { footer: `Code audit: ${data.projectName} · ${data.generatedAt}` }));
-    console.log(`docs/sample-report.html and .pdf: ${data.findings.length} findings, ${data.questions.length} questions.`);
+    const mdNote = `This sample audited OWASP Juice Shop ${RELEASE} (upstream ${upstream}) as Auditdesk's eval prepares it (\`evals/prep\`): the answers to its coding challenges removed and its challenges renamed, in one commit, ${sha.slice(0, 12)}. Line numbers refer to that prepared tree.`;
+    const md = agentMarkdown(data).replace("## Audited code\n\n", `## Audited code\n\n${mdNote}\n\n`);
+    if (!md.includes(mdNote)) throw new Error("The Markdown's Audited code was not found.");
+    await writeFile("docs/sample-report.md", md);
+    console.log(`docs/sample-report.html, .pdf and .md: ${data.findings.length} findings, ${data.questions.length} questions.`);
 } else throw new Error("run <model> <effort> <budget-usd> | export <projectId>");
 await prisma.$disconnect();

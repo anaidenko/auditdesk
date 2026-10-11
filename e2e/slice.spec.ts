@@ -42,6 +42,9 @@ test("a run from project to downloaded report", async ({ page }) => {
     const draftHtml = readFileSync(await draft.path(), "utf8");
     expect(draftHtml).toContain("User input reaches eval");
     expect(draftHtml).toContain('<span class="pill unreviewed">not reviewed</span>');
+    const [md] = await Promise.all([page.waitForEvent("download"), exports.getByRole("button", { name: "Markdown for AI" }).click()]);
+    expect(md.suggestedFilename()).toMatch(/^auditdesk-sample-ai-draft-\d{4}-\d{2}-\d{2}\.md$/);
+    expect(readFileSync(await md.path(), "utf8")).toMatch(/### F-\d{3} \(not reviewed\): User input reaches eval/);
     for (const [name, ext] of [
         ["Issues CSV", "csv"],
         ["Issues JSON", "json"]

@@ -299,7 +299,7 @@ export async function loadReportData(
 }
 
 /** `part` says what a download other than the report holds: the issues, or a SARIF's repository. */
-export function reportFileName(d: ReportData, ext: "html" | "pdf" | "sarif" | "csv" | "json", part?: string): string {
+export function reportFileName(d: ReportData, ext: "html" | "pdf" | "sarif" | "csv" | "json" | "md", part?: string): string {
     const slug = (s: string) =>
         s
             .toLowerCase()
